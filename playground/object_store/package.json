@@ -1,0 +1,20 @@
+{
+  "name": "object-store-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "File-system based object store with RESTful API",
+  "scripts": {
+    "start": "npx tsx server.ts",
+    "test": "npx tsx test.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "hono": "^4.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
