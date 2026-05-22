@@ -1,0 +1,19 @@
+{
+  "name": "task-flow-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Flowed task chain demo",
+  "main": "index.ts",
+  "scripts": {
+    "start": "npx tsx index.ts"
+  },
+  "dependencies": {
+    "flowed": "^1.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
