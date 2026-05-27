@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-## 1. 项目目标
+## 1. Project Objectives
 
 RobotOps Studio (Robot Commissioning & Operations Studio) is a field robot management and upgrade tool designed for FAE (Field Application Engineers).
 
@@ -25,7 +25,9 @@ RobotOps Studio (Robot Commissioning & Operations Studio) is a field robot manag
 - Linux PC
 - Wi-Fi network environments
 
-## 2. 技术栈
+---
+
+## 2. Technology Stack
 
 ### Frontend
 
@@ -55,7 +57,9 @@ syrius-roboops/
 - All dependencies must be installed via package managers only
 - No system-level package installation (apt, pip, npm install -g)
 
-## 3. 开发命令
+---
+
+## 3. Development Commands
 
 (TBD - to be documented after project structure is established)
 
@@ -66,7 +70,9 @@ syrius-roboops/
 - Build: (TBD)
 - Test: (TBD)
 
-## 4. 架构规则
+---
+
+## 4. Architecture Rules
 
 ### Package Management
 
@@ -79,8 +85,8 @@ syrius-roboops/
 - **TypeScript**: All code MUST be written in TypeScript, not plain JavaScript
 - **Module System**: Use ES6 module syntax (`import`/`export`), not CommonJS (`require`/`module.exports`)
 
-- **FORBIDDEN**: All logs, comments, and documentation MUST be in English only
-- **FORBIDDEN**: Use of half-width characters (半角字符) in logs and comments is prohibited
+- **FORBIDDEN**: All logs, comments MUST be in English only
+- **FORBIDDEN**: Use of half-width characters in logs and comments is prohibited
 - Use full-width characters only when required by UI localization, never in code/logs
 - **FORBIDDEN**: Do NOT write code in plain JavaScript; all code must be TypeScript with ES6 module syntax
 - **FORBIDDEN**: Do NOT use CommonJS (`require`/`module.exports`); use ES6 `import`/`export` instead
@@ -91,7 +97,9 @@ syrius-roboops/
 - **FORBIDDEN**: Do NOT log sensitive information (passwords, tokens, etc.)
 - **FORBIDDEN**: Do NOT perform dangerous operations without explicit user confirmation
 
-## 9. Agent行为要求
+---
 
-- 对需求有疑问时，必须先与用户确认，明确所有问题后再执行。禁止在需求不明确的情况下直接动手。
+## 9. Agent Behavior Requirements
 
+- When there are questions about requirements, the agent MUST confirm with the user first and clarify all ambiguities before proceeding. Do NOT start implementation when requirements are unclear.
+- After modifying code, the agent MUST check whether requirements documents, design documents, UI/UX specifications, and test case design documents remain consistent with the code. If inconsistencies are found, the agent MUST update the documents to match the code.

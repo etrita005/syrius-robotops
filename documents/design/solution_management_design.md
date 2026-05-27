@@ -44,11 +44,29 @@ interface CreateSolutionInput {
   metadata?: Record<string, unknown>;
 }
 
+interface SolutionListOptions {
+  filter?: {
+    name?: string;        // 子串匹配
+    tags?: string[];      // 任意标签精确匹配
+  };
+  sort?: {
+    field: "updatedAt" | "name" | "createdAt";
+    order: "asc" | "desc";
+  };
+}
+
+interface SolutionListResult {
+  items: SolutionMeta[];
+  corruptedIds: string[]; // meta.json 缺失或不可读的 ID 列表
+}
+
 interface SolutionService {
   create(input: CreateSolutionInput): Promise<SolutionMeta>;
-  list(): Promise<SolutionMeta[]>;
+  list(options?: SolutionListOptions): Promise<SolutionListResult>;
   get(id: string): Promise<SolutionMeta | null>;
-  update(id: string, patch: Partial<Omit<SolutionMeta, "id" | "createdAt">>): Promise<SolutionMeta>;
+  // 可变字段：name、description、tags、metadata
+  // 服务层自动更新 updatedAt，并递增 patch 版本号（如 1.0.0 -> 1.0.1）
+  update(id: string, patch: Partial<Omit<SolutionMeta, "id" | "createdAt" | "version">>): Promise<SolutionMeta>;
   remove(id: string): Promise<void>;
   clone(sourceId: string, newName: string): Promise<SolutionMeta>;
   exportToArchive(id: string, destinationPath: string): Promise<string>;
@@ -69,7 +87,27 @@ interface ActiveSolutionManager {
 }
 ```
 
-### 3.3 制品服务接口（ArtifactService）
+### 3.3 最近使用解决方案管理器（RecentSolutionsManager）
+
+维护一个持久化的、有序的最近访问解决方案列表（上限 10 条），用于快捷导航。
+
+```typescript
+interface RecentSolutionEntry {
+  id: string;
+  name: string;
+  accessedAt: string; // ISO 8601 date-time
+}
+
+interface RecentSolutionsManager {
+  getList(): RecentSolutionEntry[];
+  recordAccess(id: string, name: string): Promise<void>;
+  remove(id: string): Promise<void>;
+  clear(): Promise<void>;
+  onChange(callback: (entries: RecentSolutionEntry[]) => void): () => void;
+}
+```
+
+### 3.4 制品服务接口（ArtifactService）
 
 负责全局制品的生命周期管理和引用计数维护。
 
@@ -100,6 +138,27 @@ interface ArtifactService {
 }
 ```
 
+### 3.5 对象存储客户端（ObjectStoreClient）
+
+所有与对象存储的交互通过统一封装的客户端进行，支持可配置的超时与重试。
+
+```typescript
+interface ObjectStoreClientConfig {
+  baseUrl: string;
+  timeout?: number;      // 请求超时（毫秒），默认 30000
+  retries?: number;      // 重试次数，默认 3
+}
+
+interface ObjectStoreClient {
+  put(path: string, body: ReadableStream | Buffer | string, contentType?: string, headers?: Record<string, string>): Promise<Response>;
+  get(path: string): Promise<Response>;
+  delete(path: string): Promise<Response>;
+  list(path: string): Promise<string[]>;
+}
+```
+
+> `SolutionServiceImpl` 与 `ArtifactServiceImpl` 均依赖同一 `ObjectStoreClient` 实例，以复用超时、重试等公共配置。
+
 ---
 
 ## 4. 对象存储路径映射
@@ -113,7 +172,7 @@ interface ArtifactService {
 | 列举全部解决方案 | GET | `/api/obs/v1/solutions` | — |
 | 删除解决方案 | DELETE | `/api/obs/v1/solutions/{id}` | — |
 | 子资源操作 | PUT/GET/DELETE | `/api/obs/v1/solutions/{id}/{namespace}/{resourceId}` | 按资源类型 |
-| 上传制品文件 | PUT | `/api/obs/v1/artifacts/{artifactId}` | 按实际文件类型 |
+| 上传制品文件 | PUT | `/api/obs/v1/artifacts/{artifactId}` | 按实际文件类型推断 |
 | 上传/更新制品元数据 | PUT | `/api/obs/v1/artifacts/{artifactId}_meta` | `application/json` |
 | 读取制品元数据 | GET | `/api/obs/v1/artifacts/{artifactId}_meta` | — |
 | 列举全部制品 | GET | `/api/obs/v1/artifacts` | — |
@@ -121,13 +180,19 @@ interface ArtifactService {
 
 ### 4.2 目录骨架初始化流程
 
-创建解决方案时，需依次调用以下 PUT 请求预创建空目录（通过写入占位文件或依赖对象存储的自动目录创建机制）：
+创建解决方案时，系统必须通过写入 `.keep` 占位文件（或使用对象存储的空目录创建 API）预先创建以下子命名空间目录：
 
 1. `PUT /api/obs/v1/solutions/{id}/meta` — 写入元数据
-2. 对象存储会自动创建中间目录 `v1/solutions/{id}/`
-3. 各子命名空间目录在首次写入该类型资源时由对象存储自动创建；若需在创建时预置，可写入 `.keep` 占位文件
+2. `PUT /api/obs/v1/solutions/{id}/robots/.keep`
+3. `PUT /api/obs/v1/solutions/{id}/upgrade-packages/.keep`
+4. `PUT /api/obs/v1/solutions/{id}/maps/.keep`
+5. `PUT /api/obs/v1/solutions/{id}/configs/.keep`
+6. `PUT /api/obs/v1/solutions/{id}/diagnostics/.keep`
+7. `PUT /api/obs/v1/solutions/{id}/logs/.keep`
 
-全局制品目录 `v1/artifacts/` 为独立顶级命名空间，不隶属于任何解决方案。首次上传制品时，对象存储自动创建 `v1/artifacts/` 目录。
+对象存储会自动创建中间目录。预先创建所有命名空间可确保列表 API 始终返回可预测的结构，并消除懒初始化带来的竞态条件。
+
+全局制品目录 `v1/artifacts/` 为独立顶级命名空间，不隶属于任何解决方案，无需在创建解决方案时预创建。
 
 ---
 
@@ -138,8 +203,9 @@ interface ArtifactService {
 ```
 class SolutionServiceImpl implements SolutionService {
   - objectStoreBaseUrl: string
+  - artifactService: ArtifactService
   + create(input: CreateSolutionInput): Promise<SolutionMeta>
-  + list(): Promise<SolutionMeta[]>
+  + list(options?: SolutionListOptions): Promise<SolutionListResult>
   + get(id: string): Promise<SolutionMeta | null>
   + update(id: string, patch): Promise<SolutionMeta>
   + remove(id: string): Promise<void>
@@ -149,6 +215,10 @@ class SolutionServiceImpl implements SolutionService {
   - generateId(name: string): string
   - readMeta(id: string): Promise<SolutionMeta>
   - writeMeta(id: string, meta: SolutionMeta): Promise<void>
+  - createDirectorySkeleton(id: string): Promise<void>
+  - bumpPatchVersion(currentVersion: string): string
+  - collectAllArtifactReferences(id: string): Promise<ArtifactReference[]>
+  - deleteDirectoryRecursively(id: string): Promise<void>
 }
 ```
 
@@ -163,8 +233,8 @@ class ActiveSolutionManagerImpl implements ActiveSolutionManager {
   + setActiveId(id: string): Promise<void>
   + clear(): void
   + onChange(callback): () => void
-  - persist(): void
-  - restore(): void
+  - persist(): void        // 使用 localStorage 持久化 activeId
+  - restore(): void        // 从 localStorage 恢复 activeId
   - notify(): void
 }
 ```
@@ -187,77 +257,387 @@ class ArtifactServiceImpl implements ArtifactService {
 }
 ```
 
+### 5.4 RecentSolutionsManagerImpl
+
+```
+class RecentSolutionsManagerImpl implements RecentSolutionsManager {
+  - entries: RecentSolutionEntry[]
+  - listeners: Set<(entries: RecentSolutionEntry[]) => void>
+  - storageKey: string
+  - maxEntries: number = 10
+  + getList(): RecentSolutionEntry[]
+  + recordAccess(id: string, name: string): Promise<void>
+  + remove(id: string): Promise<void>
+  + clear(): Promise<void>
+  + onChange(callback): () => void
+  - persist(): void        // 使用 localStorage 持久化 entries
+  - restore(): void        // 从 localStorage 恢复 entries
+  - notify(): void
+}
+```
+
 ---
 
 ## 6. 关键时序设计
 
 ### 6.1 创建解决方案
 
-```
-FAE -> UI: 输入名称、描述、标签
-UI -> SolutionServiceImpl: create(input)
-SolutionServiceImpl -> SolutionServiceImpl: generateId(name)
-SolutionServiceImpl -> ObjectStore: PUT /api/obs/solutions/{id}/meta
-ObjectStore --> SolutionServiceImpl: 200 OK
-SolutionServiceImpl --> UI: SolutionMeta
-UI -> ActiveSolutionManager: setActiveId(id)
-ActiveSolutionManager --> UI: 激活完成
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant SSI as SolutionServiceImpl
+    participant ASM as ActiveSolutionManager
+    participant RSM as RecentSolutionsManager
+    participant OS as ObjectStore
+
+    FAE->>UI: 输入名称、描述、标签
+    UI->>SSI: create(input)
+    SSI->>SSI: generateId(name)
+    SSI->>OS: PUT /api/obs/v1/solutions/{id}/meta
+    OS-->>SSI: 200 OK
+    SSI->>OS: PUT /api/obs/v1/solutions/{id}/robots/.keep
+    SSI->>OS: PUT /api/obs/v1/solutions/{id}/upgrade-packages/.keep
+    SSI->>OS: PUT /api/obs/v1/solutions/{id}/maps/.keep
+    SSI->>OS: PUT /api/obs/v1/solutions/{id}/configs/.keep
+    SSI->>OS: PUT /api/obs/v1/solutions/{id}/diagnostics/.keep
+    SSI->>OS: PUT /api/obs/v1/solutions/{id}/logs/.keep
+    OS-->>SSI: 200 OK
+    SSI-->>UI: SolutionMeta
+    UI->>ASM: setActiveId(id)
+    UI->>RSM: recordAccess(id, name)
+    ASM-->>UI: 激活完成
 ```
 
 ### 6.2 切换当前激活解决方案
 
-```
-FAE -> UI: 选择另一解决方案并点击“切换”
-UI -> ActiveSolutionManager: setActiveId(newId)
-ActiveSolutionManager -> SolutionServiceImpl: get(newId) // 验证存在性
-SolutionServiceImpl --> ActiveSolutionManager: SolutionMeta
-ActiveSolutionManager -> ActiveSolutionManager: clear 旧缓存
-ActiveSolutionManager -> ActiveSolutionManager: persist newId
-ActiveSolutionManager -> ActiveSolutionManager: notify listeners
-ActiveSolutionManager --> UI: onChange 回调触发
-UI -> UI: 重载全部子功能视图
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant ASM as ActiveSolutionManager
+    participant SSI as SolutionServiceImpl
+
+    FAE->>UI: 选择另一解决方案并点击“切换”
+    UI->>ASM: setActiveId(newId)
+    ASM->>SSI: get(newId)
+    SSI-->>ASM: SolutionMeta
+    ASM->>ASM: 清空旧缓存
+    ASM->>ASM: 持久化 newId
+    ASM->>ASM: 通知 listeners
+    ASM-->>UI: onChange 回调触发
+    UI->>UI: 重载全部子功能视图
 ```
 
 ### 6.3 删除当前激活解决方案
 
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant SSI as SolutionServiceImpl
+    participant ASI as ArtifactServiceImpl
+    participant ASM as ActiveSolutionManager
+    participant RSM as RecentSolutionsManager
+    participant OS as ObjectStore
+
+    FAE->>UI: 点击删除，完成两步确认
+    UI->>SSI: remove(id)
+    SSI->>SSI: collectAllArtifactReferences(id)
+    SSI->>OS: GET /api/obs/v1/solutions/{id}/robots
+    SSI->>OS: GET /api/obs/v1/solutions/{id}/upgrade-packages
+    SSI->>OS: GET /api/obs/v1/solutions/{id}/maps
+    SSI->>OS: GET /api/obs/v1/solutions/{id}/configs
+    SSI->>OS: GET /api/obs/v1/solutions/{id}/diagnostics
+    SSI->>OS: GET /api/obs/v1/solutions/{id}/logs
+    OS-->>SSI: 各命名空间资源文件列表
+    SSI->>SSI: 解析每个 JSON 并提取制品引用
+    loop 对每个唯一的制品引用
+        SSI->>ASI: decrementRefCount(artifactId)
+        ASI->>OS: PUT /api/obs/v1/artifacts/{artifactId}_meta (更新 refCount)
+        OS-->>ASI: 200 OK
+    end
+    SSI->>OS: DELETE /api/obs/v1/solutions/{id}
+    OS-->>SSI: 204 No Content
+    SSI-->>UI: 删除成功
+    UI->>ASM: clear()
+    UI->>RSM: remove(id)
+    ASM->>ASM: notify listeners(null)
+    UI->>UI: 重定向至解决方案选择器
 ```
-FAE -> UI: 点击删除，完成两步确认
-UI -> SolutionServiceImpl: remove(id)
-SolutionServiceImpl -> ObjectStore: GET /api/obs/solutions/{id}/upgrade-packages
-SolutionServiceImpl -> ObjectStore: GET /api/obs/solutions/{id}/maps
-ObjectStore --> SolutionServiceImpl: 引用文件列表
-SolutionServiceImpl -> ArtifactServiceImpl: decrementRefCount(artifactId) 对每个引用
-ArtifactServiceImpl -> ObjectStore: PUT /api/obs/v1/artifacts/{artifactId}_meta (更新 refCount)
-ObjectStore --> ArtifactServiceImpl: 200 OK
-SolutionServiceImpl -> ObjectStore: DELETE /api/obs/solutions/{id}
-ObjectStore --> SolutionServiceImpl: 204 No Content
-SolutionServiceImpl --> UI: 删除成功
-UI -> ActiveSolutionManager: clear()
-ActiveSolutionManager -> ActiveSolutionManager: notify listeners(null)
-UI -> UI: 重定向至解决方案选择器
+
+### 6.4 更新解决方案（自动版本递增）
+
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant SSI as SolutionServiceImpl
+    participant RSM as RecentSolutionsManager
+    participant OS as ObjectStore
+
+    FAE->>UI: 编辑名称、描述、标签或元数据
+    UI->>SSI: update(id, patch)
+    SSI->>OS: GET /api/obs/v1/solutions/{id}/meta
+    OS-->>SSI: current SolutionMeta
+    SSI->>SSI: 合并 patch
+    SSI->>SSI: updatedAt = now
+    SSI->>SSI: version = bumpPatchVersion(currentVersion)
+    SSI->>OS: PUT /api/obs/v1/solutions/{id}/meta
+    OS-->>SSI: 200 OK
+    SSI-->>UI: Updated SolutionMeta
+    UI->>RSM: recordAccess(id, updatedName)
+```
+
+### 6.5 克隆解决方案（原子性）
+
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant SSI as SolutionServiceImpl
+    participant ASI as ArtifactServiceImpl
+    participant OS as ObjectStore
+
+    FAE->>UI: 选择源解决方案并输入新名称
+    UI->>SSI: clone(sourceId, newName)
+    SSI->>SSI: generateId(newName) -> newId
+    SSI->>OS: GET /api/obs/v1/solutions/{sourceId}/meta
+    OS-->>SSI: Source SolutionMeta
+    SSI->>OS: 在 v1/solutions/{newId}/ 下创建目录骨架
+    SSI->>OS: 逐个子资源复制源数据到目标目录
+    alt 任意步骤复制失败
+        Note over SSI,OS: 简单原子性策略：不采用临时目录+重命名，失败时直接清理
+        SSI->>OS: DELETE /api/obs/v1/solutions/{newId}（清理已创建内容）
+        SSI-->>UI: 抛出克隆失败异常
+    else 复制成功
+        SSI->>SSI: 构建新 meta（重置 createdAt、updatedAt，version = "1.0.0"）
+        SSI->>OS: PUT /api/obs/v1/solutions/{newId}/meta
+        SSI->>SSI: collectAllArtifactReferences(newId)
+        loop 对每个制品引用
+            SSI->>ASI: incrementRefCount(artifactId)
+        end
+        SSI-->>UI: New SolutionMeta
+    end
+```
+
+### 6.6 导出解决方案
+
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant SSI as SolutionServiceImpl
+    participant OS as ObjectStore
+    participant LD as LocalDisk
+
+    FAE->>UI: 选择导出
+    UI->>SSI: exportToArchive(id, destinationPath)
+    SSI->>OS: GET /api/obs/v1/solutions/{id}/meta
+    OS-->>SSI: SolutionMeta
+    SSI->>OS: 递归 GET v1/solutions/{id}/ 下所有子资源
+    OS-->>SSI: 资源流
+    SSI->>SSI: 流式写入 ZIP（如 archiver / yazl）
+    SSI->>SSI: 文件名 = "{id}-v{version}-{timestamp}.zip"
+    SSI->>LD: 将 ZIP 流写入 destinationPath
+    SSI-->>UI: 导出成功并返回文件路径
+```
+
+### 6.7 导入解决方案
+
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant SSI as SolutionServiceImpl
+    participant ASI as ArtifactServiceImpl
+    participant OS as ObjectStore
+
+    FAE->>UI: 选择 ZIP 文件
+    UI->>SSI: importFromArchive(zipPath, conflictResolution)
+    SSI->>SSI: 预检查 ZIP 结构
+    alt 结构非法（无有效解决方案目录或缺失 meta.json）
+        SSI-->>UI: 抛出 IMPORT_INVALID_ARCHIVE
+    else 结构合法
+        SSI->>SSI: 从归档中提取目标 ID
+        alt ID 已存在
+            alt conflictResolution == "cancel"
+                SSI-->>UI: 抛出 IMPORT_ID_COLLISION
+            else conflictResolution == "overwrite"
+                SSI->>SSI: remove(existingId)（含 refCount 清理）
+            else conflictResolution == "rename"
+                SSI->>SSI: 生成新的自动 ID
+            end
+        end
+        SSI->>OS: 解压并将所有资源 PUT 到 v1/solutions/{resolvedId}/
+        SSI->>SSI: 校验制品引用有效性
+        loop 对每个有效引用
+            SSI->>ASI: incrementRefCount(artifactId)
+        end
+        SSI-->>UI: Imported SolutionMeta
+    end
+```
+
+### 6.8 设置激活解决方案并更新最近使用列表
+
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant ASM as ActiveSolutionManager
+    participant SSI as SolutionServiceImpl
+    participant RSM as RecentSolutionsManager
+
+    FAE->>UI: 选择解决方案并点击“切换/激活”
+    UI->>ASM: setActiveId(newId)
+    ASM->>SSI: get(newId)
+    SSI-->>ASM: SolutionMeta
+    ASM->>ASM: 清空旧缓存
+    ASM->>ASM: 持久化 newId
+    ASM->>ASM: 通知 listeners
+    ASM-->>UI: onChange 回调触发
+    UI->>RSM: recordAccess(newId, meta.name)
+    RSM->>RSM: 去重、移到队首、截断至 10
+    RSM->>RSM: 持久化并通知
+    UI->>UI: 重载全部子功能视图
 ```
 
 ---
 
 ## 7. 异常处理策略
 
-| 异常场景 | 处理方式 |
-|---------|---------|
-| 对象存储无响应 | 重试 3 次（指数退避），最终向用户提示网络错误 |
-| 删除过程中部分子资源失败 | 记录详细错误日志，向用户报告未删除成功的路径列表 |
-| 克隆中途失败 | 清理已创建的目标目录，确保不产生残缺解决方案 |
-| 导入 ZIP 结构不合法 | 在解压前进行结构预检，不写入任何数据到对象存储 |
-| 制品被引用时删除 | 拒绝删除，提示当前引用数量及引用来源 |
-| 上传重复校验和 | 返回已有制品，不重复存储文件 |
-| 引用计数不一致 | 提供后台修复工具或定期全量扫描校正 |
+| 错误码 | 触发条件 | 处理方式 |
+|--------|---------|---------|
+| `SOLUTION_NOT_FOUND` | 对不存在的 ID 执行读取/更新/删除 | 返回 404 等效值；UI 提示"解决方案 '{id}' 不存在。" |
+| `SOLUTION_ALREADY_EXISTS` | 使用重复 ID 创建 | 任何存储写入前拒绝；UI 提示"ID 为 '{id}' 的解决方案已存在。" |
+| `INVALID_SOLUTION_ID` | ID 违反安全名称正则 | 在验证层拒绝；UI 提示"解决方案 ID 包含非法字符。" |
+| `NO_ACTIVE_SOLUTION` | 未设置激活上下文时调用子资源 API | 返回 400；UI 提示用户先选择或创建解决方案。 |
+| `SOLUTION_CORRUPTED` | `meta.json` 缺失或不可读 | list 时纳入 `corruptedIds`，get 时抛错；UI 渲染损坏警告标记。 |
+| `IMPORT_INVALID_ARCHIVE` | ZIP 不包含有效的解决方案结构 | 预检查阶段拒绝，不写入对象存储；提示"所选文件不是有效的解决方案归档。" |
+| `IMPORT_ID_COLLISION` | 导入目标 ID 已存在且用户选择取消 | 中止导入；提示"因 ID 冲突，导入已取消。" |
+| `DELETE_ACTIVE_SOLUTION` | 删除当前激活的解决方案 | 额外警告并需要确认；删除后调用 `ActiveSolutionManager.clear()` 并重定向。 |
+| `ARTIFACT_NOT_FOUND` | 引用或操作不存在的制品 | 阻断创建引用的操作；提示"制品 '{artifactId}' 不存在。" |
+| `ARTIFACT_REFERENCED` | 尝试删除 `refCount > 0` 的制品 | 拒绝删除并提示引用数。由 ArtifactService 处理。 |
+| `ARTIFACT_DUPLICATE_CHECKSUM` | 上传的制品校验和与已有文件相同 | 返回已有 `ArtifactMeta`；UI 提示去重。由 ArtifactService 处理。 |
+| `INVALID_ARTIFACT_ID` | 制品 ID 违反安全名称正则 | 存储操作前拒绝。由 ArtifactService 处理。 |
+| 对象存储无响应 | 网络/服务故障 | 指数退避重试 3 次；最终向用户提示网络错误。 |
+| 删除过程部分子资源失败 | 递归删除时部分路径失败 | 记录详细错误日志；向用户报告未删除成功的路径列表。 |
+| 克隆中途失败 | 复制过程中失败 | 删除已创建的目标目录，防止产生残缺解决方案。 |
+| 引用计数负值 | 内部计算异常导致负值 | 钳制到 0，记录严重错误日志，触发后台审计。由 ArtifactService 处理。 |
 
 ---
 
-## 8. 待设计项
+## 8. 子资源归属契约
 
-1. ZIP 流式打包/解压的具体库选型与内存控制策略。
-2. 对象存储客户端的统一封装（是否需要共享 HTTP 连接池、超时配置等）。
-3. 克隆操作的原子性实现：是否需要先复制到临时目录再整体重命名；克隆时如何批量递增制品引用计数。
-4. 本地设置持久化的具体机制（Electron store / localStorage / 其他）。
-5. 制品引用计数的原子性保证：是否需要引入分布式锁或事务机制，防止并发操作导致 refCount 不一致。
-6. 制品去重策略的校验和算法选择（SHA-256 vs xxHash vs MD5），权衡安全性与计算速度。
+### 8.1 寻址规则
+
+所有子资源 API 必须接受 `solutionId` 参数（显式传入或从当前激活解决方案隐式获取）。对象存储路径始终遵循：
+
+```
+v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
+```
+
+### 8.2 功能命名空间注册表
+
+| 功能 | 命名空间 | 存储格式 | 归属 |
+|------|---------|---------|------|
+| 机器人管理 | `robots` | `application/json` | 解决方案 |
+| BSP / OS 升级包 | `upgrade-packages` | `application/json`（引用文件，指向全局制品） | 解决方案 |
+| 地图下发 | `maps` | `application/json`（引用文件，指向全局制品） | 解决方案 |
+| 程序配置 | `configs` | `application/json` | 解决方案 |
+| 诊断会话 | `diagnostics` | `application/json` | 解决方案 |
+| 操作日志 | `logs` | `application/json` | 解决方案 |
+| 制品 | `artifacts` | 根据实际文件类型推断 | **全局**（不从属于任何解决方案） |
+
+### 8.3 生命周期耦合
+
+- **创建**：子资源只能在父解决方案存在时创建。全局制品独立创建，不依赖于任何解决方案。
+- **读取**：子资源在当前激活解决方案的上下文中被读取。全局制品可在任意上下文中读取。
+- **更新**：子资源更新**不会**修改父解决方案的 `updatedAt` 或版本号（除非子模块显式设计为触发更新）。全局制品元数据中的 `refCount` 由引用/解除引用操作自动维护。
+- **删除**：删除子资源不会影响父解决方案。若子资源包含对全局制品的引用，删除时递减对应制品的 `refCount`。
+- **级联**：删除父解决方案会递归删除该解决方案下的所有子资源（引用文件），并自动递减相关全局制品的 `refCount`，但**不会**删除全局制品本身。
+
+---
+
+## 9. UI 组件设计
+
+### 9.1 解决方案选择器（着陆页）
+
+- **布局**：未设置激活解决方案时展示的全页面网格或列表视图。
+- **内容**：卡片或行展示 `name`、截断的 `description`、`updatedAt`、`tags`（Carbon `Tag`）及操作按钮（打开、导出、克隆、删除）。
+- **空状态**：列表为空时提示创建或导入解决方案。
+- **损坏标记**：`meta.json` 不可读的解决方案渲染警告指示器（如 Carbon `Tag` 红色主题 + 警告图标）。
+
+### 9.2 全局标题栏 / 标题条
+
+- **激活方案展示**：醒目显示当前激活解决方案的 `name`。
+- **切换按钮**："切换解决方案"按钮打开选择器模态框或导航至着陆页。
+- **最近使用下拉**：由 `RecentSolutionsManager` 驱动的快捷访问下拉菜单，最多展示 10 条。点击条目直接触发激活流程（FR-SOL-009）。
+
+### 9.3 解决方案详情 / 编辑模态框
+
+- **表单字段**：可编辑的 `name`、`description`、`tags`（多标签输入）、`metadata`（键值编辑器）。
+- **只读字段**：`id`、`createdAt`、`version`。
+- **版本展示**：显示当前 `version`，用户可理解每次保存会自动递增。
+
+### 9.4 创建解决方案模态框
+
+- **字段**：`name`（必填）、`description`、`tags`、`metadata`。
+- **自动激活**：创建成功后自动设为当前激活解决方案（UI-SOL-005）。
+
+### 9.5 删除确认
+
+- **第一步**：模态对话框警告破坏性操作，并列出受影响的子资源数量（如机器人数、地图数等）。
+- **第二步**：输入框要求用户输入完整的解决方案 `name`，之后才能启用删除按钮。
+- **激活方案处理**：若删除的是当前激活方案，额外显示警告；确认后清空激活上下文并重定向至选择器。
+
+### 9.6 导出 / 克隆进度
+
+- **进度指示器**：Carbon `ProgressBar` 或内联加载状态，显示"正在打包文件..."或"正在复制资源..."。
+- **取消**：耗时操作提供取消按钮，中止 ZIP 流或复制队列并清理已产生的临时数据。
+
+---
+
+## 10. 非功能需求与性能设计
+
+| 需求 | 设计方法 |
+|------|---------|
+| NF-SOL-001：列举 1000 个解决方案 < 2 秒 | 在内存中缓存解决方案元数据列表并设置短 TTL；增删改时增量更新；并行批量读取 `meta.json`（如每次 20 个），避免连接池耗尽。 |
+| NF-SOL-002：1 GB 归档流式导出 | 使用流式 ZIP 库（如 `archiver` 或 `yazl`），将对象存储的读取流直接管道接入归档写入流；禁止将整个归档加载到内存。 |
+| NF-SOL-003：对象存储临时不可用 | 所有对象存储 HTTP 调用包裹在具备自动重试的弹性客户端中：最多 3 次，指数退避（基数 200 ms，上限 5 秒）。重试耗尽后向用户提示网络错误。 |
+| NF-SOL-004：长时间 I/O 操作可取消 | `exportToArchive`、`importFromArchive`、`clone` 均接受 `AbortSignal`。取消时关闭流，并对已部分写入的目标资源执行补偿性 DELETE。 |
+
+### 10.1 版本号递增逻辑
+
+`bumpPatchVersion` 辅助函数解析语义化版本字符串 `MAJOR.MINOR.PATCH`，仅递增 `PATCH` 位：
+
+```typescript
+function bumpPatchVersion(version: string): string {
+  const [major, minor, patch] = version.split(".").map(Number);
+  return `${major}.${minor}.${patch + 1}`;
+}
+```
+
+未来可能支持通过显式用户操作触发 minor/major 递增；当前所有解决方案元数据更新均触发 patch 级自动递增。
+
+### 10.2 导入预检查
+
+在往对象存储写入任何数据之前，导入流程执行轻量级 ZIP 预检查：
+
+1. 打开 ZIP 并读取中央目录（不进行完整解压）。
+2. 验证顶层存在且仅存在一个匹配解决方案 ID 正则的目录，或预期路径下存在 `meta.json`。
+3. 解析 `meta.json` 以确认其符合 SolutionMeta Schema。
+4. 仅当校验通过后，才开始解压并写入对象存储。
+
+---
+
+## 11. 已确定的设计决策
+
+| 设计项 | 决策 | 说明 |
+|--------|------|------|
+| 1. ZIP 流式打包/解压 | `archiver` 或 `yazl` | 采用 Node.js 流式 ZIP 库，直接管道对象存储读取流到本地磁盘写入流，全程不加载整个归档到内存。 |
+| 2. 对象存储客户端封装 | 统一 `ObjectStoreClient`，可配置超时 | 封装共享的 HTTP 客户端实例（见 3.5），支持配置连接超时与读取超时；默认超时 30 秒，默认重试 3 次。 |
+| 3. 克隆操作原子性 | 简单实现（失败即清理） | 创建目标目录骨架后逐个子资源复制；若中途失败，直接 DELETE 已创建的目标解决方案目录，不保留残缺数据。不引入临时目录重命名机制。 |
+| 4. 本地设置持久化 | `localStorage` | 激活方案 ID、最近使用列表等前端状态使用浏览器 `localStorage` 持久化；跨会话保留。 |
+| 5. 制品引用计数原子性 | 简单实现（乐观锁） | 采用基于 ETag 的读-改-写乐观锁，失败时最多重试 5 次；不引入分布式锁或事务机制。 |
+| 6. 校验和算法 | SHA-256 | 统一使用 SHA-256 作为制品去重与完整性校验算法，兼顾安全性与通用性。 |
