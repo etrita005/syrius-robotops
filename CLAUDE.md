@@ -44,7 +44,7 @@ RobotOps Studio (Robot Commissioning & Operations Studio) is a field robot manag
 ### Project Structure
 
 ```
-syrius-roboops/
+syrius-robotops/
 ├── frontend/          # React application
 ├── backend/           # Node.js service
 ├── documents/         # Requirements and design docs

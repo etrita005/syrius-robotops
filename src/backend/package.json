@@ -1,0 +1,25 @@
+{
+  "name": "robotops-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx tsx src/index.ts",
+    "dev": "npx tsx watch src/index.ts",
+    "test": "npx tsx src/test.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "adm-zip": "^0.5.14",
+    "archiver": "^7.0.0",
+    "hono": "^4.7.0",
+    "nanoid": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.5",
+    "@types/archiver": "^6.0.2",
+    "@types/node": "^25.9.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
