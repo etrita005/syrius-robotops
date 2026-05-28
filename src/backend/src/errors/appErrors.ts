@@ -2,7 +2,7 @@ export class AppError extends Error {
   constructor(
     public code: string,
     message: string,
-    public statusCode: number = 400
+    public statusCode: 400 | 401 | 403 | 404 | 409 | 500 = 400
   ) {
     super(message);
     this.name = "AppError";
@@ -90,5 +90,29 @@ export class FileTooLargeError extends AppError {
 export class RefCountNegativeError extends AppError {
   constructor() {
     super("REFCOUNT_NEGATIVE", "Reference count anomaly detected. Please contact technical support.", 500);
+  }
+}
+
+export class RobotNotFoundError extends AppError {
+  constructor(id: string) {
+    super("ROBOT_NOT_FOUND", `Robot '${id}' does not exist.`, 404);
+  }
+}
+
+export class InvalidRobotIdError extends AppError {
+  constructor(id: string) {
+    super("INVALID_ROBOT_ID", `Robot ID '${id}' contains invalid characters.`, 400);
+  }
+}
+
+export class InvalidRobotAddressError extends AppError {
+  constructor() {
+    super("INVALID_ROBOT_ADDRESS", "Robot address cannot be empty and must not exceed 256 characters.", 400);
+  }
+}
+
+export class RobotAddressExistsError extends AppError {
+  constructor(address: string) {
+    super("ROBOT_ADDRESS_EXISTS", `Robot with address '${address}' already exists in this solution.`, 409);
   }
 }

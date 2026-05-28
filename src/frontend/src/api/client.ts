@@ -5,17 +5,33 @@ async function request<T>(
   options?: RequestInit
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
-  const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-    ...options,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+      ...options,
+    });
+  } catch (networkErr) {
+    throw new Error(
+      `Network error: unable to connect to ${url}. Is the backend server running?`
+    );
+  }
 
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ message: "Unknown error" }));
-    throw new Error(body.error ?? body.message ?? `HTTP ${response.status}`);
+    let body: Record<string, unknown> = {};
+    try {
+      body = (await response.json()) as Record<string, unknown>;
+    } catch {
+      // response body is not JSON
+    }
+    const message =
+      (typeof body.error === "string" ? body.error : undefined) ??
+      (typeof body.message === "string" ? body.message : undefined) ??
+      `HTTP ${response.status} ${response.statusText}`;
+    throw new Error(message);
   }
 
   if (response.status === 204) return undefined as T;

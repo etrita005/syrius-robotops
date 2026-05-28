@@ -8,6 +8,7 @@ import { ObjectStore } from "./services/objectStore.js";
 import { ChecksumService } from "./services/checksumService.js";
 import { ArtifactService } from "./services/artifactService.js";
 import { SolutionService } from "./services/solutionService.js";
+import { RobotService } from "./services/robotService.js";
 import { createSolutionRoutes } from "./routes/solutionRoutes.js";
 import { createArtifactRoutes } from "./routes/artifactRoutes.js";
 
@@ -24,9 +25,10 @@ async function startApiServer(): Promise<void> {
   const checksumService = new ChecksumService();
   const artifactService = new ArtifactService(objectStore, checksumService);
   const solutionService = new SolutionService(objectStore, artifactService);
+  const robotService = new RobotService(objectStore);
 
   const app = new Hono();
-  app.route("/api/solutions", createSolutionRoutes(solutionService));
+  app.route("/api/solutions", createSolutionRoutes(solutionService, robotService));
   app.route("/api/artifacts", createArtifactRoutes(artifactService));
 
   apiServer = await new Promise<ReturnType<typeof serve>>((resolve) => {

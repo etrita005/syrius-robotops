@@ -159,6 +159,79 @@ interface ObjectStoreClient {
 
 > `SolutionServiceImpl` 与 `ArtifactServiceImpl` 均依赖同一 `ObjectStoreClient` 实例，以复用超时、重试等公共配置。
 
+### 3.6 机器人服务接口（RobotService）
+
+负责当前激活解决方案下的机器人生命周期管理，所有操作内部映射为对象存储路径。
+
+```typescript
+interface HardwareDeviceNode {
+  name: string;
+  firmwareVersion: string;
+  hardwareVersion: string;
+  serialNumber: string;
+  hardwareId: string;
+  parentName?: string;
+  online: boolean;
+}
+
+interface RobotDefinition {
+  id: string;
+  address: string;
+  addressType: "ip" | "mdns";
+  alias: string;
+  model: string;
+  robotSN: string;
+  thingsId: string;
+  vendorId: string;
+  productId: string;
+  mainboardSN: string;
+  mainboardId: string;
+  mainSOMId: string;
+  megaCosmOSVersion: string;
+  movebaseVersion: string;
+  ggrVersion: string;
+  mcuFirmwareVersions: Record<string, string>;
+  actuatorFirmwareVersions: Record<string, string>;
+  sensorFirmwareVersions: Record<string, string>;
+  mainControlHardwareVersion: string;
+  mcuHardwareVersions: Record<string, string>;
+  actuatorHardwareVersions: Record<string, string>;
+  sensorHardwareVersions: Record<string, string>;
+  hardwareDeviceTree: HardwareDeviceNode[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CreateRobotInput {
+  address: string;
+  alias?: string;
+}
+
+interface RobotListOptions {
+  filter?: {
+    alias?: string;
+    address?: string;
+    model?: string;
+    robotSN?: string;
+  };
+  sort?: {
+    field: "alias" | "address" | "model" | "robotSN" | "createdAt";
+    order: "asc" | "desc";
+  };
+}
+
+interface RobotService {
+  // 所有方法依赖当前激活 solutionId，由服务内部从 ActiveSolutionManager 获取
+  create(input: CreateRobotInput): Promise<RobotDefinition>;
+  createBatch(inputs: CreateRobotInput[]): Promise<{ succeeded: RobotDefinition[]; failed: { input: CreateRobotInput; reason: string }[] }>;
+  list(options?: RobotListOptions): Promise<RobotDefinition[]>;
+  get(robotId: string): Promise<RobotDefinition | null>;
+  update(robotId: string, patch: Partial<Omit<RobotDefinition, "id" | "createdAt">>): Promise<RobotDefinition>;
+  remove(robotId: string): Promise<void>;
+  removeBatch(robotIds: string[]): Promise<{ succeeded: string[]; failed: { robotId: string; reason: string }[] }>;
+}
+```
+
 ---
 
 ## 4. 对象存储路径映射
@@ -178,7 +251,16 @@ interface ObjectStoreClient {
 | 列举全部制品 | GET | `/api/obs/v1/artifacts` | — |
 | 删除制品 | DELETE | `/api/obs/v1/artifacts/{artifactId}` | — |
 
-### 4.2 目录骨架初始化流程
+### 4.2 机器人子资源路径模板
+
+| 操作 | HTTP 方法 | 对象存储路径 | Content-Type |
+|------|----------|-------------|--------------|
+| 创建/更新机器人定义 | PUT | `/api/obs/v1/solutions/{solutionId}/robots/{robotId}` | `application/json` |
+| 读取机器人定义 | GET | `/api/obs/v1/solutions/{solutionId}/robots/{robotId}` | — |
+| 列举解决方案下全部机器人 | GET | `/api/obs/v1/solutions/{solutionId}/robots` | — |
+| 删除机器人 | DELETE | `/api/obs/v1/solutions/{solutionId}/robots/{robotId}` | — |
+
+### 4.3 目录骨架初始化流程
 
 创建解决方案时，系统必须通过写入 `.keep` 占位文件（或使用对象存储的空目录创建 API）预先创建以下子命名空间目录：
 
@@ -275,6 +357,29 @@ class RecentSolutionsManagerImpl implements RecentSolutionsManager {
   - notify(): void
 }
 ```
+
+### 5.5 RobotServiceImpl
+
+```
+class RobotServiceImpl implements RobotService {
+  - obs: ObjectStoreClient
+  - activeSolutionManager: ActiveSolutionManager
+  + create(input: CreateRobotInput): Promise<RobotDefinition>
+  + createBatch(inputs: CreateRobotInput[]): Promise<{ succeeded: RobotDefinition[]; failed: { input: CreateRobotInput; reason: string }[] }>
+  + list(options?: RobotListOptions): Promise<RobotDefinition[]>
+  + get(robotId: string): Promise<RobotDefinition | null>
+  + update(robotId: string, patch): Promise<RobotDefinition>
+  + remove(robotId: string): Promise<void>
+  + removeBatch(robotIds: string[]): Promise<{ succeeded: string[]; failed: { robotId: string; reason: string }[] }>
+  - generateRobotId(): string
+  - generateMockRobotInfo(address: string, alias: string): RobotDefinition
+  - readRobotDef(solutionId: string, robotId: string): Promise<RobotDefinition | null>
+  - writeRobotDef(solutionId: string, robot: RobotDefinition): Promise<void>
+  - ensureActiveSolution(): string
+}
+```
+
+> **说明**：`generateMockRobotInfo` 为当前阶段的模拟实现，用于生成一致的随机机器人信息。后续将替换为真实的机器人通信协议调用。
 
 ---
 
@@ -502,6 +607,122 @@ sequenceDiagram
     UI->>UI: 重载全部子功能视图
 ```
 
+### 6.9 添加单台机器人
+
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant RSI as RobotServiceImpl
+    participant ASM as ActiveSolutionManager
+    participant OS as ObjectStore
+
+    FAE->>UI: 输入 address 和 alias，点击添加
+    UI->>RSI: create({ address, alias })
+    RSI->>ASM: getActiveId()
+    ASM-->>RSI: solutionId
+    RSI->>RSI: generateRobotId() -> robotId
+    RSI->>RSI: generateMockRobotInfo(address, alias) -> robotDef
+    RSI->>OS: PUT /api/obs/v1/solutions/{solutionId}/robots/{robotId}
+    OS-->>RSI: 200 OK
+    RSI-->>UI: RobotDefinition
+    UI->>UI: 刷新机器人列表
+```
+
+### 6.10 批量添加机器人
+
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant RSI as RobotServiceImpl
+    participant ASM as ActiveSolutionManager
+    participant OS as ObjectStore
+
+    FAE->>UI: 输入多个地址（每行一个），点击批量添加
+    UI->>RSI: createBatch(inputs)
+    RSI->>ASM: getActiveId()
+    ASM-->>RSI: solutionId
+    loop 对每个 input
+        RSI->>RSI: generateRobotId() -> robotId
+        RSI->>RSI: generateMockRobotInfo(address, alias) -> robotDef
+        alt 地址格式合法
+            RSI->>OS: PUT /api/obs/v1/solutions/{solutionId}/robots/{robotId}
+            OS-->>RSI: 200 OK
+            RSI->>RSI: 加入 succeeded 列表
+        else 地址格式非法
+            RSI->>RSI: 加入 failed 列表（记录原因）
+        end
+    end
+    RSI-->>UI: { succeeded, failed }
+    UI->>UI: 展示添加结果汇总并刷新列表
+```
+
+### 6.11 删除/批量删除机器人
+
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant RSI as RobotServiceImpl
+    participant ASM as ActiveSolutionManager
+    participant OS as ObjectStore
+
+    FAE->>UI: 选择机器人（单台或批量），点击删除
+    UI->>UI: 展示确认对话框
+    FAE->>UI: 确认删除
+    alt 单台删除
+        UI->>RSI: remove(robotId)
+        RSI->>ASM: getActiveId()
+        ASM-->>RSI: solutionId
+        RSI->>OS: DELETE /api/obs/v1/solutions/{solutionId}/robots/{robotId}
+        OS-->>RSI: 204 No Content
+        RSI-->>UI: 删除成功
+    else 批量删除
+        UI->>RSI: removeBatch(robotIds)
+        RSI->>ASM: getActiveId()
+        ASM-->>RSI: solutionId
+        loop 对每个 robotId
+            RSI->>OS: DELETE /api/obs/v1/solutions/{solutionId}/robots/{robotId}
+            OS-->>RSI: 204 No Content / 404
+        end
+        RSI-->>UI: { succeeded, failed }
+    end
+    UI->>UI: 刷新机器人列表
+```
+
+### 6.12 查看/编辑机器人详情
+
+```mermaid
+sequenceDiagram
+    participant FAE
+    participant UI
+    participant RSI as RobotServiceImpl
+    participant ASM as ActiveSolutionManager
+    participant OS as ObjectStore
+
+    FAE->>UI: 点击机器人行
+    UI->>RSI: get(robotId)
+    RSI->>ASM: getActiveId()
+    ASM-->>RSI: solutionId
+    RSI->>OS: GET /api/obs/v1/solutions/{solutionId}/robots/{robotId}
+    OS-->>RSI: RobotDefinition
+    RSI-->>UI: RobotDefinition
+    UI->>UI: 弹出详情模态框，分标签页展示
+
+    alt FAE 编辑可修改字段并保存
+        FAE->>UI: 修改 alias / model / robotSN 等字段
+        UI->>RSI: update(robotId, patch)
+        RSI->>OS: GET /api/obs/v1/solutions/{solutionId}/robots/{robotId}
+        OS-->>RSI: current RobotDefinition
+        RSI->>RSI: 合并 patch，更新 updatedAt
+        RSI->>OS: PUT /api/obs/v1/solutions/{solutionId}/robots/{robotId}
+        OS-->>RSI: 200 OK
+        RSI-->>UI: Updated RobotDefinition
+        UI->>UI: 刷新列表和详情展示
+    end
+```
+
 ---
 
 ## 7. 异常处理策略
@@ -520,6 +741,10 @@ sequenceDiagram
 | `ARTIFACT_REFERENCED` | 尝试删除 `refCount > 0` 的制品 | 拒绝删除并提示引用数。由 ArtifactService 处理。 |
 | `ARTIFACT_DUPLICATE_CHECKSUM` | 上传的制品校验和与已有文件相同 | 返回已有 `ArtifactMeta`；UI 提示去重。由 ArtifactService 处理。 |
 | `INVALID_ARTIFACT_ID` | 制品 ID 违反安全名称正则 | 存储操作前拒绝。由 ArtifactService 处理。 |
+| `ROBOT_NOT_FOUND` | 对不存在的 robotId 执行读取/更新/删除 | 返回 404；UI 提示"机器人 '{robotId}' 不存在。" |
+| `INVALID_ROBOT_ID` | 机器人 ID 违反安全名称正则 | 在验证层拒绝；UI 提示"机器人 ID 包含非法字符。" |
+| `INVALID_ROBOT_ADDRESS` | 地址为空或超过 256 字符 | 在验证层拒绝；UI 提示"机器人地址不能为空且不能超过 256 个字符。" |
+| `ROBOT_ADDRESS_EXISTS` | 同一解决方案下已存在相同地址 | 拒绝创建；UI 提示"该地址已存在于当前解决方案中。" |
 | 对象存储无响应 | 网络/服务故障 | 指数退避重试 3 次；最终向用户提示网络错误。 |
 | 删除过程部分子资源失败 | 递归删除时部分路径失败 | 记录详细错误日志；向用户报告未删除成功的路径列表。 |
 | 克隆中途失败 | 复制过程中失败 | 删除已创建的目标目录，防止产生残缺解决方案。 |
@@ -595,6 +820,31 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
 - **进度指示器**：Carbon `ProgressBar` 或内联加载状态，显示"正在打包文件..."或"正在复制资源..."。
 - **取消**：耗时操作提供取消按钮，中止 ZIP 流或复制队列并清理已产生的临时数据。
 
+### 9.7 Robots 子界面
+
+- **布局**：左侧导航栏点击 "Robots" 后，主内容区展示数据表格（Carbon `DataTable`）。
+- **表格列**：`alias`（可内联编辑）、`address`、`model`、`robotSN`、`thingsId`、`megaCosmOSVersion`、操作列（查看详情、删除）。
+- **工具栏**：搜索输入（按 alias/address/model/SN 子串过滤）、"Add Robot" 主按钮、"Batch Add" 次要按钮。
+- **批量选择**：每行复选框，选中后工具栏动态显示 "Batch Delete" 危险按钮。
+- **空状态**：无机器人时展示插图和 "Add your first robot" 按钮。
+
+### 9.8 添加机器人模态框
+
+- **单台添加标签页**：`address` 输入框（支持 IP 或 mDNS 域名）、`alias` 输入框（可选，默认等于 address）。
+- **批量添加标签页**：文本域（`textarea`），每行一个 address，支持可选 alias（以逗号分隔，如 `192.168.1.101, AGV-01`）。
+- **确认按钮**："Add" / "Batch Add"，点击后关闭模态框并刷新列表。
+
+### 9.9 机器人详情模态框
+
+- **触发**：点击表格行或 "View Details" 按钮。
+- **布局**：Carbon `Modal`（size="lg"）内嵌 `Tabs`。
+- **标签页**：
+  - **Basic Info**：展示 `address`（只读）、`alias`（可编辑）、`model`、`robotSN`、`thingsId`、`vendorId`、`productId`、`mainboardSN`、`mainboardId`、`mainSOMId`。可编辑字段使用 `TextInput`。
+  - **Other Info**：`hardwareDeviceTree` 以 `DataTable` 展示（列：name、firmwareVersion、hardwareVersion、serialNumber、hardwareId、online）。
+  - **Software Versions**：`megaCosmOSVersion`、`movebaseVersion`、`ggrVersion` 以只读表单展示；MCU / 执行器 / 传感器固件版本以键值列表或表格展示。
+  - **Hardware Versions**：`mainControlHardwareVersion`、MCU / 执行器 / 传感器硬件版本以键值列表或表格展示。
+- **操作**：底部 "Save" 主按钮（保存可编辑字段）、"Close" 次要按钮。
+
 ---
 
 ## 10. 非功能需求与性能设计
@@ -605,6 +855,9 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
 | NF-SOL-002：1 GB 归档流式导出 | 使用流式 ZIP 库（如 `archiver` 或 `yazl`），将对象存储的读取流直接管道接入归档写入流；禁止将整个归档加载到内存。 |
 | NF-SOL-003：对象存储临时不可用 | 所有对象存储 HTTP 调用包裹在具备自动重试的弹性客户端中：最多 3 次，指数退避（基数 200 ms，上限 5 秒）。重试耗尽后向用户提示网络错误。 |
 | NF-SOL-004：长时间 I/O 操作可取消 | `exportToArchive`、`importFromArchive`、`clone` 均接受 `AbortSignal`。取消时关闭流，并对已部分写入的目标资源执行补偿性 DELETE。 |
+| NF-ROB-001：机器人列表加载 < 1 秒 | 对象存储 `list` 操作直接读取 `robots` 目录；并行读取每个机器人定义 JSON；前端使用 React 状态管理避免不必要的重渲染。 |
+| NF-ROB-002：别名内联编辑 < 300 ms | 前端直接调用 `PUT` API 更新单字段；使用乐观更新策略，先更新本地状态再同步服务器响应。 |
+| NF-ROB-003：批量添加实时反馈 | 后端 `createBatch` 逐条处理并流式返回进度（或使用 Server-Sent Events）；前端展示进度条和成功/失败计数。 |
 
 ### 10.1 版本号递增逻辑
 
@@ -628,6 +881,15 @@ function bumpPatchVersion(version: string): string {
 3. 解析 `meta.json` 以确认其符合 SolutionMeta Schema。
 4. 仅当校验通过后，才开始解压并写入对象存储。
 
+### 10.3 机器人信息模拟策略（当前阶段）
+
+`generateMockRobotInfo` 实现原则：
+
+- 使用基于 `address` 的确定性种子生成随机数据，确保同一会话中同一地址返回相同信息。
+- 模拟字段覆盖 RobotDefinition 中除 `id`、`address`、`alias`、`createdAt`、`updatedAt` 外的所有字段。
+- 模拟数据应符合合理的业务规则（如版本号格式 `x.y.z`、SN 为字母数字组合）。
+- 后续替换为真实协议调用时，仅需替换此方法的实现，不影响接口契约。
+
 ---
 
 ## 11. 已确定的设计决策
@@ -640,3 +902,5 @@ function bumpPatchVersion(version: string): string {
 | 4. 本地设置持久化 | `localStorage` | 激活方案 ID、最近使用列表等前端状态使用浏览器 `localStorage` 持久化；跨会话保留。 |
 | 5. 制品引用计数原子性 | 简单实现（乐观锁） | 采用基于 ETag 的读-改-写乐观锁，失败时最多重试 5 次；不引入分布式锁或事务机制。 |
 | 6. 校验和算法 | SHA-256 | 统一使用 SHA-256 作为制品去重与完整性校验算法，兼顾安全性与通用性。 |
+| 7. 机器人信息获取 | 当前阶段模拟 | 使用基于地址的确定性随机数据模拟机器人信息；后续替换为真实协议调用，不影响接口契约。 |
+| 8. 机器人服务上下文 | 隐式激活方案 | RobotService 所有方法内部从 ActiveSolutionManager 获取当前激活 solutionId，调用方无需显式传递。 |

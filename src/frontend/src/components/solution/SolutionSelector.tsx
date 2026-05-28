@@ -16,13 +16,13 @@ import {
 import { Add, Export, Copy, TrashCan } from "@carbon/react/icons";
 import { SolutionMeta, CreateSolutionInput } from "../../types/solution.js";
 import { solutionApi } from "../../api/solutionApi.js";
-import { useActiveSolution } from "../../hooks/useActiveSolution.js";
 
 interface SolutionSelectorProps {
   solutions: SolutionMeta[];
   corruptedIds: string[];
   loading: boolean;
   onRefresh: () => void;
+  onActivate: (id: string) => void;
 }
 
 export function SolutionSelector({
@@ -30,8 +30,8 @@ export function SolutionSelector({
   corruptedIds,
   loading,
   onRefresh,
+  onActivate,
 }: SolutionSelectorProps) {
-  const { activate } = useActiveSolution();
   const [showCreate, setShowCreate] = useState(false);
   const [showDelete, setShowDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -54,7 +54,7 @@ export function SolutionSelector({
     setCreating(true);
     try {
       const meta = await solutionApi.create(createInput);
-      await activate(meta.id);
+      await onActivate(meta.id);
       setShowCreate(false);
       setCreateInput({ name: "", description: "", tags: [] });
       onRefresh();
@@ -231,7 +231,7 @@ export function SolutionSelector({
                       <Button
                         size="sm"
                         kind="primary"
-                        onClick={() => activate(solution.id)}
+                        onClick={() => onActivate(solution.id)}
                       >
                         Open
                       </Button>

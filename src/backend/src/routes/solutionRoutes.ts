@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import { SolutionService } from "../services/solutionService.js";
+import { RobotService } from "../services/robotService.js";
 import { CreateSolutionInput, SolutionListOptions } from "../types/solution.js";
 import { AppError } from "../errors/appErrors.js";
+import { createRobotRoutes } from "./robotRoutes.js";
 
-export function createSolutionRoutes(solutionService: SolutionService): Hono {
+export function createSolutionRoutes(solutionService: SolutionService, robotService: RobotService): Hono {
   const router = new Hono();
 
   router.post("/", async (c) => {
@@ -135,6 +137,9 @@ export function createSolutionRoutes(solutionService: SolutionService): Hono {
       throw err;
     }
   });
+
+  // Mount robot routes as a sub-router under /:id/robots
+  router.route("/:id/robots", createRobotRoutes(robotService));
 
   return router;
 }
