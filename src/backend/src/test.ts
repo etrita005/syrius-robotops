@@ -1,41 +1,29 @@
-import { serve } from "@hono/node-server";
-import { Hono } from "hono";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import * as objectStore from "./objectStore/store.js";
-import { createObjectStoreApp } from "./objectStore/server.js";
-import { ObjectStoreClient } from "./services/objectStoreClient.js";
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import * as store from "./objectStore/store.js";
+import { ObjectStore } from "./services/objectStore.js";
 import { ChecksumService } from "./services/checksumService.js";
 import { ArtifactService } from "./services/artifactService.js";
 import { SolutionService } from "./services/solutionService.js";
 import { createSolutionRoutes } from "./routes/solutionRoutes.js";
 import { createArtifactRoutes } from "./routes/artifactRoutes.js";
 
-const OBS_PORT = 30998;
 const API_PORT = 30999;
-const OBS_BASE_URL = `http://localhost:${OBS_PORT}`;
 const API_BASE_URL = `http://localhost:${API_PORT}`;
 
 let apiServer: ReturnType<typeof serve> | null = null;
-let obsServer: ReturnType<typeof serve> | null = null;
-
-async function startObjectStore(): Promise<void> {
-  const dataDir = mkdtempSync(join(tmpdir(), "robotops-test-obs-"));
-  objectStore.configure(dataDir);
-
-  const obsApp = createObjectStoreApp();
-
-  obsServer = await new Promise<ReturnType<typeof serve>>((resolve) => {
-    const s = serve({ fetch: obsApp.fetch, port: OBS_PORT }, () => resolve(s));
-  });
-}
 
 async function startApiServer(): Promise<void> {
-  const obsClient = new ObjectStoreClient({ baseUrl: OBS_BASE_URL });
+  const dataDir = mkdtempSync(join(tmpdir(), "robotops-test-"));
+  store.configure(dataDir);
+
+  const objectStore = new ObjectStore();
   const checksumService = new ChecksumService();
-  const artifactService = new ArtifactService(obsClient, checksumService);
-  const solutionService = new SolutionService(obsClient, artifactService);
+  const artifactService = new ArtifactService(objectStore, checksumService);
+  const solutionService = new SolutionService(objectStore, artifactService);
 
   const app = new Hono();
   app.route("/api/solutions", createSolutionRoutes(solutionService));
@@ -409,15 +397,11 @@ async function runTests(): Promise<void> {
 
 async function main(): Promise<void> {
   try {
-    console.log("Starting Object Store...");
-    await startObjectStore();
-    console.log("Object Store started.");
-
     console.log("Starting API server...");
     await startApiServer();
     console.log("API server started.");
 
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     await runTests();
   } catch (err) {
@@ -425,9 +409,6 @@ async function main(): Promise<void> {
   } finally {
     if (apiServer) {
       apiServer.close();
-    }
-    if (obsServer) {
-      obsServer.close();
     }
     process.exit(failed > 0 ? 1 : 0);
   }

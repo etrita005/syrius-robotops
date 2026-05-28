@@ -8,20 +8,17 @@ import {
   TableHeader,
   TableBody,
   TableCell,
-  TableToolbar,
-  TableToolbarSearch,
   Tag,
   ComposedModal,
   ModalHeader,
   ModalBody,
   ModalFooter,
   TextInput,
-  Dropdown,
   InlineNotification,
   Loading,
 } from "@carbon/react";
-import { Upload, TrashCan, View, Download } from "@carbon/react/icons";
-import { ArtifactMeta, UploadResult } from "../../types/artifact.js";
+import { TrashCan, View, Download } from "@carbon/react/icons";
+import { ArtifactMeta } from "../../types/artifact.js";
 import { artifactApi } from "../../api/artifactApi.js";
 
 interface ArtifactManagerProps {

@@ -1,11 +1,8 @@
 import React, { useState, useCallback } from "react";
 import {
-  Button,
   FileUploaderDropContainer,
   FileUploaderItem,
   InlineNotification,
-  ProgressIndicator,
-  ProgressStep,
 } from "@carbon/react";
 import { artifactApi } from "../../api/artifactApi.js";
 import { UploadResult } from "../../types/artifact.js";

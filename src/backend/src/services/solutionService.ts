@@ -1,4 +1,4 @@
-import { ObjectStoreClient } from "./objectStoreClient.js";
+import { ObjectStore } from "./objectStore.js";
 import {
   SolutionMeta,
   CreateSolutionInput,
@@ -58,11 +58,11 @@ function validateSolutionId(id: string): void {
 }
 
 export class SolutionService {
-  private obs: ObjectStoreClient;
+  private obs: ObjectStore;
   private artifactService: { incrementRefCount: (id: string) => Promise<void>; decrementRefCount: (id: string) => Promise<void> };
 
   constructor(
-    obs: ObjectStoreClient,
+    obs: ObjectStore,
     artifactService: { incrementRefCount: (id: string) => Promise<void>; decrementRefCount: (id: string) => Promise<void> }
   ) {
     this.obs = obs;
@@ -98,7 +98,7 @@ export class SolutionService {
 
   private async createDirectorySkeleton(id: string): Promise<void> {
     for (const ns of SOLUTION_NAMESPACES) {
-      await this.obs.put(`v1/solutions/${id}/${ns}/.keep`, "", "text/plain");
+      await this.obs.put(`v1/solutions/${id}/${ns}/_keep`, "", "text/plain");
     }
   }
 
@@ -202,7 +202,7 @@ export class SolutionService {
       for (const ns of SOLUTION_NAMESPACES) {
         const resources = await this.obs.list(`v1/solutions/${sourceId}/${ns}`);
         for (const res of resources) {
-          if (res.type === "file" && res.name !== ".keep") {
+          if (res.type === "file" && res.name !== "_keep") {
             const content = await this.obs.getJson<unknown>(
               `v1/solutions/${sourceId}/${ns}/${res.name}`
             );
@@ -402,7 +402,7 @@ export class SolutionService {
       try {
         const resources = await this.obs.list(`v1/solutions/${id}/${ns}`);
         for (const res of resources) {
-          if (res.type === "file" && res.name !== ".keep") {
+          if (res.type === "file" && res.name !== "_keep") {
             try {
               const content = await this.obs.getJson<{
                 artifactRef?: ArtifactReference;

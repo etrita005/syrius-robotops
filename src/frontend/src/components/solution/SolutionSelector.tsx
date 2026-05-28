@@ -4,7 +4,6 @@ import {
   Grid,
   Column,
   Tag,
-  Modal,
   TextInput,
   TextArea,
   ComposedModal,
@@ -14,7 +13,7 @@ import {
   Loading,
   InlineNotification,
 } from "@carbon/react";
-import { Add, Export, Copy, TrashCan, Search } from "@carbon/react/icons";
+import { Add, Export, Copy, TrashCan } from "@carbon/react/icons";
 import { SolutionMeta, CreateSolutionInput } from "../../types/solution.js";
 import { solutionApi } from "../../api/solutionApi.js";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
@@ -35,7 +34,7 @@ export function SolutionSelector({
   const { activate } = useActiveSolution();
   const [showCreate, setShowCreate] = useState(false);
   const [showDelete, setShowDelete] = useState<string | null>(null);
-  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [searchName, setSearchName] = useState("");
   const [creating, setCreating] = useState(false);
   const [createInput, setCreateInput] = useState<CreateSolutionInput>({
@@ -67,13 +66,15 @@ export function SolutionSelector({
   };
 
   const handleDelete = async (id: string) => {
+    setDeleting(true);
     try {
       await solutionApi.remove(id);
       setShowDelete(null);
-      setDeleteConfirmName("");
       onRefresh();
     } catch (err) {
       console.error("Failed to delete solution:", err);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -330,47 +331,30 @@ export function SolutionSelector({
       <ComposedModal
         open={showDelete !== null}
         onClose={() => {
-          setShowDelete(null);
-          setDeleteConfirmName("");
+          if (!deleting) setShowDelete(null);
         }}
       >
         <ModalHeader title="Delete solution" />
         <ModalBody>
-          <p style={{ marginBottom: "1rem" }}>
+          <p>
             This action is destructive and cannot be undone. All sub-resources
             will be permanently deleted.
           </p>
-          <p style={{ marginBottom: "1rem", fontWeight: 600 }}>
-            Please type the solution name to confirm:
-          </p>
-          <TextInput
-            id="delete-confirm-name"
-            labelText=""
-            placeholder="Type solution name to confirm"
-            value={deleteConfirmName}
-            onChange={(e) => setDeleteConfirmName(e.target.value)}
-          />
         </ModalBody>
         <ModalFooter>
           <Button
             kind="secondary"
-            onClick={() => {
-              setShowDelete(null);
-              setDeleteConfirmName("");
-            }}
+            disabled={deleting}
+            onClick={() => setShowDelete(null)}
           >
             Cancel
           </Button>
           <Button
             kind="danger"
+            disabled={deleting}
             onClick={() => showDelete && handleDelete(showDelete)}
-            disabled={
-              !showDelete ||
-              deleteConfirmName !==
-                solutions.find((s) => s.id === showDelete)?.name
-            }
           >
-            Delete solution
+            {deleting ? "Deleting..." : "Delete solution"}
           </Button>
         </ModalFooter>
       </ComposedModal>

@@ -13,13 +13,10 @@ import {
   TableHeader,
   TableBody,
   TableCell,
-  TableToolbar,
-  TableToolbarSearch,
   Tag,
   Loading,
 } from "@carbon/react";
-import { Upload } from "@carbon/react/icons";
-import { ArtifactMeta, ArtifactListResult } from "../../types/artifact.js";
+import { ArtifactMeta } from "../../types/artifact.js";
 import { artifactApi } from "../../api/artifactApi.js";
 
 interface ArtifactSelectorProps {

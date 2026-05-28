@@ -14,14 +14,14 @@ type View = "solutions" | "artifacts";
 
 export default function App() {
   const { activeId, activate } = useActiveSolution();
-  const { entries, recordAccess, remove: removeRecent } = useRecentSolutions();
+  const { entries, remove: removeRecent } = useRecentSolutions();
   const [currentView, setCurrentView] = useState<View>("solutions");
 
   const solutionsState = useSolutions();
   const artifactsState = useArtifacts();
 
   return (
-    <Theme theme="g100">
+    <Theme theme="white">
       <Header aria-label="RobotOps Studio">
         <HeaderName prefix="RobotOps">Studio</HeaderName>
         <HeaderNavigation aria-label="Main navigation">

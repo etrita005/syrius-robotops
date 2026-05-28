@@ -5,13 +5,9 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
-  TextInput,
-  TextArea,
   Tag,
 } from "@carbon/react";
 import { Switcher } from "@carbon/react/icons";
-import { SolutionMeta } from "../../types/solution.js";
-import { activeSolutionManager } from "../../state/activeSolutionManager.js";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
 import { useRecentSolutions } from "../../hooks/useRecentSolutions.js";
 import { RecentSolutionEntry } from "../../types/solution.js";
@@ -30,8 +26,8 @@ export function ActiveSolutionHeader() {
         alignItems: "center",
         gap: "1rem",
         padding: "0 1rem",
-        background: "#262626",
-        color: "#fff",
+        background: "#e0e0e0",
+        color: "#161616",
         height: "48px",
       }}
     >
@@ -48,13 +44,12 @@ export function ActiveSolutionHeader() {
         iconDescription="Switch solution"
         hasIconOnly
         onClick={() => setShowSwitcher(true)}
-        style={{ color: "#fff" }}
       />
       <Button
         size="sm"
         kind="ghost"
         onClick={deactivate}
-        style={{ color: "#fff", marginLeft: "auto" }}
+        style={{ marginLeft: "auto" }}
       >
         Close
       </Button>

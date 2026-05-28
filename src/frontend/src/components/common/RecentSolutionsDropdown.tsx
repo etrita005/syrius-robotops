@@ -5,7 +5,6 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
-  TextInput,
 } from "@carbon/react";
 import { RecentSolutionEntry } from "../../types/solution.js";
 

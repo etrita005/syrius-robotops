@@ -16,16 +16,15 @@ RobotOps Studio provides a unified interface for managing multiple robots in the
 ### Architecture
 
 ```
-┌──────────────┐       ┌──────────────────────────────────┐
-│   Frontend   │       │            Backend                │
-│  React+Vite  │ REST  │  Hono/Node + Embedded ObjectStore │
-│  Carbon UI   │──────▶│  TypeScript                      │
-└──────────────┘       └──────────────────────────────────┘
-   Port 5173                      Port 30001
-                        (ObjectStore embedded on port 30000)
+┌──────────────┐       ┌──────────────────────────┐
+│   Frontend   │       │         Backend           │
+│  React+Vite  │ REST  │  Hono/Node + ObjectStore  │
+│  Carbon UI   │──────▶│  TypeScript (single proc) │
+└──────────────┘       └──────────────────────────┘
+   Port 5173                   Port 30001
 ```
 
-The backend embeds a file-system based Object Store service. All persistence goes through the Object Store RESTful API — no direct filesystem access from the application layer. The Object Store can also run as an external service via `--obs-url`.
+The backend calls the Object Store layer directly in-process — no intermediate HTTP server or port allocation. All persistence uses the file-system based store module.
 
 ### Directory Structure
 
@@ -34,11 +33,10 @@ syrius-robotops/
 ├── src/
 │   ├── backend/              # Node.js API service (Hono)
 │   │   └── src/
-│   │       ├── index.ts          # Server entry (starts embedded ObjectStore + API)
+│   │       ├── index.ts          # Server entry
 │   │       ├── test.ts           # Integration test runner
-│   │       ├── objectStore/      # Embedded file-system object store
-│   │       │   ├── store.ts          # Core store logic (fs-based CRUD)
-│   │       │   └── server.ts         # Hono HTTP server for ObjectStore
+│   │       ├── objectStore/      # File-system object store (in-process, no HTTP)
+│   │       │   └── store.ts          # Core store logic (fs-based CRUD)
 │   │       ├── routes/           # REST API route handlers
 │   │       ├── services/         # Business logic (SolutionService, ArtifactService, etc.)
 │   │       ├── types/            # TypeScript type definitions
@@ -88,20 +86,14 @@ npm install
 ```bash
 cd src/backend
 npm start
-# → Embedded Object Store running at http://localhost:30000
 # → Backend API running at http://localhost:30001
+# → Data directory: ./data
 ```
 
 Options:
 
 ```bash
-npm start -- --port 30001 --data-dir ./data --obs-port 30000
-```
-
-To use an externally running Object Store instead of the embedded one:
-
-```bash
-npm start -- --obs-url http://localhost:30000
+npm start -- --port 30001 --data-dir ./data
 ```
 
 ### 3. Start the Frontend (Dev Mode)

@@ -139,15 +139,12 @@ def page_delete_confirm():
     draw = ImageDraw.Draw(img)
     draw.rectangle([0,0,W,H], fill="#00000088")
 
-    mx, my, mw, mh = 350, 220, 500, 300
+    mx, my, mw, mh = 350, 220, 500, 220
     draw.rounded_rectangle([mx, my, mx+mw, my+mh], radius=8, fill="white", outline="#ccc", width=1)
     draw.text((mx+24, my+24), "Delete Solution", fill="#161616", font=FONT_LG)
-    draw.text((mx+24, my+60), "This action cannot be undone. All robots, configs,", fill="#525252", font=FONT_SM)
-    draw.text((mx+24, my+80), "maps and logs under this solution will be permanently removed.", fill="#525252", font=FONT_SM)
-
-    draw.text((mx+24, my+120), "Type the solution name to confirm:", fill="#161616", font=FONT_MD)
-    draw.text((mx+24, my+148), "Customer A — Site Alpha", fill="#fa4d56", font=FONT_SM)
-    draw_input(draw, (mx+24, my+175, mx+mw-24, my+209), value="")
+    draw.text((mx+24, my+64), "This action cannot be undone. All robots, configs,", fill="#525252", font=FONT_SM)
+    draw.text((mx+24, my+86), "maps and logs under this solution will be permanently removed.", fill="#525252", font=FONT_SM)
+    draw.text((mx+24, my+118), "Customer A — Site Alpha", fill="#fa4d56", font=FONT_SM)
 
     draw_button(draw, (mx+mw-160, my+mh-56, mx+mw-24, my+mh-24), "Delete", bg="#fa4d56", fg="white")
     draw_button(draw, (mx+mw-310, my+mh-56, mx+mw-174, my+mh-24), "Cancel")

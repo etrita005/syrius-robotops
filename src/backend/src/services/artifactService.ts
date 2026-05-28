@@ -1,4 +1,4 @@
-import { ObjectStoreClient } from "./objectStoreClient.js";
+import { ObjectStore } from "./objectStore.js";
 import { ChecksumService } from "./checksumService.js";
 import {
   ArtifactMeta,
@@ -44,10 +44,10 @@ function validateArtifactId(id: string): void {
 }
 
 export class ArtifactService {
-  private obs: ObjectStoreClient;
+  private obs: ObjectStore;
   private checksumService: ChecksumService;
 
-  constructor(obs: ObjectStoreClient, checksumService: ChecksumService) {
+  constructor(obs: ObjectStore, checksumService: ChecksumService) {
     this.obs = obs;
     this.checksumService = checksumService;
   }
