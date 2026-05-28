@@ -6,7 +6,6 @@ import {
   TabPanels,
   TabPanel,
   TextInput,
-  ButtonSet,
   Button,
   DataTable,
   Table,
@@ -23,48 +22,36 @@ interface RobotDetailModalProps {
   open: boolean;
   robot: RobotDefinition | null;
   onClose: () => void;
-  onSave: (patch: Partial<Omit<RobotDefinition, "id" | "createdAt">>) => Promise<void>;
+  onSave: (patch: Partial<Pick<RobotDefinition, "alias" | "address">>) => Promise<void>;
 }
 
 export default function RobotDetailModal({ open, robot, onClose, onSave }: RobotDetailModalProps) {
   const [activeTab, setActiveTab] = useState(0);
-  const [edited, setEdited] = useState<Partial<RobotDefinition>>({});
+  const [editedAlias, setEditedAlias] = useState("");
+  const [editedAddress, setEditedAddress] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open && robot) {
-      setEdited({});
+      setEditedAlias(robot.alias);
+      setEditedAddress(robot.address);
       setActiveTab(0);
     }
   }, [open, robot]);
 
   if (!robot) return null;
 
-  const hasChanges = Object.keys(edited).length > 0;
-
-  const getValue = (key: keyof RobotDefinition) => {
-    return (edited[key] as string | undefined) ?? (robot[key] as string);
-  };
-
-  const setValue = (key: keyof RobotDefinition, value: string) => {
-    const original = robot[key] as string;
-    if (value === original) {
-      setEdited((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-    } else {
-      setEdited((prev) => ({ ...prev, [key]: value }));
-    }
-  };
+  const hasChanges =
+    editedAlias !== robot.alias || editedAddress !== robot.address;
 
   const handleSave = async () => {
     if (!hasChanges) return;
     setSaving(true);
     try {
-      await onSave(edited);
-      setEdited({});
+      const patch: Partial<Pick<RobotDefinition, "alias" | "address">> = {};
+      if (editedAlias !== robot.alias) patch.alias = editedAlias;
+      if (editedAddress !== robot.address) patch.address = editedAddress;
+      await onSave(patch);
     } finally {
       setSaving(false);
     }
@@ -121,125 +108,106 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
         <TabPanels>
           <TabPanel>
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
-              <TextInput id="rd-address" labelText="Address" value={robot.address} readOnly />
               <TextInput
                 id="rd-alias"
                 labelText="Alias"
-                value={getValue("alias")}
-                onChange={(e) => setValue("alias", e.target.value)}
+                value={editedAlias}
+                onChange={(e) => setEditedAlias(e.target.value)}
               />
               <TextInput
-                id="rd-model"
-                labelText="Model"
-                value={getValue("model")}
-                onChange={(e) => setValue("model", e.target.value)}
+                id="rd-address"
+                labelText="Address"
+                value={editedAddress}
+                onChange={(e) => setEditedAddress(e.target.value)}
               />
-              <TextInput
-                id="rd-robotsn"
-                labelText="Robot SN"
-                value={getValue("robotSN")}
-                onChange={(e) => setValue("robotSN", e.target.value)}
-              />
+              <TextInput id="rd-model" labelText="Model" value={robot.model} readOnly />
+              <TextInput id="rd-robotsn" labelText="Robot SN" value={robot.robotSN} readOnly />
               <TextInput id="rd-thingsid" labelText="Things ID" value={robot.thingsId} readOnly />
-              <TextInput
-                id="rd-vendorid"
-                labelText="Vendor ID"
-                value={getValue("vendorId")}
-                onChange={(e) => setValue("vendorId", e.target.value)}
-              />
-              <TextInput
-                id="rd-productid"
-                labelText="Product ID"
-                value={getValue("productId")}
-                onChange={(e) => setValue("productId", e.target.value)}
-              />
-              <TextInput
-                id="rd-mainboardsn"
-                labelText="Mainboard SN"
-                value={getValue("mainboardSN")}
-                onChange={(e) => setValue("mainboardSN", e.target.value)}
-              />
-              <TextInput
-                id="rd-mainboardid"
-                labelText="Mainboard ID"
-                value={getValue("mainboardId")}
-                onChange={(e) => setValue("mainboardId", e.target.value)}
-              />
+              <TextInput id="rd-vendorid" labelText="Vendor ID" value={robot.vendorId} readOnly />
+              <TextInput id="rd-productid" labelText="Product ID" value={robot.productId} readOnly />
+              <TextInput id="rd-mainboardsn" labelText="Mainboard SN" value={robot.mainboardSN} readOnly />
+              <TextInput id="rd-mainboardid" labelText="Mainboard ID" value={robot.mainboardId} readOnly />
               <TextInput id="rd-mainsomid" labelText="Main SOM ID" value={robot.mainSOMId} readOnly />
             </div>
           </TabPanel>
-          <TabPanel>
-            <div style={{ marginTop: "1rem" }}>
-              <DataTable rows={deviceRows} headers={deviceHeaders}>
-                {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
-                  <Table {...getTableProps()} size="sm">
-                    <TableHead>
-                      <TableRow>
-                        {headers.map((h) => (
-                          <TableHeader {...getHeaderProps({ header: h })}>
-                            {h.header}
-                          </TableHeader>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {rows.map((r) => (
-                        <TableRow {...getRowProps({ row: r })}>
-                          {r.cells.map((cell) => (
-                            <TableCell key={cell.id}>{cell.value}</TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </DataTable>
-            </div>
-          </TabPanel>
-          <TabPanel>
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1rem" }}>
-              <section>
-                <h5 style={{ marginBottom: "0.5rem" }}>OS Versions</h5>
-                <TextInput id="sw-megacosmos" labelText="megaCosmOS" value={robot.megaCosmOSVersion} readOnly />
-                <TextInput id="sw-movebase" labelText="Movebase" value={robot.movebaseVersion} readOnly />
-                <TextInput id="sw-ggr" labelText="GGR" value={robot.ggrVersion} readOnly />
-              </section>
-              <section>
-                <h5 style={{ marginBottom: "0.5rem" }}>MCU Firmware</h5>
-                {renderKeyValueList(robot.mcuFirmwareVersions)}
-              </section>
-              <section>
-                <h5 style={{ marginBottom: "0.5rem" }}>Actuator Firmware</h5>
-                {renderKeyValueList(robot.actuatorFirmwareVersions)}
-              </section>
-              <section>
-                <h5 style={{ marginBottom: "0.5rem" }}>Sensor Firmware</h5>
-                {renderKeyValueList(robot.sensorFirmwareVersions)}
-              </section>
-            </div>
-          </TabPanel>
-          <TabPanel>
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1rem" }}>
-              <section>
-                <h5 style={{ marginBottom: "0.5rem" }}>Main Control</h5>
-                <TextInput id="hw-maincontrol" labelText="Main Control Hardware Version" value={robot.mainControlHardwareVersion} readOnly />
-              </section>
-              <section>
-                <h5 style={{ marginBottom: "0.5rem" }}>MCU Hardware</h5>
-                {renderKeyValueList(robot.mcuHardwareVersions)}
-              </section>
-              <section>
-                <h5 style={{ marginBottom: "0.5rem" }}>Actuator Hardware</h5>
-                {renderKeyValueList(robot.actuatorHardwareVersions)}
-              </section>
-              <section>
-                <h5 style={{ marginBottom: "0.5rem" }}>Sensor Hardware</h5>
-                {renderKeyValueList(robot.sensorHardwareVersions)}
-              </section>
-            </div>
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
+           <TabPanel>
+             <div style={{ marginTop: "1rem" }}>
+               <DataTable rows={deviceRows} headers={deviceHeaders}>
+                 {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
+                   <Table {...getTableProps()} size="sm">
+                     <TableHead>
+                       <TableRow>
+                         {headers.map((h) => {
+                           const { key, ...headerProps } = getHeaderProps({ header: h });
+                           return (
+                             <TableHeader key={key} {...headerProps}>
+                               {h.header}
+                             </TableHeader>
+                           );
+                         })}
+                       </TableRow>
+                     </TableHead>
+                     <TableBody>
+                       {rows.map((r) => {
+                         const { key, ...rowProps } = getRowProps({ row: r });
+                         return (
+                           <TableRow key={key} {...rowProps}>
+                             {r.cells.map((cell) => (
+                               <TableCell key={cell.id}>{cell.value}</TableCell>
+                             ))}
+                           </TableRow>
+                         );
+                       })}
+                     </TableBody>
+                   </Table>
+                 )}
+               </DataTable>
+             </div>
+           </TabPanel>
+           <TabPanel>
+             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1rem" }}>
+               <section>
+                 <h5 style={{ marginBottom: "0.5rem" }}>OS Versions</h5>
+                 <TextInput id="sw-megacosmos" labelText="megaCosmOS" value={robot.megaCosmOSVersion} readOnly />
+                 <TextInput id="sw-movebase" labelText="Movebase" value={robot.movebaseVersion} readOnly />
+                 <TextInput id="sw-ggr" labelText="GGR" value={robot.ggrVersion} readOnly />
+               </section>
+               <section>
+                 <h5 style={{ marginBottom: "0.5rem" }}>MCU Firmware</h5>
+                 {renderKeyValueList(robot.mcuFirmwareVersions)}
+               </section>
+               <section>
+                 <h5 style={{ marginBottom: "0.5rem" }}>Actuator Firmware</h5>
+                 {renderKeyValueList(robot.actuatorFirmwareVersions)}
+               </section>
+               <section>
+                 <h5 style={{ marginBottom: "0.5rem" }}>Sensor Firmware</h5>
+                 {renderKeyValueList(robot.sensorFirmwareVersions)}
+               </section>
+             </div>
+           </TabPanel>
+           <TabPanel>
+             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1rem" }}>
+               <section>
+                 <h5 style={{ marginBottom: "0.5rem" }}>Main Control</h5>
+                 <TextInput id="hw-maincontrol" labelText="Main Control Hardware Version" value={robot.mainControlHardwareVersion} readOnly />
+               </section>
+               <section>
+                 <h5 style={{ marginBottom: "0.5rem" }}>MCU Hardware</h5>
+                 {renderKeyValueList(robot.mcuHardwareVersions)}
+               </section>
+               <section>
+                 <h5 style={{ marginBottom: "0.5rem" }}>Actuator Hardware</h5>
+                 {renderKeyValueList(robot.actuatorHardwareVersions)}
+               </section>
+               <section>
+                 <h5 style={{ marginBottom: "0.5rem" }}>Sensor Hardware</h5>
+                 {renderKeyValueList(robot.sensorHardwareVersions)}
+               </section>
+             </div>
+           </TabPanel>
+         </TabPanels>
+       </Tabs>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem", marginTop: "1.5rem" }}>
         <Button kind="secondary" onClick={onClose}>
           Close

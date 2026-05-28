@@ -24,7 +24,8 @@ export function useActiveSolution() {
       solutionApi
         .get(activeId)
         .then((meta) => {
-          activeSolutionManager.setActive(activeId, meta);
+          if (meta) activeSolutionManager.setActive(activeId, meta);
+          else activeSolutionManager.clear();
         })
         .catch(() => {
           activeSolutionManager.clear();
@@ -39,6 +40,7 @@ export function useActiveSolution() {
     setLoading(true);
     try {
       const meta = await solutionApi.get(id);
+      if (!meta) throw new Error("Solution not found");
       activeSolutionManager.setActive(id, meta);
       recentSolutionsManager.recordAccess(id, meta.name);
     } catch {

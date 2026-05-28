@@ -12,7 +12,9 @@
 
 ## 2. 设计约束
 
-- 所有持久化操作均通过 `playground/object_store` RESTful API 完成，禁止绕过对象存储直接操作文件系统。
+- 后端仅提供通用对象存储 RESTful API（`/api/objects/...`）和制品管理 API（`/api/artifacts/...`），不提供业务专用的解决方案/机器人服务。
+- 解决方案和机器人的业务逻辑（数据结构、校验、模拟数据生成等）全部由前端实现。
+- 前端通过通用对象存储 API 直接读写数据，存储内容由前端决定。
 - 模块内部使用 TypeScript + ES6 模块语法。
 - 所有接口定义仅为设计阶段草案，实现时可根据实际情况调整参数和返回值。
 
@@ -20,9 +22,9 @@
 
 ## 3. 内部接口设计
 
-### 3.1 解决方案服务接口（SolutionService）
+### 3.1 解决方案 API 客户端（solutionApi）
 
-负责解决方案的完整生命周期管理，对外提供语义化操作，内部映射为对象存储路径。
+前端通过通用对象存储 API 实现解决方案的生命周期管理。
 
 ```typescript
 interface SolutionMeta {
@@ -37,40 +39,29 @@ interface SolutionMeta {
 }
 
 interface CreateSolutionInput {
-  id?: string;          // 可选；省略时自动生成
+  id?: string;          // optional; auto-generated when omitted
   name: string;
   description?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
 }
 
-interface SolutionListOptions {
-  filter?: {
-    name?: string;        // 子串匹配
-    tags?: string[];      // 任意标签精确匹配
-  };
-  sort?: {
-    field: "updatedAt" | "name" | "createdAt";
-    order: "asc" | "desc";
-  };
-}
-
 interface SolutionListResult {
   items: SolutionMeta[];
-  corruptedIds: string[]; // meta.json 缺失或不可读的 ID 列表
+  corruptedIds: string[]; // IDs with missing or unreadable meta
 }
 
-interface SolutionService {
+interface SolutionApiClient {
   create(input: CreateSolutionInput): Promise<SolutionMeta>;
-  list(options?: SolutionListOptions): Promise<SolutionListResult>;
+  list(): Promise<SolutionListResult>;
   get(id: string): Promise<SolutionMeta | null>;
-  // 可变字段：name、description、tags、metadata
-  // 服务层自动更新 updatedAt，并递增 patch 版本号（如 1.0.0 -> 1.0.1）
+  // Mutable fields: name, description, tags, metadata
+  // Auto-updates updatedAt and bumps patch version
   update(id: string, patch: Partial<Omit<SolutionMeta, "id" | "createdAt" | "version">>): Promise<SolutionMeta>;
   remove(id: string): Promise<void>;
   clone(sourceId: string, newName: string): Promise<SolutionMeta>;
-  exportToArchive(id: string, destinationPath: string): Promise<string>;
-  importFromArchive(zipPath: string, conflictResolution: "overwrite" | "rename" | "cancel"): Promise<SolutionMeta>;
+  exportSolution(id: string, destinationPath?: string): Promise<{ filePath: string }>;
+  importSolution(zipPath: string, targetPath: string): Promise<{ ok: boolean }>;
 }
 ```
 
@@ -138,47 +129,63 @@ interface ArtifactService {
 }
 ```
 
-### 3.5 对象存储客户端（ObjectStoreClient）
+### 3.5 对象存储 HTTP API
 
-所有与对象存储的交互通过统一封装的客户端进行，支持可配置的超时与重试。
+后端提供通用对象存储 RESTful API，前端直接使用此 API 读写所有业务数据。
 
 ```typescript
-interface ObjectStoreClientConfig {
-  baseUrl: string;
-  timeout?: number;      // 请求超时（毫秒），默认 30000
-  retries?: number;      // 重试次数，默认 3
+interface ObjectStoreResource {
+  name: string;
+  type: "file" | "directory";
+  contentType?: string;
+  size?: number;
 }
 
-interface ObjectStoreClient {
-  put(path: string, body: ReadableStream | Buffer | string, contentType?: string, headers?: Record<string, string>): Promise<Response>;
-  get(path: string): Promise<Response>;
-  delete(path: string): Promise<Response>;
-  list(path: string): Promise<string[]>;
+interface ObjectStoreHttpClient {
+  // List directory contents
+  list(path: string): Promise<ObjectStoreResource[]>;
+  // Get object as JSON
+  get<T>(path: string): Promise<T | null>;
+  // Put object as JSON
+  put(path: string, data: unknown): Promise<{ ok: boolean }>;
+  // Delete object or directory
+  delete(path: string): Promise<{ ok: boolean }>;
+  // Clone a directory recursively
+  clone(sourcePath: string, targetPath: string): Promise<{ ok: boolean }>;
+  // Export directory to ZIP archive
+  export(sourcePath: string, destinationPath?: string): Promise<{ filePath: string }>;
+  // Import ZIP archive to target path
+  import(zipPath: string, targetPath: string): Promise<{ ok: boolean }>;
 }
 ```
 
-> `SolutionServiceImpl` 与 `ArtifactServiceImpl` 均依赖同一 `ObjectStoreClient` 实例，以复用超时、重试等公共配置。
+**HTTP Endpoints**:
 
-### 3.6 机器人服务接口（RobotService）
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/objects/list/{path}` | List directory contents |
+| GET | `/api/objects/{path}` | Get object as JSON |
+| PUT | `/api/objects/{path}` | Put object as JSON |
+| DELETE | `/api/objects/{path}` | Delete object/directory |
+| POST | `/api/objects/clone` | Clone directory (`{ sourcePath, targetPath }`) |
+| POST | `/api/objects/export` | Export to ZIP (`{ sourcePath, destinationPath }`) |
+| POST | `/api/objects/import` | Import from ZIP (`{ zipPath, targetPath }`) |
 
-负责当前激活解决方案下的机器人生命周期管理，所有操作内部映射为对象存储路径。
+### 3.6 机器人 API 客户端（robotApi）
+
+前端通过通用对象存储 API 实现机器人的生命周期管理。机器人存储数据仅包含持久化字段，动态信息由前端生成。
 
 ```typescript
-interface HardwareDeviceNode {
-  name: string;
-  firmwareVersion: string;
-  hardwareVersion: string;
-  serialNumber: string;
-  hardwareId: string;
-  parentName?: string;
-  online: boolean;
-}
-
-interface RobotDefinition {
+interface StoredRobotData {
   id: string;
   address: string;
   addressType: "ip" | "mdns";
   alias: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface RobotDefinition extends StoredRobotData {
   model: string;
   robotSN: string;
   thingsId: string;
@@ -198,8 +205,6 @@ interface RobotDefinition {
   actuatorHardwareVersions: Record<string, string>;
   sensorHardwareVersions: Record<string, string>;
   hardwareDeviceTree: HardwareDeviceNode[];
-  createdAt: string;
-  updatedAt: string;
 }
 
 interface CreateRobotInput {
@@ -207,30 +212,21 @@ interface CreateRobotInput {
   alias?: string;
 }
 
-interface RobotListOptions {
-  filter?: {
-    alias?: string;
-    address?: string;
-    model?: string;
-    robotSN?: string;
-  };
-  sort?: {
-    field: "alias" | "address" | "model" | "robotSN" | "createdAt";
-    order: "asc" | "desc";
-  };
+interface RobotApiClient {
+  list(solutionId: string): Promise<StoredRobotData[]>;
+  get(solutionId: string, robotId: string): Promise<StoredRobotData | null>;
+  create(solutionId: string, input: CreateRobotInput): Promise<StoredRobotData>;
+  update(solutionId: string, robotId: string, patch: Partial<Pick<StoredRobotData, "alias" | "address">>): Promise<StoredRobotData>;
+  delete(solutionId: string, robotId: string): Promise<void>;
 }
 
-interface RobotService {
-  // 所有方法依赖当前激活 solutionId，由服务内部从 ActiveSolutionManager 获取
-  create(input: CreateRobotInput): Promise<RobotDefinition>;
-  createBatch(inputs: CreateRobotInput[]): Promise<{ succeeded: RobotDefinition[]; failed: { input: CreateRobotInput; reason: string }[] }>;
-  list(options?: RobotListOptions): Promise<RobotDefinition[]>;
-  get(robotId: string): Promise<RobotDefinition | null>;
-  update(robotId: string, patch: Partial<Omit<RobotDefinition, "id" | "createdAt">>): Promise<RobotDefinition>;
-  remove(robotId: string): Promise<void>;
-  removeBatch(robotIds: string[]): Promise<{ succeeded: string[]; failed: { robotId: string; reason: string }[] }>;
-}
+// Frontend utility functions
+function enrichRobot(stored: StoredRobotData): RobotDefinition;
+function generateMockRobotInfo(address: string, alias: string): Omit<RobotDefinition, keyof StoredRobotData>;
+function generateRobotId(): string;
 ```
+
+> **Design decision**: Only `alias` and `address` are editable/persisted. All other fields in `RobotDefinition` are dynamically generated by the frontend via `generateMockRobotInfo()` (current stage) and will be replaced by real robot communication protocol calls in the future.
 
 ---
 
@@ -240,37 +236,37 @@ interface RobotService {
 
 | 操作 | HTTP 方法 | 对象存储路径 | Content-Type |
 |------|----------|-------------|--------------|
-| 创建/更新 meta | PUT | `/api/obs/v1/solutions/{id}/meta` | `application/json` |
-| 读取 meta | GET | `/api/obs/v1/solutions/{id}/meta` | — |
-| 列举全部解决方案 | GET | `/api/obs/v1/solutions` | — |
-| 删除解决方案 | DELETE | `/api/obs/v1/solutions/{id}` | — |
-| 子资源操作 | PUT/GET/DELETE | `/api/obs/v1/solutions/{id}/{namespace}/{resourceId}` | 按资源类型 |
-| 上传制品文件 | PUT | `/api/obs/v1/artifacts/{artifactId}` | 按实际文件类型推断 |
-| 上传/更新制品元数据 | PUT | `/api/obs/v1/artifacts/{artifactId}_meta` | `application/json` |
-| 读取制品元数据 | GET | `/api/obs/v1/artifacts/{artifactId}_meta` | — |
-| 列举全部制品 | GET | `/api/obs/v1/artifacts` | — |
-| 删除制品 | DELETE | `/api/obs/v1/artifacts/{artifactId}` | — |
+| 创建/更新 meta | PUT | `/api/objects/v1/solutions/{id}/meta` | `application/json` |
+| 读取 meta | GET | `/api/objects/v1/solutions/{id}/meta` | — |
+| 列举全部解决方案 | GET | `/api/objects/list/v1/solutions` | — |
+| 删除解决方案 | DELETE | `/api/objects/v1/solutions/{id}` | — |
+| 子资源操作 | PUT/GET/DELETE | `/api/objects/v1/solutions/{id}/{namespace}/{resourceId}` | 按资源类型 |
+| 克隆解决方案 | POST | `/api/objects/clone` | `application/json` |
+| 导出解决方案 | POST | `/api/objects/export` | `application/json` |
+| 导入解决方案 | POST | `/api/objects/import` | `application/json` |
+| 上传制品文件 | PUT | `/api/artifacts/...` | 按实际文件类型推断 |
+| 读取/删除制品 | GET/DELETE | `/api/artifacts/...` | — |
 
 ### 4.2 机器人子资源路径模板
 
 | 操作 | HTTP 方法 | 对象存储路径 | Content-Type |
 |------|----------|-------------|--------------|
-| 创建/更新机器人定义 | PUT | `/api/obs/v1/solutions/{solutionId}/robots/{robotId}` | `application/json` |
-| 读取机器人定义 | GET | `/api/obs/v1/solutions/{solutionId}/robots/{robotId}` | — |
-| 列举解决方案下全部机器人 | GET | `/api/obs/v1/solutions/{solutionId}/robots` | — |
-| 删除机器人 | DELETE | `/api/obs/v1/solutions/{solutionId}/robots/{robotId}` | — |
+| 创建/更新机器人存储数据 | PUT | `/api/objects/v1/solutions/{solutionId}/robots/{robotId}` | `application/json` |
+| 读取机器人存储数据 | GET | `/api/objects/v1/solutions/{solutionId}/robots/{robotId}` | — |
+| 列举解决方案下全部机器人 | GET | `/api/objects/list/v1/solutions/{solutionId}/robots` | — |
+| 删除机器人 | DELETE | `/api/objects/v1/solutions/{solutionId}/robots/{robotId}` | — |
 
 ### 4.3 目录骨架初始化流程
 
 创建解决方案时，系统必须通过写入 `.keep` 占位文件（或使用对象存储的空目录创建 API）预先创建以下子命名空间目录：
 
-1. `PUT /api/obs/v1/solutions/{id}/meta` — 写入元数据
-2. `PUT /api/obs/v1/solutions/{id}/robots/.keep`
-3. `PUT /api/obs/v1/solutions/{id}/upgrade-packages/.keep`
-4. `PUT /api/obs/v1/solutions/{id}/maps/.keep`
-5. `PUT /api/obs/v1/solutions/{id}/configs/.keep`
-6. `PUT /api/obs/v1/solutions/{id}/diagnostics/.keep`
-7. `PUT /api/obs/v1/solutions/{id}/logs/.keep`
+1. `PUT /api/objects/v1/solutions/{id}/meta` — write metadata
+2. `PUT /api/objects/v1/solutions/{id}/robots/_keep` — placeholder for empty string
+3. `PUT /api/objects/v1/solutions/{id}/upgrade-packages/_keep`
+4. `PUT /api/objects/v1/solutions/{id}/maps/_keep`
+5. `PUT /api/objects/v1/solutions/{id}/configs/_keep`
+6. `PUT /api/objects/v1/solutions/{id}/diagnostics/_keep`
+7. `PUT /api/objects/v1/solutions/{id}/logs/_keep`
 
 对象存储会自动创建中间目录。预先创建所有命名空间可确保列表 API 始终返回可预测的结构，并消除懒初始化带来的竞态条件。
 
@@ -280,27 +276,23 @@ interface RobotService {
 
 ## 5. 核心类设计草案
 
-### 5.1 SolutionServiceImpl
+### 5.1 SolutionApiClient (Frontend)
 
 ```
-class SolutionServiceImpl implements SolutionService {
-  - objectStoreBaseUrl: string
-  - artifactService: ArtifactService
+class SolutionApiClient {
+  - objectStoreApi: ObjectStoreHttpClient
   + create(input: CreateSolutionInput): Promise<SolutionMeta>
-  + list(options?: SolutionListOptions): Promise<SolutionListResult>
+  + list(): Promise<SolutionListResult>
   + get(id: string): Promise<SolutionMeta | null>
   + update(id: string, patch): Promise<SolutionMeta>
   + remove(id: string): Promise<void>
   + clone(sourceId: string, newName: string): Promise<SolutionMeta>
-  + exportToArchive(id: string, destinationPath: string): Promise<string>
-  + importFromArchive(zipPath: string, conflictResolution): Promise<SolutionMeta>
+  + exportSolution(id: string, destinationPath?: string): Promise<{ filePath: string }>
+  + importSolution(zipPath: string, targetPath: string): Promise<{ ok: boolean }>
+  - slugify(text: string): string
   - generateId(name: string): string
-  - readMeta(id: string): Promise<SolutionMeta>
-  - writeMeta(id: string, meta: SolutionMeta): Promise<void>
-  - createDirectorySkeleton(id: string): Promise<void>
   - bumpPatchVersion(currentVersion: string): string
-  - collectAllArtifactReferences(id: string): Promise<ArtifactReference[]>
-  - deleteDirectoryRecursively(id: string): Promise<void>
+  - createDirectorySkeleton(id: string): Promise<void>
 }
 ```
 
@@ -358,28 +350,26 @@ class RecentSolutionsManagerImpl implements RecentSolutionsManager {
 }
 ```
 
-### 5.5 RobotServiceImpl
+### 5.5 RobotApiClient (Frontend)
 
 ```
-class RobotServiceImpl implements RobotService {
-  - obs: ObjectStoreClient
-  - activeSolutionManager: ActiveSolutionManager
-  + create(input: CreateRobotInput): Promise<RobotDefinition>
-  + createBatch(inputs: CreateRobotInput[]): Promise<{ succeeded: RobotDefinition[]; failed: { input: CreateRobotInput; reason: string }[] }>
-  + list(options?: RobotListOptions): Promise<RobotDefinition[]>
-  + get(robotId: string): Promise<RobotDefinition | null>
-  + update(robotId: string, patch): Promise<RobotDefinition>
-  + remove(robotId: string): Promise<void>
-  + removeBatch(robotIds: string[]): Promise<{ succeeded: string[]; failed: { robotId: string; reason: string }[] }>
-  - generateRobotId(): string
-  - generateMockRobotInfo(address: string, alias: string): RobotDefinition
-  - readRobotDef(solutionId: string, robotId: string): Promise<RobotDefinition | null>
-  - writeRobotDef(solutionId: string, robot: RobotDefinition): Promise<void>
-  - ensureActiveSolution(): string
+class RobotApiClient {
+  - objectStoreApi: ObjectStoreHttpClient
+  + list(solutionId: string): Promise<StoredRobotData[]>
+  + get(solutionId: string, robotId: string): Promise<StoredRobotData | null>
+  + create(solutionId: string, input: CreateRobotInput): Promise<StoredRobotData>
+  + update(solutionId: string, robotId: string, patch): Promise<StoredRobotData>
+  + delete(solutionId: string, robotId: string): Promise<void>
 }
+
+// Frontend utilities (in types/robot.ts)
+function enrichRobot(stored: StoredRobotData): RobotDefinition
+function generateMockRobotInfo(address: string, alias: string): Omit<RobotDefinition, keyof StoredRobotData>
+function generateRobotId(): string
+function createStoredRobotData(input: CreateRobotInput, id: string): StoredRobotData
 ```
 
-> **说明**：`generateMockRobotInfo` 为当前阶段的模拟实现，用于生成一致的随机机器人信息。后续将替换为真实的机器人通信协议调用。
+> **Note**: `generateMockRobotInfo` generates deterministic random data based on the robot's address. Only `StoredRobotData` is persisted to the object store. The `enrichRobot` function merges stored data with dynamically generated info to produce a complete `RobotDefinition` for display.
 
 ---
 
@@ -399,14 +389,14 @@ sequenceDiagram
     FAE->>UI: 输入名称、描述、标签
     UI->>SSI: create(input)
     SSI->>SSI: generateId(name)
-    SSI->>OS: PUT /api/obs/v1/solutions/{id}/meta
-    OS-->>SSI: 200 OK
-    SSI->>OS: PUT /api/obs/v1/solutions/{id}/robots/.keep
-    SSI->>OS: PUT /api/obs/v1/solutions/{id}/upgrade-packages/.keep
-    SSI->>OS: PUT /api/obs/v1/solutions/{id}/maps/.keep
-    SSI->>OS: PUT /api/obs/v1/solutions/{id}/configs/.keep
-    SSI->>OS: PUT /api/obs/v1/solutions/{id}/diagnostics/.keep
-    SSI->>OS: PUT /api/obs/v1/solutions/{id}/logs/.keep
+    SSI->>OS: PUT /api/objects/v1/solutions/{id}/meta
+    OS-->>SSI: { ok: true }
+    SSI->>OS: PUT /api/objects/v1/solutions/{id}/robots/_keep
+    SSI->>OS: PUT /api/objects/v1/solutions/{id}/upgrade-packages/_keep
+    SSI->>OS: PUT /api/objects/v1/solutions/{id}/maps/_keep
+    SSI->>OS: PUT /api/objects/v1/solutions/{id}/configs/_keep
+    SSI->>OS: PUT /api/objects/v1/solutions/{id}/diagnostics/_keep
+    SSI->>OS: PUT /api/objects/v1/solutions/{id}/logs/_keep
     OS-->>SSI: 200 OK
     SSI-->>UI: SolutionMeta
     UI->>ASM: setActiveId(id)
@@ -449,20 +439,20 @@ sequenceDiagram
     FAE->>UI: 点击删除，完成两步确认
     UI->>SSI: remove(id)
     SSI->>SSI: collectAllArtifactReferences(id)
-    SSI->>OS: GET /api/obs/v1/solutions/{id}/robots
-    SSI->>OS: GET /api/obs/v1/solutions/{id}/upgrade-packages
-    SSI->>OS: GET /api/obs/v1/solutions/{id}/maps
-    SSI->>OS: GET /api/obs/v1/solutions/{id}/configs
-    SSI->>OS: GET /api/obs/v1/solutions/{id}/diagnostics
-    SSI->>OS: GET /api/obs/v1/solutions/{id}/logs
+    SSI->>OS: GET /api/objects/v1/solutions/{id}/robots
+    SSI->>OS: GET /api/objects/v1/solutions/{id}/upgrade-packages
+    SSI->>OS: GET /api/objects/v1/solutions/{id}/maps
+    SSI->>OS: GET /api/objects/v1/solutions/{id}/configs
+    SSI->>OS: GET /api/objects/v1/solutions/{id}/diagnostics
+    SSI->>OS: GET /api/objects/v1/solutions/{id}/logs
     OS-->>SSI: 各命名空间资源文件列表
     SSI->>SSI: 解析每个 JSON 并提取制品引用
     loop 对每个唯一的制品引用
         SSI->>ASI: decrementRefCount(artifactId)
-        ASI->>OS: PUT /api/obs/v1/artifacts/{artifactId}_meta (更新 refCount)
+        ASI->>OS: PUT /api/objects/v1/artifacts/{artifactId}_meta (更新 refCount)
         OS-->>ASI: 200 OK
     end
-    SSI->>OS: DELETE /api/obs/v1/solutions/{id}
+    SSI->>OS: DELETE /api/objects/v1/solutions/{id}
     OS-->>SSI: 204 No Content
     SSI-->>UI: 删除成功
     UI->>ASM: clear()
@@ -483,12 +473,12 @@ sequenceDiagram
 
     FAE->>UI: 编辑名称、描述、标签或元数据
     UI->>SSI: update(id, patch)
-    SSI->>OS: GET /api/obs/v1/solutions/{id}/meta
+    SSI->>OS: GET /api/objects/v1/solutions/{id}/meta
     OS-->>SSI: current SolutionMeta
     SSI->>SSI: 合并 patch
     SSI->>SSI: updatedAt = now
     SSI->>SSI: version = bumpPatchVersion(currentVersion)
-    SSI->>OS: PUT /api/obs/v1/solutions/{id}/meta
+    SSI->>OS: PUT /api/objects/v1/solutions/{id}/meta
     OS-->>SSI: 200 OK
     SSI-->>UI: Updated SolutionMeta
     UI->>RSM: recordAccess(id, updatedName)
@@ -507,17 +497,17 @@ sequenceDiagram
     FAE->>UI: 选择源解决方案并输入新名称
     UI->>SSI: clone(sourceId, newName)
     SSI->>SSI: generateId(newName) -> newId
-    SSI->>OS: GET /api/obs/v1/solutions/{sourceId}/meta
+    SSI->>OS: GET /api/objects/v1/solutions/{sourceId}/meta
     OS-->>SSI: Source SolutionMeta
     SSI->>OS: 在 v1/solutions/{newId}/ 下创建目录骨架
     SSI->>OS: 逐个子资源复制源数据到目标目录
     alt 任意步骤复制失败
         Note over SSI,OS: 简单原子性策略：不采用临时目录+重命名，失败时直接清理
-        SSI->>OS: DELETE /api/obs/v1/solutions/{newId}（清理已创建内容）
+        SSI->>OS: DELETE /api/objects/v1/solutions/{newId}（清理已创建内容）
         SSI-->>UI: 抛出克隆失败异常
     else 复制成功
         SSI->>SSI: 构建新 meta（重置 createdAt、updatedAt，version = "1.0.0"）
-        SSI->>OS: PUT /api/obs/v1/solutions/{newId}/meta
+        SSI->>OS: PUT /api/objects/v1/solutions/{newId}/meta
         SSI->>SSI: collectAllArtifactReferences(newId)
         loop 对每个制品引用
             SSI->>ASI: incrementRefCount(artifactId)
@@ -538,7 +528,7 @@ sequenceDiagram
 
     FAE->>UI: 选择导出
     UI->>SSI: exportToArchive(id, destinationPath)
-    SSI->>OS: GET /api/obs/v1/solutions/{id}/meta
+    SSI->>OS: GET /api/objects/v1/solutions/{id}/meta
     OS-->>SSI: SolutionMeta
     SSI->>OS: 递归 GET v1/solutions/{id}/ 下所有子资源
     OS-->>SSI: 资源流
@@ -613,112 +603,65 @@ sequenceDiagram
 sequenceDiagram
     participant FAE
     participant UI
-    participant RSI as RobotServiceImpl
-    participant ASM as ActiveSolutionManager
-    participant OS as ObjectStore
+    participant RA as RobotApiClient
+    participant OS as ObjectStore API
 
     FAE->>UI: 输入 address 和 alias，点击添加
-    UI->>RSI: create({ address, alias })
-    RSI->>ASM: getActiveId()
-    ASM-->>RSI: solutionId
-    RSI->>RSI: generateRobotId() -> robotId
-    RSI->>RSI: generateMockRobotInfo(address, alias) -> robotDef
-    RSI->>OS: PUT /api/obs/v1/solutions/{solutionId}/robots/{robotId}
-    OS-->>RSI: 200 OK
-    RSI-->>UI: RobotDefinition
+    UI->>RA: create(solutionId, { address, alias })
+    RA->>RA: generateRobotId() -> robotId
+    RA->>RA: createStoredRobotData(input, robotId) -> storedData
+    RA->>OS: PUT /api/objects/v1/solutions/{solutionId}/robots/{robotId}
+    OS-->>RA: { ok: true }
+    RA-->>UI: StoredRobotData
+    UI->>UI: enrichRobot(storedData) -> RobotDefinition
     UI->>UI: 刷新机器人列表
 ```
 
-### 6.10 批量添加机器人
+### 6.10 删除/批量删除机器人
 
 ```mermaid
 sequenceDiagram
     participant FAE
     participant UI
-    participant RSI as RobotServiceImpl
-    participant ASM as ActiveSolutionManager
-    participant OS as ObjectStore
-
-    FAE->>UI: 输入多个地址（每行一个），点击批量添加
-    UI->>RSI: createBatch(inputs)
-    RSI->>ASM: getActiveId()
-    ASM-->>RSI: solutionId
-    loop 对每个 input
-        RSI->>RSI: generateRobotId() -> robotId
-        RSI->>RSI: generateMockRobotInfo(address, alias) -> robotDef
-        alt 地址格式合法
-            RSI->>OS: PUT /api/obs/v1/solutions/{solutionId}/robots/{robotId}
-            OS-->>RSI: 200 OK
-            RSI->>RSI: 加入 succeeded 列表
-        else 地址格式非法
-            RSI->>RSI: 加入 failed 列表（记录原因）
-        end
-    end
-    RSI-->>UI: { succeeded, failed }
-    UI->>UI: 展示添加结果汇总并刷新列表
-```
-
-### 6.11 删除/批量删除机器人
-
-```mermaid
-sequenceDiagram
-    participant FAE
-    participant UI
-    participant RSI as RobotServiceImpl
-    participant ASM as ActiveSolutionManager
-    participant OS as ObjectStore
+    participant RA as RobotApiClient
+    participant OS as ObjectStore API
 
     FAE->>UI: 选择机器人（单台或批量），点击删除
     UI->>UI: 展示确认对话框
     FAE->>UI: 确认删除
     alt 单台删除
-        UI->>RSI: remove(robotId)
-        RSI->>ASM: getActiveId()
-        ASM-->>RSI: solutionId
-        RSI->>OS: DELETE /api/obs/v1/solutions/{solutionId}/robots/{robotId}
-        OS-->>RSI: 204 No Content
-        RSI-->>UI: 删除成功
+        UI->>RA: delete(solutionId, robotId)
+        RA->>OS: DELETE /api/objects/v1/solutions/{solutionId}/robots/{robotId}
+        OS-->>RA: { ok: true }
+        RA-->>UI: void
     else 批量删除
-        UI->>RSI: removeBatch(robotIds)
-        RSI->>ASM: getActiveId()
-        ASM-->>RSI: solutionId
         loop 对每个 robotId
-            RSI->>OS: DELETE /api/obs/v1/solutions/{solutionId}/robots/{robotId}
-            OS-->>RSI: 204 No Content / 404
+            UI->>RA: delete(solutionId, robotId)
+            RA->>OS: DELETE /api/objects/v1/solutions/{solutionId}/robots/{robotId}
+            OS-->>RA: { ok: true }
         end
-        RSI-->>UI: { succeeded, failed }
     end
     UI->>UI: 刷新机器人列表
 ```
 
-### 6.12 查看/编辑机器人详情
+### 6.11 查看/编辑机器人详情
 
 ```mermaid
 sequenceDiagram
     participant FAE
     participant UI
-    participant RSI as RobotServiceImpl
-    participant ASM as ActiveSolutionManager
-    participant OS as ObjectStore
+    participant OS as ObjectStore API
 
     FAE->>UI: 点击机器人行
-    UI->>RSI: get(robotId)
-    RSI->>ASM: getActiveId()
-    ASM-->>RSI: solutionId
-    RSI->>OS: GET /api/obs/v1/solutions/{solutionId}/robots/{robotId}
-    OS-->>RSI: RobotDefinition
-    RSI-->>UI: RobotDefinition
+    UI->>OS: GET /api/objects/v1/solutions/{solutionId}/robots/{robotId}
+    OS-->>UI: StoredRobotData
+    UI->>UI: enrichRobot(storedData) -> RobotDefinition
     UI->>UI: 弹出详情模态框，分标签页展示
 
-    alt FAE 编辑可修改字段并保存
-        FAE->>UI: 修改 alias / model / robotSN 等字段
-        UI->>RSI: update(robotId, patch)
-        RSI->>OS: GET /api/obs/v1/solutions/{solutionId}/robots/{robotId}
-        OS-->>RSI: current RobotDefinition
-        RSI->>RSI: 合并 patch，更新 updatedAt
-        RSI->>OS: PUT /api/obs/v1/solutions/{solutionId}/robots/{robotId}
-        OS-->>RSI: 200 OK
-        RSI-->>UI: Updated RobotDefinition
+    alt FAE 编辑 alias 或 address 并保存
+        FAE->>UI: 修改 alias / address
+        UI->>OS: PUT /api/objects/v1/solutions/{solutionId}/robots/{robotId}
+        OS-->>UI: { ok: true }
         UI->>UI: 刷新列表和详情展示
     end
 ```
@@ -820,30 +763,33 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
 - **进度指示器**：Carbon `ProgressBar` 或内联加载状态，显示"正在打包文件..."或"正在复制资源..."。
 - **取消**：耗时操作提供取消按钮，中止 ZIP 流或复制队列并清理已产生的临时数据。
 
-### 9.7 Robots 子界面
+### 9.7 Robots Sub-Interface
 
-- **布局**：左侧导航栏点击 "Robots" 后，主内容区展示数据表格（Carbon `DataTable`）。
-- **表格列**：`alias`（可内联编辑）、`address`、`model`、`robotSN`、`thingsId`、`megaCosmOSVersion`、操作列（查看详情、删除）。
-- **工具栏**：搜索输入（按 alias/address/model/SN 子串过滤）、"Add Robot" 主按钮、"Batch Add" 次要按钮。
-- **批量选择**：每行复选框，选中后工具栏动态显示 "Batch Delete" 危险按钮。
-- **空状态**：无机器人时展示插图和 "Add your first robot" 按钮。
+- **Layout**: Main content area displays data table (Carbon `DataTable`) or grid view after clicking "Robots" in left sidebar.
+- **Breadcrumb**: Navigation breadcrumb showing "Solutions > {Solution Name} > Robots".
+- **Table columns**: `alias` (inline-editable), `address`, `model`, `robotSN`, `thingsId`, `megaCosmOSVersion`, action column (View Details, Delete).
+- **Grid view**: Card layout showing robot alias, address, model, SN, OS version.
+- **Toolbar**: Search input (filter by alias/address/model/SN substring), "Add Robot" button, view mode toggle (grid/list).
+- **Batch selection**: Checkbox per row; "Batch Delete" danger button appears in toolbar when items selected.
+- **Notifications**: Success/error notifications auto-dismiss after 5 seconds.
+- **Empty state**: Illustration and "Add your first robot" button.
 
-### 9.8 添加机器人模态框
+### 9.8 Add Robot Modal
 
-- **单台添加标签页**：`address` 输入框（支持 IP 或 mDNS 域名）、`alias` 输入框（可选，默认等于 address）。
-- **批量添加标签页**：文本域（`textarea`），每行一个 address，支持可选 alias（以逗号分隔，如 `192.168.1.101, AGV-01`）。
-- **确认按钮**："Add" / "Batch Add"，点击后关闭模态框并刷新列表。
+- **Single add form**: `address` input (supports IP or mDNS hostname), `alias` input (pre-filled with auto-generated default like "Robot-1", "Robot-2").
+- **No batch add tab**: Batch add has been removed from the UI; users add robots one at a time.
+- **Confirm button**: "Add", closes modal and refreshes list on success.
 
-### 9.9 机器人详情模态框
+### 9.9 Robot Detail Modal
 
-- **触发**：点击表格行或 "View Details" 按钮。
-- **布局**：Carbon `Modal`（size="lg"）内嵌 `Tabs`。
-- **标签页**：
-  - **Basic Info**：展示 `address`（只读）、`alias`（可编辑）、`model`、`robotSN`、`thingsId`、`vendorId`、`productId`、`mainboardSN`、`mainboardId`、`mainSOMId`。可编辑字段使用 `TextInput`。
-  - **Other Info**：`hardwareDeviceTree` 以 `DataTable` 展示（列：name、firmwareVersion、hardwareVersion、serialNumber、hardwareId、online）。
-  - **Software Versions**：`megaCosmOSVersion`、`movebaseVersion`、`ggrVersion` 以只读表单展示；MCU / 执行器 / 传感器固件版本以键值列表或表格展示。
-  - **Hardware Versions**：`mainControlHardwareVersion`、MCU / 执行器 / 传感器硬件版本以键值列表或表格展示。
-- **操作**：底部 "Save" 主按钮（保存可编辑字段）、"Close" 次要按钮。
+- **Trigger**: Click table row or "Details" button.
+- **Layout**: Carbon `Modal` (size="lg") with embedded `Tabs`.
+- **Tabs**:
+  - **Basic Info**: `alias` (editable), `address` (editable), `model` (read-only), `robotSN` (read-only), `thingsId` (read-only), `vendorId` (read-only), `productId` (read-only), `mainboardSN` (read-only), `mainboardId` (read-only), `mainSOMId` (read-only).
+  - **Other Info**: `hardwareDeviceTree` as `DataTable` (columns: name, firmwareVersion, hardwareVersion, serialNumber, hardwareId, online).
+  - **Software Versions**: `megaCosmOSVersion`, `movebaseVersion`, `ggrVersion` as read-only form fields; MCU / actuator / sensor firmware versions as key-value lists.
+  - **Hardware Versions**: `mainControlHardwareVersion`, MCU / actuator / sensor hardware versions as key-value lists.
+- **Actions**: Bottom "Save" primary button (saves alias/address changes only), "Close" secondary button.
 
 ---
 
@@ -881,26 +827,29 @@ function bumpPatchVersion(version: string): string {
 3. 解析 `meta.json` 以确认其符合 SolutionMeta Schema。
 4. 仅当校验通过后，才开始解压并写入对象存储。
 
-### 10.3 机器人信息模拟策略（当前阶段）
+### 10.3 Robot Info Mock Strategy (Current Stage)
 
-`generateMockRobotInfo` 实现原则：
+`generateMockRobotInfo` implementation principles:
 
-- 使用基于 `address` 的确定性种子生成随机数据，确保同一会话中同一地址返回相同信息。
-- 模拟字段覆盖 RobotDefinition 中除 `id`、`address`、`alias`、`createdAt`、`updatedAt` 外的所有字段。
-- 模拟数据应符合合理的业务规则（如版本号格式 `x.y.z`、SN 为字母数字组合）。
-- 后续替换为真实协议调用时，仅需替换此方法的实现，不影响接口契约。
+- Uses a deterministic seed based on `address` to generate random data, ensuring the same address always produces the same info.
+- Mock fields cover all fields in `RobotDefinition` except those in `StoredRobotData` (id, address, addressType, alias, createdAt, updatedAt).
+- Mock data follows reasonable business rules (e.g., version format `x.y.z`, SN as alphanumeric combinations).
+- The `enrichRobot` function merges `StoredRobotData` from the object store with dynamically generated mock info to produce a complete `RobotDefinition` for display.
+- When replacing with real protocol calls in the future, only the `generateMockRobotInfo` implementation needs to change; the interface contract and storage schema remain the same.
+- Only `alias` and `address` are editable; all dynamically generated fields are read-only in the UI.
 
 ---
 
 ## 11. 已确定的设计决策
 
-| 设计项 | 决策 | 说明 |
+| Design Item | Decision | Notes |
 |--------|------|------|
-| 1. ZIP 流式打包/解压 | `archiver` 或 `yazl` | 采用 Node.js 流式 ZIP 库，直接管道对象存储读取流到本地磁盘写入流，全程不加载整个归档到内存。 |
-| 2. 对象存储客户端封装 | 统一 `ObjectStoreClient`，可配置超时 | 封装共享的 HTTP 客户端实例（见 3.5），支持配置连接超时与读取超时；默认超时 30 秒，默认重试 3 次。 |
-| 3. 克隆操作原子性 | 简单实现（失败即清理） | 创建目标目录骨架后逐个子资源复制；若中途失败，直接 DELETE 已创建的目标解决方案目录，不保留残缺数据。不引入临时目录重命名机制。 |
-| 4. 本地设置持久化 | `localStorage` | 激活方案 ID、最近使用列表等前端状态使用浏览器 `localStorage` 持久化；跨会话保留。 |
-| 5. 制品引用计数原子性 | 简单实现（乐观锁） | 采用基于 ETag 的读-改-写乐观锁，失败时最多重试 5 次；不引入分布式锁或事务机制。 |
-| 6. 校验和算法 | SHA-256 | 统一使用 SHA-256 作为制品去重与完整性校验算法，兼顾安全性与通用性。 |
-| 7. 机器人信息获取 | 当前阶段模拟 | 使用基于地址的确定性随机数据模拟机器人信息；后续替换为真实协议调用，不影响接口契约。 |
-| 8. 机器人服务上下文 | 隐式激活方案 | RobotService 所有方法内部从 ActiveSolutionManager 获取当前激活 solutionId，调用方无需显式传递。 |
+| 1. ZIP streaming | `archiver` | Backend object store routes use Node.js streaming ZIP library to pipe object store read streams directly to local disk write streams. |
+| 2. Object Store HTTP API | Generic RESTful API at `/api/objects/` | Backend provides only generic CRUD (GET/PUT/DELETE/LIST) plus specialized clone/export/import routes. Business logic lives in frontend. |
+| 3. Clone atomicity | Simple implementation (cleanup on failure) | Delete target directory on failure; no temporary directory + rename mechanism. |
+| 4. Local settings persistence | `localStorage` | Active solution ID, recent solutions list, and UI preferences are persisted in browser `localStorage`. |
+| 5. Artifact ref count atomicity | Simple implementation (optimistic lock) | ETag-based read-modify-write with up to 5 retries; no distributed locks or transactions. Managed by backend ArtifactService. |
+| 6. Checksum algorithm | SHA-256 | Used for artifact deduplication and integrity verification. |
+| 7. Robot info generation | Frontend-generated (current stage: mock) | Robot dynamic info (model, SN, versions, etc.) is generated by frontend `generateMockRobotInfo()`. Only `StoredRobotData` is persisted. Future: replace with real protocol calls. |
+| 8. Robot editability | Only `alias` and `address` | Only alias and address are user-editable and persisted. All other fields are dynamically generated and read-only. |
+| 9. Solution/Robot business logic | Frontend-only | No specialized backend services for solutions or robots. All business logic (validation, data transformation, mock generation) runs in the frontend via generic object store API. |

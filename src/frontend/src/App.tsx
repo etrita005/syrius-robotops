@@ -1,5 +1,16 @@
 import React, { useState } from "react";
-import { Header, HeaderName, HeaderNavigation, HeaderMenuItem, Content, Theme } from "@carbon/react";
+import {
+  Header,
+  HeaderName,
+  HeaderNavigation,
+  HeaderMenuItem,
+  Content,
+  Theme,
+  HeaderGlobalBar,
+  HeaderGlobalAction,
+  SkipToContent,
+} from "@carbon/react";
+import { Menu } from "@carbon/react/icons";
 import { ActiveSolutionHeader } from "./components/solution/ActiveSolutionHeader.js";
 import { SolutionSelector } from "./components/solution/SolutionSelector.js";
 import { ArtifactManager } from "./components/artifact/ArtifactManager.js";
@@ -60,7 +71,7 @@ export default function App() {
 
     // In workspace mode: show sidebar + sub-view
     return (
-      <div style={{ display: "flex", height: "calc(100vh - 96px)" }}>
+      <div style={{ display: "flex", height: "100%" }}>
         {/* Left sidebar */}
         <div
           style={{
@@ -91,7 +102,7 @@ export default function App() {
         </div>
 
         {/* Main content area */}
-        <div style={{ flex: 1, overflow: "auto" }}>
+        <div style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>
           {subView === "robots" && (
             <RobotsView
               solutionId={activeId}
@@ -115,7 +126,16 @@ export default function App() {
 
   return (
     <Theme theme="white">
+      <style>{`
+        .cds--header__nav {
+          display: flex !important;
+        }
+      `}</style>
+      <a href="#main-content" className="cds--visually-hidden">
+        Skip to main content
+      </a>
       <Header aria-label="RobotOps Studio">
+        <SkipToContent />
         <HeaderName prefix="RobotOps">Studio</HeaderName>
         <HeaderNavigation aria-label="Main navigation">
           <HeaderMenuItem
@@ -128,47 +148,58 @@ export default function App() {
             Solutions
           </HeaderMenuItem>
           <HeaderMenuItem
-            onClick={() => setCurrentView("artifacts")}
+            onClick={() => {
+              setCurrentView("artifacts");
+              if (inWorkspace) setInWorkspace(false);
+            }}
             isActive={currentView === "artifacts"}
           >
             Artifacts
           </HeaderMenuItem>
         </HeaderNavigation>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <RecentSolutionsDropdown
-            entries={entries}
-            onSelect={(id) => {
-              setCurrentView("solutions");
-              handleActivateSolution(id);
-            }}
-            onRemove={removeRecent}
-          />
-        </div>
+        <HeaderGlobalBar>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0 0.5rem" }}>
+            <RecentSolutionsDropdown
+              entries={entries}
+              onSelect={(id) => {
+                setCurrentView("solutions");
+                handleActivateSolution(id);
+              }}
+              onRemove={removeRecent}
+            />
+          </div>
+        </HeaderGlobalBar>
       </Header>
 
       {activeId && inWorkspace && <ActiveSolutionHeader />}
 
-      <Content>
-        {currentView === "solutions" && renderSolutionContent()}
-        {currentView === "artifacts" && (
-          <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "2rem" }}>
-            <h1 style={{ fontSize: "1.75rem", fontWeight: 600, marginBottom: "0.5rem" }}>
-              Artifact Manager
-            </h1>
-            <p style={{ color: "#525252", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
-              Global binary artifacts shared across all solutions.
-            </p>
-            <UploadDropZone onUploadComplete={artifactsState.refresh} />
-            <ArtifactManager
-              artifacts={artifactsState.items}
-              total={artifactsState.total}
-              loading={artifactsState.loading}
-              error={artifactsState.error}
-              onRefresh={artifactsState.refresh}
-            />
-          </div>
-        )}
-      </Content>
+      {inWorkspace && activeId ? (
+        <div id="main-content" style={{ height: "calc(100vh - 96px)" }}>
+          {renderSolutionContent()}
+        </div>
+      ) : (
+        <Content id="main-content">
+          {currentView === "solutions" && renderSolutionContent()}
+          {currentView === "artifacts" && (
+            <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "2rem" }}>
+              <h1 style={{ fontSize: "1.75rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                Artifact Manager
+              </h1>
+              <p style={{ color: "#525252", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
+                Global binary artifacts shared across all solutions.
+              </p>
+              <UploadDropZone onUploadComplete={artifactsState.refresh} />
+              <ArtifactManager
+                artifacts={artifactsState.items}
+                total={artifactsState.total}
+                loading={artifactsState.loading}
+                error={artifactsState.error}
+                onRefresh={artifactsState.refresh}
+              />
+            </div>
+          )}
+        </Content>
+      )}
     </Theme>
   );
 }

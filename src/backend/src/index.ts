@@ -5,9 +5,7 @@ import { join } from "node:path";
 import { ObjectStore } from "./services/objectStore.js";
 import { ChecksumService } from "./services/checksumService.js";
 import { ArtifactService } from "./services/artifactService.js";
-import { SolutionService } from "./services/solutionService.js";
-import { RobotService } from "./services/robotService.js";
-import { createSolutionRoutes } from "./routes/solutionRoutes.js";
+import { createObjectStoreRoutes } from "./routes/objectStoreRoutes.js";
 import { createArtifactRoutes } from "./routes/artifactRoutes.js";
 import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
@@ -38,8 +36,6 @@ store.configure(dataDir);
 const objectStore = new ObjectStore();
 const checksumService = new ChecksumService();
 const artifactService = new ArtifactService(objectStore, checksumService);
-const solutionService = new SolutionService(objectStore, artifactService);
-const robotService = new RobotService(objectStore);
 
 const app = new Hono();
 
@@ -47,7 +43,7 @@ app.use("*", cors());
 
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 
-app.route("/api/solutions", createSolutionRoutes(solutionService, robotService));
+app.route("/api/objects", createObjectStoreRoutes(objectStore, dataDir));
 app.route("/api/artifacts", createArtifactRoutes(artifactService));
 
 app.onError((err, _c) => {

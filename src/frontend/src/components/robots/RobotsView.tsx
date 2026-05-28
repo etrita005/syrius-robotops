@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   DataTable,
   Table,
@@ -12,12 +12,15 @@ import {
   InlineNotification,
   Modal,
   TextInput,
+  Breadcrumb,
+  BreadcrumbItem,
 } from "@carbon/react";
 import { Grid, List } from "@carbon/react/icons";
 import { useRobots } from "../../hooks/useRobots.js";
 import { RobotDefinition } from "../../types/robot.js";
 import AddRobotModal from "./AddRobotModal.js";
 import RobotDetailModal from "./RobotDetailModal.js";
+import { useActiveSolution } from "../../hooks/useActiveSolution.js";
 
 interface RobotsViewProps {
   solutionId: string;
@@ -47,12 +50,12 @@ function storeViewMode(mode: ViewMode) {
 }
 
 export default function RobotsView({ solutionId, onBackToSolutions }: RobotsViewProps) {
+  const { activeMeta } = useActiveSolution();
   const {
     robots,
     loading,
     error,
     addRobot,
-    addRobotsBatch,
     editRobot,
     removeRobot,
     removeRobotsBatch,
@@ -74,6 +77,15 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
     title: string;
     subtitle?: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
@@ -341,8 +353,10 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
           <Table {...getTableProps()}>
             <TableHead>
               <TableRow>
-                {headers.map((h) => (
-                  <TableHeader {...getHeaderProps({ header: h })}>
+                {headers.map((h) => {
+                  const { key, ...headerProps } = getHeaderProps({ header: h });
+                  return (
+                    <TableHeader key={key} {...headerProps}>
                     {h.key === "select" ? (
                       <input
                         type="checkbox"
@@ -354,13 +368,17 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
                       h.header
                     )}
                   </TableHeader>
-                ))}
+                  );
+                })}
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map((row) => (
-                <TableRow
-                  {...getRowProps({ row })}
+              {rows.map((row) => {
+                const { key, ...rowProps } = getRowProps({ row });
+                return (
+                  <TableRow
+                    key={key}
+                    {...rowProps}
                   onClick={(e) => {
                     const target = e.target as HTMLElement;
                     if (
@@ -378,7 +396,8 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
                     <TableCell key={cell.id}>{cell.value}</TableCell>
                   ))}
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -395,19 +414,30 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
   }
 
   return (
-    <div style={{ padding: "2rem" }}>
-      {onBackToSolutions && (
-        <div style={{ marginBottom: "0.25rem" }}>
-          <Button
-            kind="ghost"
-            size="sm"
-            onClick={onBackToSolutions}
-            style={{ paddingLeft: 0 }}
+    <div>
+      <Breadcrumb style={{ marginBottom: "1rem" }}>
+        <BreadcrumbItem>
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              onBackToSolutions?.();
+            }}
+            style={{ color: "#0f62fe", textDecoration: "none" }}
           >
-            &lt;  Solutions
-          </Button>
-        </div>
-      )}
+            Solutions
+          </a>
+        </BreadcrumbItem>
+        <BreadcrumbItem>
+          <span style={{ color: "#525252" }}>
+            {activeMeta?.name ?? solutionId}
+          </span>
+        </BreadcrumbItem>
+        <BreadcrumbItem isCurrentPage>
+          <span>Robots</span>
+        </BreadcrumbItem>
+      </Breadcrumb>
+
       <div
         style={{
           display: "flex",
@@ -465,24 +495,21 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
               flexWrap: "wrap",
             }}
           >
-            <TextInput
-              id="robot-search"
-              labelText=""
-              hideLabel
-              placeholder="Search by alias, address, model or SN..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ minWidth: "280px" }}
-            />
-            <Button onClick={() => setAddOpen(true)}>Add Robot</Button>
-            <Button kind="secondary" onClick={() => setAddOpen(true)}>
-              Batch Add
-            </Button>
-            {selectedIds.size > 0 && (
-              <Button kind="danger" onClick={() => setBatchDeleteOpen(true)}>
-                Batch Delete ({selectedIds.size})
-              </Button>
-            )}
+              <TextInput
+                id="robot-search"
+                labelText=""
+                hideLabel
+                placeholder="Search by alias, address, model or SN..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ minWidth: "280px" }}
+              />
+              <Button onClick={() => setAddOpen(true)}>Add Robot</Button>
+              {selectedIds.size > 0 && (
+                <Button kind="danger" onClick={() => setBatchDeleteOpen(true)}>
+                  Batch Delete ({selectedIds.size})
+                </Button>
+              )}
             <div style={{ marginLeft: "auto", display: "flex", gap: "0.25rem" }}>
               <Button
                 kind={viewMode === "grid" ? "primary" : "tertiary"}
@@ -516,15 +543,6 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
             kind: "success",
             title: "Robot added",
             subtitle: `${robot.alias} has been added.`,
-          });
-        }}
-        onBatchAdd={async (inputs) => {
-          const result = await addRobotsBatch(inputs);
-          const failedCount = result.failed.length;
-          setNotification({
-            kind: failedCount > 0 ? "warning" : "success",
-            title: failedCount > 0 ? "Batch add partially failed" : "Batch add completed",
-            subtitle: `${result.succeeded.length} succeeded${failedCount > 0 ? `, ${failedCount} failed` : ""}.`,
           });
         }}
       />

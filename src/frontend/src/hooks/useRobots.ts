@@ -2,18 +2,15 @@ import { useState, useEffect, useCallback } from "react";
 import {
   listRobots,
   createRobot,
-  createRobotsBatch,
   updateRobot,
   deleteRobot,
-  deleteRobotsBatch,
 } from "../api/robotApi.js";
 import {
+  StoredRobotData,
   RobotDefinition,
   CreateRobotInput,
-  BatchCreateRobotResult,
-  BatchDeleteRobotResult,
+  enrichRobot,
 } from "../types/robot.js";
-import type { RobotListOptions } from "../api/robotApi.js";
 
 export function useRobots(solutionId: string | null) {
   const [robots, setRobots] = useState<RobotDefinition[]>([]);
@@ -21,13 +18,13 @@ export function useRobots(solutionId: string | null) {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
-    async (options?: RobotListOptions) => {
+    async () => {
       if (!solutionId) return;
       setLoading(true);
       setError(null);
       try {
-        const data = await listRobots(solutionId, options);
-        setRobots(data);
+        const data = await listRobots(solutionId);
+        setRobots(data.map(enrichRobot));
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -48,31 +45,21 @@ export function useRobots(solutionId: string | null) {
   const addRobot = useCallback(
     async (input: CreateRobotInput) => {
       if (!solutionId) throw new Error("No active solution");
-      const robot = await createRobot(solutionId, input);
+      const stored = await createRobot(solutionId, input);
+      const robot = enrichRobot(stored);
       setRobots((prev) => [...prev, robot]);
       return robot;
     },
     [solutionId]
   );
 
-  const addRobotsBatch = useCallback(
-    async (inputs: CreateRobotInput[]) => {
-      if (!solutionId) throw new Error("No active solution");
-      const result = await createRobotsBatch(solutionId, inputs);
-      if (result.succeeded.length > 0) {
-        setRobots((prev) => [...prev, ...result.succeeded]);
-      }
-      return result;
-    },
-    [solutionId]
-  );
-
   const editRobot = useCallback(
-    async (robotId: string, patch: Partial<Omit<RobotDefinition, "id" | "createdAt">>) => {
+    async (robotId: string, patch: Partial<Pick<StoredRobotData, "alias" | "address">>) => {
       if (!solutionId) throw new Error("No active solution");
       const updated = await updateRobot(solutionId, robotId, patch);
-      setRobots((prev) => prev.map((r) => (r.id === robotId ? updated : r)));
-      return updated;
+      const enriched = enrichRobot(updated);
+      setRobots((prev) => prev.map((r) => (r.id === robotId ? enriched : r)));
+      return enriched;
     },
     [solutionId]
   );
@@ -89,11 +76,22 @@ export function useRobots(solutionId: string | null) {
   const removeRobotsBatch = useCallback(
     async (robotIds: string[]) => {
       if (!solutionId) throw new Error("No active solution");
-      const result = await deleteRobotsBatch(solutionId, robotIds);
-      if (result.succeeded.length > 0) {
-        setRobots((prev) => prev.filter((r) => !result.succeeded.includes(r.id)));
+      const succeeded: string[] = [];
+      const failed: { robotId: string; reason: string }[] = [];
+
+      for (const robotId of robotIds) {
+        try {
+          await deleteRobot(solutionId, robotId);
+          succeeded.push(robotId);
+        } catch (err) {
+          failed.push({ robotId, reason: (err as Error).message });
+        }
       }
-      return result;
+
+      if (succeeded.length > 0) {
+        setRobots((prev) => prev.filter((r) => !succeeded.includes(r.id)));
+      }
+      return { succeeded, failed };
     },
     [solutionId]
   );
@@ -104,7 +102,6 @@ export function useRobots(solutionId: string | null) {
     error,
     load,
     addRobot,
-    addRobotsBatch,
     editRobot,
     removeRobot,
     removeRobotsBatch,

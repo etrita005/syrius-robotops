@@ -1,36 +1,26 @@
 # Cross-Module Integration Test Cases
 
-## TC-CROSS-001: Delete Solution decrements artifact refCount
+## TC-CROSS-001: Delete Solution does not affect artifact storage
 
 | Item | Value |
 |------|-------|
 | Priority | High |
-| Precondition | An artifact exists with `refCount === 1` (referenced by a solution) |
-| Input | `DELETE /api/solutions/{solutionId}` |
-| Expected Result | After deletion, the artifact's `refCount` is decremented to 0 |
-| Verification | `GET /api/artifacts/{artifactId}` returns `refCount === 0` |
+| Precondition | An artifact exists (managed by ArtifactService) |
+| Input | `DELETE /api/objects/v1/solutions/{solutionId}` |
+| Expected Result | Artifact files remain intact in `/api/artifacts/...`; only solution directory is deleted |
+| Verification | `GET /api/artifacts/{artifactId}` still returns artifact data |
 
-## TC-CROSS-002: Clone Solution increments artifact refCount
-
-| Item | Value |
-|------|-------|
-| Priority | High |
-| Precondition | A solution with artifact references exists; artifact has `refCount === N` |
-| Input | `POST /api/solutions/{sourceId}/clone` with `{ name: "Cloned" }` |
-| Expected Result | After cloning, the artifact's `refCount === N + 1` |
-| Verification | `GET /api/artifacts/{artifactId}` returns incremented `refCount` |
-
-## TC-CROSS-003: Solution creation + activation workflow
+## TC-CROSS-002: Solution creation + activation workflow
 
 | Item | Value |
 |------|-------|
 | Priority | High |
 | Precondition | No active solution |
-| Input | 1. Create a new solution 2. The solution becomes the active solution |
+| Input | 1. Create a new solution via `PUT /api/objects/v1/solutions/{id}/meta` 2. Frontend sets it as active solution |
 | Expected Result | The newly created solution is set as the active solution |
 | Verification | Active solution ID matches the created solution ID |
 
-## TC-CROSS-004: Deleting active solution clears context
+## TC-CROSS-003: Deleting active solution clears context
 
 | Item | Value |
 |------|-------|
@@ -39,3 +29,23 @@
 | Input | Delete the currently active solution |
 | Expected Result | Active solution context is cleared; user is redirected to solution selector |
 | Verification | `activeSolutionManager.getActiveId() === null` |
+
+## TC-CROSS-004: Robot data uses generic object store
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A solution with robots exists |
+| Input | Read robot data via `GET /api/objects/v1/solutions/{id}/robots/{robotId}` |
+| Expected Result | Returns `StoredRobotData` (only id, address, addressType, alias, timestamps); no model/SN/version fields in stored data |
+| Verification | Frontend `enrichRobot()` produces full `RobotDefinition` with mock dynamic data |
+
+## TC-CROSS-005: Clone solution copies robot data
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A solution with robots exists |
+| Input | `POST /api/objects/clone` to clone the solution |
+| Expected Result | Cloned solution contains copies of all robot `StoredRobotData` objects |
+| Verification | `GET /api/objects/list/v1/solutions/{newId}/robots` returns same robot count as source |

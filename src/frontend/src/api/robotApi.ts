@@ -1,77 +1,53 @@
-import { get, post, put, del } from "./client.js";
+import { listObjects, getObject, putObject, deleteObject } from "./objectStoreApi.js";
 import {
-  RobotDefinition,
+  StoredRobotData,
   CreateRobotInput,
-  BatchCreateRobotResult,
-  BatchDeleteRobotResult,
+  createStoredRobotData,
+  enrichRobot,
+  generateRobotId,
 } from "../types/robot.js";
 
-export interface RobotListOptions {
-  filter?: {
-    alias?: string;
-    address?: string;
-    model?: string;
-    robotSN?: string;
-  };
-  sort?: {
-    field: "alias" | "address" | "model" | "robotSN" | "createdAt";
-    order: "asc" | "desc";
-  };
+export async function listRobots(solutionId: string): Promise<StoredRobotData[]> {
+  const resources = await listObjects(`v1/solutions/${solutionId}/robots`);
+  const robots: StoredRobotData[] = [];
+  for (const res of resources) {
+    if (res.type === "file" && res.name !== "_keep") {
+      const stored = await getObject<StoredRobotData>(`v1/solutions/${solutionId}/robots/${res.name}`);
+      if (stored) robots.push(stored);
+    }
+  }
+  return robots;
 }
 
-export async function listRobots(
-  solutionId: string,
-  options?: RobotListOptions
-): Promise<RobotDefinition[]> {
-  const params = new URLSearchParams();
-  if (options?.filter?.alias) params.set("filter[alias]", options.filter.alias);
-  if (options?.filter?.address) params.set("filter[address]", options.filter.address);
-  if (options?.filter?.model) params.set("filter[model]", options.filter.model);
-  if (options?.filter?.robotSN) params.set("filter[robotSN]", options.filter.robotSN);
-  if (options?.sort?.field) params.set("sort[field]", options.sort.field);
-  if (options?.sort?.order) params.set("sort[order]", options.sort.order);
-
-  const query = params.toString();
-  const url = `/solutions/${solutionId}/robots${query ? `?${query}` : ""}`;
-  return get<RobotDefinition[]>(url);
+export async function getRobot(solutionId: string, robotId: string): Promise<StoredRobotData | null> {
+  return getObject<StoredRobotData>(`v1/solutions/${solutionId}/robots/${robotId}`);
 }
 
-export async function getRobot(
-  solutionId: string,
-  robotId: string
-): Promise<RobotDefinition> {
-  return get<RobotDefinition>(`/solutions/${solutionId}/robots/${robotId}`);
-}
-
-export async function createRobot(
-  solutionId: string,
-  input: CreateRobotInput
-): Promise<RobotDefinition> {
-  return post<RobotDefinition>(`/solutions/${solutionId}/robots`, input);
-}
-
-export async function createRobotsBatch(
-  solutionId: string,
-  inputs: CreateRobotInput[]
-): Promise<BatchCreateRobotResult> {
-  return post<BatchCreateRobotResult>(`/solutions/${solutionId}/robots/batch`, { inputs });
+export async function createRobot(solutionId: string, input: CreateRobotInput): Promise<StoredRobotData> {
+  const id = generateRobotId();
+  const stored = createStoredRobotData(input, id);
+  await putObject(`v1/solutions/${solutionId}/robots/${id}`, stored);
+  return stored;
 }
 
 export async function updateRobot(
   solutionId: string,
   robotId: string,
-  patch: Partial<Omit<RobotDefinition, "id" | "createdAt">>
-): Promise<RobotDefinition> {
-  return put<RobotDefinition>(`/solutions/${solutionId}/robots/${robotId}`, patch);
+  patch: Partial<Pick<StoredRobotData, "alias" | "address">>
+): Promise<StoredRobotData> {
+  const current = await getRobot(solutionId, robotId);
+  if (!current) throw new Error(`Robot '${robotId}' not found`);
+
+  const updated: StoredRobotData = {
+    ...current,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await putObject(`v1/solutions/${solutionId}/robots/${robotId}`, updated);
+  return updated;
 }
 
 export async function deleteRobot(solutionId: string, robotId: string): Promise<void> {
-  return del<void>(`/solutions/${solutionId}/robots/${robotId}`);
-}
-
-export async function deleteRobotsBatch(
-  solutionId: string,
-  robotIds: string[]
-): Promise<BatchDeleteRobotResult> {
-  return post<BatchDeleteRobotResult>(`/solutions/${solutionId}/robots/batch-delete`, { robotIds });
+  await deleteObject(`v1/solutions/${solutionId}/robots/${robotId}`);
 }

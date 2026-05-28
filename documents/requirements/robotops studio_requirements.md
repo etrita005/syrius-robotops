@@ -108,11 +108,15 @@ Robot Commissioning & Operations Studio
 
 #### 5.1.2 基础信息查看/修改
 - 查看机器人基础信息
-- 修改机器人基础信息
+- 修改机器人别名和地址
 - 查看机器人硬件设备树
 - 修改机器人 Wi‑Fi 配置
 
-机器人基础信息包括：
+机器人存储数据（持久化）包括：
+- 别名（Alias）
+- 机器人IP / mDNS地址（Address）
+
+机器人基础信息（动态获取，当前阶段由前端模拟）包括：
 - Model
 - RobotSN
 - ThingsId
@@ -122,13 +126,9 @@ Robot Commissioning & Operations Studio
 - 主控板 Id
 - 主控 SOM Id
 
-系统需要支持修改以下字段：
-- RobotSN
-- Model
-- VendorId
-- ProductId
-- 主控板 SN
-- 主控板 Id
+系统需要支持修改以下持久化字段：
+- 别名（Alias）
+- 机器人IP / mDNS地址（Address）
 
 机器人其他信息包括：
 - 硬件设备树
@@ -389,24 +389,20 @@ project/solution 的目标是把现场环境、机器人清单、包版本、配
 ### 9.2 基础信息查看/修改
 
 系统应支持显示以下基础信息：
-- Model
-- RobotSN
-- ThingsId
-- VendorId
-- ProductId
-- 主控板 SN
-- 主控板 Id
-- 主控 SOM Id
+- Model（动态获取，只读）
+- RobotSN（动态获取，只读）
+- ThingsId（动态获取，只读）
+- VendorId（动态获取，只读）
+- ProductId（动态获取，只读）
+- 主控板 SN（动态获取，只读）
+- 主控板 Id（动态获取，只读）
+- 主控 SOM Id（动态获取，只读）
 
-系统应支持修改以下字段：
-- RobotSN
-- Model
-- VendorId
-- ProductId
-- 主控板 SN
-- 主控板 Id
+系统应支持修改以下持久化字段：
+- 别名（Alias）
+- 机器人IP / mDNS地址（Address）
 
-系统应支持显示软件版本信息：
+系统应支持显示软件版本信息（动态获取，只读）：
 - megaCosmOS 版本
 - Movebase 版本
 - GGR 版本

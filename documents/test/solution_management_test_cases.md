@@ -6,40 +6,39 @@
 |------|-------|
 | Priority | High |
 | Precondition | Object Store service is running |
-| Input | `POST /api/solutions` with `{ name: "Test Solution Alpha", description: "A test solution", tags: ["test", "alpha"] }` |
-| Expected Status | 201 |
-| Expected Response | `SolutionMeta` with auto-generated `id`, `name === "Test Solution Alpha"`, `version === "1.0.0"`, `refCount` tags included, `createdAt` and `updatedAt` set to current UTC |
-| Postcondition | Solution directory skeleton created in object store |
+| Input | `PUT /api/objects/v1/solutions/{id}/meta` with SolutionMeta body |
+| Expected Status | 200 |
+| Expected Response | `{ ok: true }` |
+| Postcondition | Solution directory skeleton created in object store; subsequent GET returns the SolutionMeta |
 
-## TC-SOL-002: Create Solution (missing name)
-
-| Item | Value |
-|------|-------|
-| Priority | High |
-| Precondition | None |
-| Input | `POST /api/solutions` with `{ description: "No name" }` |
-| Expected Status | 400 |
-| Expected Response | `{ error: "INVALID_NAME" }` |
-
-## TC-SOL-003: Create Solution (duplicate ID)
-
-| Item | Value |
-|------|-------|
-| Priority | High |
-| Precondition | A solution with the target ID already exists |
-| Input | `POST /api/solutions` with `{ id: "dup-test-id", name: "Second" }` |
-| Expected Status | 409 |
-| Expected Response | `{ error: "SOLUTION_ALREADY_EXISTS" }` |
-
-## TC-SOL-004: Create Solution (invalid ID format)
+## TC-SOL-002: Create Solution (missing required fields)
 
 | Item | Value |
 |------|-------|
 | Priority | High |
 | Precondition | None |
-| Input | `POST /api/solutions` with `{ id: "invalid id!", name: "Bad ID" }` |
-| Expected Status | 400 |
-| Expected Response | `{ error: "INVALID_SOLUTION_ID" }` |
+| Input | `PUT /api/objects/v1/solutions/test-id/meta` with empty object `{}` |
+| Expected Result | Object is stored; frontend validation should prevent this case |
+
+## TC-SOL-003: Get Solution Meta
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A solution with known ID exists |
+| Input | `GET /api/objects/v1/solutions/{id}/meta` |
+| Expected Status | 200 |
+| Expected Response | Complete `SolutionMeta` object with correct `id` and `name` |
+
+## TC-SOL-004: Get Solution (not found)
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | No solution with the given ID |
+| Input | `GET /api/objects/v1/solutions/nonexistent-id-xyz/meta` |
+| Expected Status | 404 |
+| Expected Response | `{ error: "NOT_FOUND" }` |
 
 ## TC-SOL-005: List Solutions
 
@@ -47,105 +46,130 @@
 |------|-------|
 | Priority | High |
 | Precondition | At least 2 solutions exist |
-| Input | `GET /api/solutions` |
+| Input | `GET /api/objects/list/v1/solutions` |
 | Expected Status | 200 |
-| Expected Response | `{ items: SolutionMeta[], corruptedIds: string[] }` with `items.length >= 2`, sorted by `updatedAt` descending |
+| Expected Response | Array of `ObjectStoreResource` with `type: "directory"` for each solution |
 
-## TC-SOL-006: List Solutions (filter by name)
-
-| Item | Value |
-|------|-------|
-| Priority | Medium |
-| Precondition | A solution with "Alpha" in its name exists |
-| Input | `GET /api/solutions?filter[name]=Alpha` |
-| Expected Status | 200 |
-| Expected Response | All returned items have name containing "Alpha" (case-insensitive) |
-
-## TC-SOL-007: Get Solution
-
-| Item | Value |
-|------|-------|
-| Priority | High |
-| Precondition | A solution with known ID exists |
-| Input | `GET /api/solutions/{id}` |
-| Expected Status | 200 |
-| Expected Response | Complete `SolutionMeta` object with correct `id` and `name` |
-
-## TC-SOL-008: Get Solution (not found)
-
-| Item | Value |
-|------|-------|
-| Priority | High |
-| Precondition | No solution with the given ID |
-| Input | `GET /api/solutions/nonexistent-id-xyz` |
-| Expected Status | 404 |
-| Expected Response | `{ error: "SOLUTION_NOT_FOUND" }` |
-
-## TC-SOL-009: Update Solution
+## TC-SOL-006: Update Solution Meta
 
 | Item | Value |
 |------|-------|
 | Priority | High |
 | Precondition | A solution exists |
-| Input | `PUT /api/solutions/{id}` with `{ name: "After Update", description: "Updated description" }` |
+| Input | Frontend reads current meta, merges changes, `PUT /api/objects/v1/solutions/{id}/meta` with updated SolutionMeta |
 | Expected Status | 200 |
-| Expected Response | `SolutionMeta` with `name === "After Update"`, `version === "1.0.1"` (patch bumped) |
+| Expected Response | `{ ok: true }` |
+| Postcondition | Subsequent GET returns updated meta with bumped version |
 
-## TC-SOL-010: Update Solution (immutable fields)
-
-| Item | Value |
-|------|-------|
-| Priority | Medium |
-| Precondition | A solution exists |
-| Input | `PUT /api/solutions/{id}` with `{ name: "Updated Name" }` |
-| Expected Status | 200 |
-| Expected Response | `id` and `createdAt` remain unchanged from original values |
-
-## TC-SOL-011: Delete Solution
+## TC-SOL-007: Delete Solution
 
 | Item | Value |
 |------|-------|
 | Priority | High |
 | Precondition | A solution exists |
-| Input | `DELETE /api/solutions/{id}` |
-| Expected Status | 204 |
-| Postcondition | Subsequent `GET /api/solutions/{id}` returns 404 |
+| Input | `DELETE /api/objects/v1/solutions/{id}` |
+| Expected Status | 200 |
+| Expected Response | `{ ok: true }` |
+| Postcondition | Subsequent `GET /api/objects/v1/solutions/{id}/meta` returns 404 |
 
-## TC-SOL-012: Delete Solution (not found)
-
-| Item | Value |
-|------|-------|
-| Priority | Medium |
-| Precondition | No solution with the given ID |
-| Input | `DELETE /api/solutions/nonexistent-delete-id` |
-| Expected Status | 404 |
-| Expected Response | `{ error: "SOLUTION_NOT_FOUND" }` |
-
-## TC-SOL-013: Clone Solution
+## TC-SOL-008: Clone Solution
 
 | Item | Value |
 |------|-------|
 | Priority | High |
 | Precondition | A solution with known content exists |
-| Input | `POST /api/solutions/{sourceId}/clone` with `{ name: "Cloned Solution" }` |
-| Expected Status | 201 |
-| Expected Response | `SolutionMeta` with `name === "Cloned Solution"`, different `id`, `version === "1.0.0"`, new `createdAt`/`updatedAt` |
+| Input | `POST /api/objects/clone` with `{ sourcePath: "v1/solutions/{sourceId}", targetPath: "v1/solutions/{newId}" }` |
+| Expected Status | 200 |
+| Expected Response | `{ ok: true }` |
+| Postcondition | Target solution directory contains all data from source; new meta written with reset version |
 
-## TC-SOL-014: Version auto-increment on multiple updates
+## TC-SOL-009: Export Solution
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A solution exists |
+| Input | `POST /api/objects/export` with `{ sourcePath: "v1/solutions/{id}" }` |
+| Expected Status | 200 |
+| Expected Response | `{ filePath: "/path/to/export.zip" }` |
+
+## TC-SOL-010: Import Solution
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A valid ZIP archive exists |
+| Input | `POST /api/objects/import` with `{ zipPath: "/path/to/archive.zip", targetPath: "v1/solutions/{newId}" }` |
+| Expected Status | 200 |
+| Expected Response | `{ ok: true }` |
+| Postcondition | New solution appears in listing |
+
+## TC-ROB-001: Add Robot (valid input)
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | Active solution exists |
+| Input | `PUT /api/objects/v1/solutions/{solutionId}/robots/{robotId}` with `StoredRobotData` body |
+| Expected Status | 200 |
+| Expected Response | `{ ok: true }` |
+| Postcondition | Robot appears in listing; frontend enriches with mock data for display |
+
+## TC-ROB-002: List Robots
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | At least 1 robot exists in the solution |
+| Input | `GET /api/objects/list/v1/solutions/{solutionId}/robots` |
+| Expected Status | 200 |
+| Expected Response | Array of `ObjectStoreResource` including robot entries |
+
+## TC-ROB-003: Get Robot
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A robot with known ID exists |
+| Input | `GET /api/objects/v1/solutions/{solutionId}/robots/{robotId}` |
+| Expected Status | 200 |
+| Expected Response | `StoredRobotData` object with `id`, `address`, `addressType`, `alias`, `createdAt`, `updatedAt` |
+
+## TC-ROB-004: Update Robot Alias
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A robot exists |
+| Input | Frontend reads current data, updates alias, `PUT /api/objects/v1/solutions/{solutionId}/robots/{robotId}` |
+| Expected Status | 200 |
+| Postcondition | Subsequent GET returns updated alias |
+
+## TC-ROB-005: Delete Robot
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A robot exists |
+| Input | `DELETE /api/objects/v1/solutions/{solutionId}/robots/{robotId}` |
+| Expected Status | 200 |
+| Expected Response | `{ ok: true }` |
+| Postcondition | Subsequent GET returns 404 |
+
+## TC-ROB-006: Default Alias Generation
 
 | Item | Value |
 |------|-------|
 | Priority | Medium |
-| Precondition | A solution exists with `version === "1.0.0"` |
-| Input | Update solution 3 times |
-| Expected Result | `version === "1.0.3"` after 3 updates |
+| Precondition | None |
+| Input | Open Add Robot modal |
+| Expected Result | Alias field is pre-filled with a default alias (e.g. "Robot-1") |
 
-## TC-SOL-015: Create Solution with name exceeding 128 characters
+## TC-ROB-007: Notification Auto-Dismiss
 
 | Item | Value |
 |------|-------|
-| Priority | Low |
-| Precondition | None |
-| Input | `POST /api/solutions` with `name` of 129+ characters |
-| Expected Status | 400 |
-| Expected Response | `{ error: "INVALID_NAME" }` |
+| Priority | Medium |
+| Precondition | A robot was just added |
+| Input | Wait after adding a robot |
+| Expected Result | Success notification disappears after 5 seconds |

@@ -121,56 +121,40 @@ v1/
 }
 ```
 
-### 5.2 机器人定义 Schema
+### 5.2 机器人存储数据 Schema
+
+对象存储中仅持久化以下字段：
 
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["id", "address", "alias", "createdAt", "updatedAt"],
+  "required": ["id", "address", "addressType", "alias", "createdAt", "updatedAt"],
   "properties": {
     "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$" },
-    "address": { "type": "string", "minLength": 1, "description": "IP 地址或 mDNS 域名" },
+    "address": { "type": "string", "minLength": 1, "description": "IP address or mDNS hostname" },
     "addressType": { "type": "string", "enum": ["ip", "mdns"] },
-    "alias": { "type": "string", "maxLength": 128, "description": "用户可编辑的机器人别名" },
-    "model": { "type": "string" },
-    "robotSN": { "type": "string" },
-    "thingsId": { "type": "string" },
-    "vendorId": { "type": "string" },
-    "productId": { "type": "string" },
-    "mainboardSN": { "type": "string", "description": "主控板 SN" },
-    "mainboardId": { "type": "string", "description": "主控板 Id" },
-    "mainSOMId": { "type": "string", "description": "主控 SOM Id" },
-    "megaCosmOSVersion": { "type": "string", "description": "megaCosmOS 版本" },
-    "movebaseVersion": { "type": "string", "description": "Movebase 版本" },
-    "ggrVersion": { "type": "string", "description": "GGR 版本" },
-    "mcuFirmwareVersions": { "type": "object", "additionalProperties": { "type": "string" } },
-    "actuatorFirmwareVersions": { "type": "object", "additionalProperties": { "type": "string" } },
-    "sensorFirmwareVersions": { "type": "object", "additionalProperties": { "type": "string" } },
-    "mainControlHardwareVersion": { "type": "string" },
-    "mcuHardwareVersions": { "type": "object", "additionalProperties": { "type": "string" } },
-    "actuatorHardwareVersions": { "type": "object", "additionalProperties": { "type": "string" } },
-    "sensorHardwareVersions": { "type": "object", "additionalProperties": { "type": "string" } },
-    "hardwareDeviceTree": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string" },
-          "firmwareVersion": { "type": "string" },
-          "hardwareVersion": { "type": "string" },
-          "serialNumber": { "type": "string" },
-          "hardwareId": { "type": "string" },
-          "parentName": { "type": "string" },
-          "online": { "type": "boolean" }
-        }
-      }
-    },
+    "alias": { "type": "string", "maxLength": 128, "description": "User-editable robot alias" },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }
   }
 }
 ```
+
+### 5.2.1 机器人动态信息
+
+以下字段不在对象存储中持久化，而是由前端动态生成（当前阶段使用基于地址的确定性随机模拟，后续替换为真实通信协议）：
+
+- `model`、`robotSN`、`thingsId`、`vendorId`、`productId`
+- `mainboardSN`、`mainboardId`、`mainSOMId`
+- `megaCosmOSVersion`、`movebaseVersion`、`ggrVersion`
+- `mcuFirmwareVersions`、`actuatorFirmwareVersions`、`sensorFirmwareVersions`
+- `mainControlHardwareVersion`、`mcuHardwareVersions`、`actuatorHardwareVersions`、`sensorHardwareVersions`
+- `hardwareDeviceTree`
+
+### 5.2.2 机器人完整定义 Schema（前端展示用）
+
+前端将存储数据与动态信息合并后，展示为完整的 `RobotDefinition` 对象，包含上述所有字段。
 
 ### 5.3 示例
 
@@ -179,20 +163,20 @@ v1/
 ```json
 {
   "id": "customer-a-site-3f2a",
-  "name": "客户 A — 现场 Alpha",
-  "description": "3 号楼 2 层初次部署，共 12 台机器人。",
+  "name": "Customer A — Site Alpha",
+  "description": "Building 3, Floor 2 initial deployment, 12 robots.",
   "createdAt": "2026-05-27T07:30:54.000Z",
   "updatedAt": "2026-05-27T07:30:54.000Z",
   "version": "1.0.0",
   "tags": ["customer-a", "building-3", "fa-john-doe"],
   "metadata": {
-    "location": "上海浦东",
+    "location": "Shanghai Pudong",
     "contactPhone": "+86-xxx-xxxx-xxxx"
   }
 }
 ```
 
-**机器人定义示例**：
+**机器人存储数据示例**：
 
 ```json
 {
@@ -200,34 +184,6 @@ v1/
   "address": "192.168.1.101",
   "addressType": "ip",
   "alias": "AGV-01",
-  "model": "X100",
-  "robotSN": "SN123456789",
-  "thingsId": "thing-abc-001",
-  "vendorId": "SYRIUS",
-  "productId": "X100-STD",
-  "mainboardSN": "MB-SN-001",
-  "mainboardId": "MB-ID-001",
-  "mainSOMId": "SOM-ID-001",
-  "megaCosmOSVersion": "2.3.1",
-  "movebaseVersion": "1.2.0",
-  "ggrVersion": "3.0.1",
-  "mcuFirmwareVersions": { "mcu1": "1.0.0", "mcu2": "1.0.1" },
-  "actuatorFirmwareVersions": { "motor1": "2.1.0" },
-  "sensorFirmwareVersions": { "lidar": "1.5.0", "camera": "2.0.0" },
-  "mainControlHardwareVersion": "Rev.A",
-  "mcuHardwareVersions": { "mcu1": "Rev.B", "mcu2": "Rev.B" },
-  "actuatorHardwareVersions": { "motor1": "Rev.C" },
-  "sensorHardwareVersions": { "lidar": "Rev.A", "camera": "Rev.B" },
-  "hardwareDeviceTree": [
-    {
-      "name": "MainController",
-      "firmwareVersion": "2.3.1",
-      "hardwareVersion": "Rev.A",
-      "serialNumber": "MB-SN-001",
-      "hardwareId": "MB-ID-001",
-      "online": true
-    }
-  ],
   "createdAt": "2026-05-27T08:00:00.000Z",
   "updatedAt": "2026-05-27T08:00:00.000Z"
 }
@@ -246,7 +202,7 @@ v1/
 - 系统设置 `createdAt` 和 `updatedAt` 为当前 UTC 时间戳。
 - 系统初始化 `version` 为 `"1.0.0"`。
 - 系统在 `v1/solutions/{id}/` 下创建目录骨架。
-- 系统通过 `PUT /api/obs/v1/solutions/{id}/meta` 写入 `meta.json`。
+- 系统通过 `PUT /api/objects/v1/solutions/{id}/meta` 写入元数据。
 - 重复 ID 必须被拒绝并返回明确错误。
 
 **FR-SOL-002**：解决方案 ID 必须在任何存储操作之前通过对象存储安全名称正则验证。
@@ -255,7 +211,7 @@ v1/
 
 **FR-SOL-003**：系统应列举所有已存在的解决方案。
 
-- 系统查询 `GET /api/obs/solutions`。
+- 系统查询 `GET /api/objects/list/v1/solutions`。
 - 对每个子目录，系统读取其 `meta.json`。
 - 列表视图展示：`id`、`name`、`description`（截断）、`updatedAt`、`tags`。
 - 列表按 `updatedAt` 降序排列（最近修改排在最前）。
@@ -267,7 +223,7 @@ v1/
 
 **FR-SOL-005**：系统应能获取单个解决方案的完整元数据。
 
-- 系统读取 `GET /api/obs/v1/solutions/{id}/meta`。
+- 系统读取 `GET /api/objects/v1/solutions/{id}/meta`。
 - 成功时返回完整 JSON 对象。
 - 解决方案不存在时返回 `NOT_FOUND` 错误。
 
@@ -279,7 +235,7 @@ v1/
 - 不可变字段：`id`、`createdAt`。
 - 系统更新 `updatedAt` 为当前 UTC 时间戳。
 - 系统每次更新元数据时自动递增 patch 版本号（例如 `1.0.0` -> `1.0.1`）。
-- 更新通过 `PUT /api/obs/v1/solutions/{id}/meta` 执行。
+- 更新通过 `PUT /api/objects/v1/solutions/{id}/meta` 执行。
 
 **FR-SOL-007**：系统应支持在不改变 `id` 的前提下重命名解决方案的显示名称。
 
@@ -288,7 +244,7 @@ v1/
 **FR-SOL-008**：系统应允许删除解决方案。
 
 - 删除操作具有破坏性，需要用户显式确认（弹窗对话框）。
-- 系统通过 `DELETE /api/obs/v1/solutions/{id}` 递归删除。
+- 系统通过 `DELETE /api/objects/v1/solutions/{id}` 递归删除。
 - 若被删除的解决方案是当前激活解决方案，应用应切换至“无激活解决方案”状态，并将用户重定向到解决方案选择页面。
 - 删除失败（例如部分 I/O 错误）时，应记录日志并向用户报告。
 
@@ -376,24 +332,16 @@ v1/
 
 - 输入：`address`（IP 地址或 mDNS 域名，必填）、`alias`（可选，默认与 address 相同）。
 - 系统生成唯一 `robotId`，规则为 `robot-{nanoid(6)}`。
-- 系统通过对象存储 `PUT /api/obs/v1/solutions/{solutionId}/robots/{robotId}` 持久化机器人定义。
-- 添加后，系统尝试获取机器人信息（当前阶段使用随机值模拟）。
+- 系统通过对象存储 `PUT /api/objects/v1/solutions/{solutionId}/robots/{robotId}` 持久化机器人存储数据。
+- 添加后，前端生成机器人动态信息（当前阶段使用基于地址的确定性随机值模拟）。
 
-**FR-SOL-019**：系统应支持批量添加多台机器人到当前解决方案。
-
-- 输入：机器人地址列表（每行为一个 IP 地址或 mDNS 域名）。
-- 系统为每个地址生成独立的 `robotId` 并逐条写入对象存储。
-- 批量添加完成后，系统刷新机器人列表。
-- 任一地址添加失败（如格式非法）不应阻断其他地址的添加，失败项应在结果中明确提示。
-
-**FR-SOL-020**：系统应支持删除/批量删除当前解决方案中的机器人。
+**FR-SOL-019**：系统应支持批量删除当前解决方案中的机器人。
 
 - 删除操作需要用户确认（弹窗对话框）。
 - 批量删除时，系统展示待删除机器人数量并要求确认。
-- 删除通过对象存储 `DELETE /api/obs/v1/solutions/{solutionId}/robots/{robotId}` 执行。
-- 删除后从列表中移除对应条目。
+- 删除通过对象存储 `DELETE /api/objects/v1/solutions/{solutionId}/robots/{robotId}` 执行。
 
-**FR-SOL-021**：系统应展示当前解决方案中已添加的机器人基础信息列表。
+**FR-SOL-020**：系统应展示当前解决方案中已添加的机器人基础信息列表。
 
 - 列表展示字段（核心信息）：`address`（IP 地址/mDNS 域名）、`alias`（别名，用户可编辑）、`model`、`robotSN`、`thingsId`、`megaCosmOSVersion`。
 - 列表支持按 `alias`、`address`、`model`、`robotSN` 进行子串搜索过滤。
@@ -401,26 +349,28 @@ v1/
 - 列表支持批量选择（复选框），以便执行批量删除。
 - 空状态时提示用户添加机器人。
 
-**FR-SOL-022**：系统应支持编辑机器人别名。
+**FR-SOL-022**：系统应支持编辑机器人别名和地址。
 
 - 用户在列表中可直接编辑 `alias` 字段（内联编辑或弹窗编辑）。
-- 编辑后通过 `PUT` 更新对象存储中的机器人定义，并更新 `updatedAt`。
+- 用户在详情对话框中可编辑 `alias` 和 `address` 字段。
+- 编辑后通过 `PUT /api/objects/v1/solutions/{solutionId}/robots/{robotId}` 更新对象存储中的机器人存储数据，并更新 `updatedAt`。
 
 **FR-SOL-023**：系统应支持点击机器人后弹出详情对话框，展示完整机器人信息。
 
 - 对话框分区域展示：
-  - **基础信息**：`address`、`alias`、`model`、`robotSN`、`thingsId`、`vendorId`、`productId`、`mainboardSN`、`mainboardId`、`mainSOMId`。其中 `alias`、`model`、`robotSN`、`vendorId`、`productId`、`mainboardSN`、`mainboardId` 可编辑。
+  - **基础信息**：`alias`（可编辑）、`address`（可编辑）、`model`（只读）、`robotSN`（只读）、`thingsId`（只读）、`vendorId`（只读）、`productId`（只读）、`mainboardSN`（只读）、`mainboardId`（只读）、`mainSOMId`（只读）。
   - **其他信息**：`hardwareDeviceTree`（硬件设备树表格）。
-  - **软件版本信息**：`megaCosmOSVersion`、`movebaseVersion`、`ggrVersion`、`mcuFirmwareVersions`、`actuatorFirmwareVersions`、`sensorFirmwareVersions`。
-  - **硬件版本信息**：`mainControlHardwareVersion`、`mcuHardwareVersions`、`actuatorHardwareVersions`、`sensorHardwareVersions`。
-- 对话框提供“保存”按钮，保存可编辑字段的修改。
-- 对话框提供“关闭”按钮。
+  - **软件版本信息**：`megaCosmOSVersion`、`movebaseVersion`、`ggrVersion`、`mcuFirmwareVersions`、`actuatorFirmwareVersions`、`sensorFirmwareVersions`（均为只读）。
+  - **硬件版本信息**：`mainControlHardwareVersion`、`mcuHardwareVersions`、`actuatorHardwareVersions`、`sensorHardwareVersions`（均为只读）。
+- 对话框提供"保存"按钮，保存 `alias` 和 `address` 的修改。
+- 对话框提供"关闭"按钮。
 
 **FR-SOL-024**：机器人信息获取策略（当前阶段）。
 
-- 当前阶段机器人信息（除 `address`、`alias` 外）使用随机值模拟生成。
-- 后续阶段将设计真实的机器人通信协议以获取实际信息。
-- 模拟数据应具有一致性：同一台机器人在同一会话中返回相同的信息。
+- 对象存储中仅持久化 `id`、`address`、`addressType`、`alias`、`createdAt`、`updatedAt`。
+- 其他机器人信息（model、SN、版本等）由前端动态生成（当前阶段使用基于地址的确定性随机模拟）。
+- 后续阶段将设计真实的机器人通信协议以获取实际信息，届时仅需替换前端的数据获取逻辑。
+- 模拟数据应具有一致性：同一台机器人（相同地址）始终返回相同的信息。
 
 ---
 
@@ -481,11 +431,10 @@ graph LR
     %% 机器人管理子功能用例
     subgraph 机器人管理子功能
         UC10[手动添加单台机器人]
-        UC11[批量添加多台机器人]
-        UC12[删除/批量删除机器人]
-        UC13[查看机器人列表]
-        UC14[编辑机器人别名]
-        UC15[查看/编辑机器人详情]
+        UC11[删除/批量删除机器人]
+        UC12[查看机器人列表]
+        UC13[编辑机器人别名和地址]
+        UC14[查看机器人详情]
     end
 
     %% 其他子功能用例
@@ -510,7 +459,6 @@ graph LR
     FAE --> UC12
     FAE --> UC13
     FAE --> UC14
-    FAE --> UC15
 
     %% include 关系
     UC6 -.->|<<include>>| UC10
@@ -532,12 +480,11 @@ graph LR
 | UC-SOL-07 | 克隆解决方案 | FAE | 源解决方案已存在 | 新解决方案包含源方案全部数据副本 | 1. FAE 选择源方案并指定新名称；2. 系统生成新 ID；3. 系统递归复制所有子资源；4. 系统写入新 meta |
 | UC-SOL-08 | 导出解决方案 | FAE | 解决方案已存在 | 本地生成 ZIP 归档文件 | 1. FAE 选择导出；2. 系统流式打包目录树；3. 系统保存为 `{id}-v{version}-{timestamp}.zip` |
 | UC-SOL-09 | 导入解决方案 | FAE | 无 | 新解决方案出现在列表中 | 1. FAE 选择 ZIP 文件；2. 系统验证归档结构；3. 若 ID 冲突，提示用户选择覆盖/重命名/取消；4. 系统解压并写入对象存储 |
-| UC-ROB-01 | 手动添加单台机器人 | FAE | 当前存在激活解决方案 | 新机器人出现在当前解决方案的机器人列表中 | 1. FAE 输入 IP 地址或 mDNS 域名；2. 系统生成 robotId；3. 系统写入对象存储；4. 系统尝试获取机器人信息（当前随机模拟） |
-| UC-ROB-02 | 批量添加多台机器人 | FAE | 当前存在激活解决方案 | 多台新机器人出现在列表中 | 1. FAE 输入多个地址（每行一个）；2. 系统逐条处理，为每个地址生成 robotId 并写入存储；3. 系统返回添加结果汇总 |
-| UC-ROB-03 | 删除/批量删除机器人 | FAE | 机器人已存在于当前解决方案 | 指定机器人从列表和存储中移除 | 1. FAE 选择要删除的机器人（单台或批量）；2. 系统展示确认对话框；3. 系统执行 DELETE 操作；4. 系统刷新列表 |
-| UC-ROB-04 | 查看机器人列表 | FAE | 当前存在激活解决方案 | 展示当前解决方案下所有机器人的核心基础信息 | 1. FAE 打开 Robots 子界面；2. 系统从对象存储读取所有机器人定义；3. 系统以表格形式展示核心字段 |
-| UC-ROB-05 | 编辑机器人别名 | FAE | 机器人已存在 | 机器人别名已更新 | 1. FAE 点击别名编辑区域；2. 系统进入编辑模式；3. FAE 输入新别名；4. 系统保存并更新对象存储 |
-| UC-ROB-06 | 查看/编辑机器人详情 | FAE | 机器人已存在 | 展示完整信息，可编辑字段已保存 | 1. FAE 点击某机器人行；2. 系统弹出详情对话框；3. 系统分标签页展示基础信息、其他信息、软件版本、硬件版本；4. FAE 编辑可修改字段并保存 |
+| UC-ROB-01 | 手动添加单台机器人 | FAE | 当前存在激活解决方案 | 新机器人出现在当前解决方案的机器人列表中 | 1. FAE 输入 IP 地址或 mDNS 域名及别名；2. 前端生成 robotId；3. 前端写入对象存储；4. 前端生成动态机器人信息 |
+| UC-ROB-02 | 删除/批量删除机器人 | FAE | 机器人已存在于当前解决方案 | 指定机器人从列表和存储中移除 | 1. FAE 选择要删除的机器人（单台或批量）；2. 系统展示确认对话框；3. 前端执行 DELETE 操作；4. 前端刷新列表 |
+| UC-ROB-03 | 查看机器人列表 | FAE | 当前存在激活解决方案 | 展示当前解决方案下所有机器人的核心基础信息 | 1. FAE 打开 Robots 子界面；2. 前端从对象存储读取所有机器人存储数据；3. 前端生成动态信息并合并展示 |
+| UC-ROB-04 | 编辑机器人别名和地址 | FAE | 机器人已存在 | 机器人别名和/或地址已更新 | 1. FAE 编辑别名或地址；2. 前端保存并更新对象存储 |
+| UC-ROB-05 | 查看机器人详情 | FAE | 机器人已存在 | 展示完整信息 | 1. FAE 点击某机器人行；2. 系统弹出详情对话框；3. 系统分标签页展示基础信息、其他信息、软件版本、硬件版本 |
 
 ### 8.3 参与者说明
 
@@ -581,10 +528,10 @@ graph LR
 | `ARTIFACT_REFERENCED` | 尝试删除 `refCount > 0` 的制品 | "该制品正被 {refCount} 个解决方案引用，请先解除引用。" |
 | `ARTIFACT_DUPLICATE_CHECKSUM` | 上传的制品校验和与已有文件相同 | 返回已有制品元数据，提示用户可直接引用。 |
 | `INVALID_ARTIFACT_ID` | 制品 ID 违反安全名称正则 | "制品 ID 包含非法字符。" |
-| `ROBOT_NOT_FOUND` | 对不存在的 robotId 执行读取/更新/删除 | "机器人 '{robotId}' 不存在。" |
-| `INVALID_ROBOT_ID` | 机器人 ID 违反安全名称正则 | "机器人 ID 包含非法字符。" |
-| `INVALID_ROBOT_ADDRESS` | 地址为空或超过长度限制 | "机器人地址不能为空且不能超过 256 个字符。" |
-| `ROBOT_ADDRESS_EXISTS` | 同一解决方案下已存在相同地址 | "该地址已存在于当前解决方案中。" |
+| `ROBOT_NOT_FOUND` | 对不存在的 robotId 执行读取/更新/删除 | "Robot '{robotId}' does not exist."（前端处理） |
+| `INVALID_ROBOT_ADDRESS` | 地址为空或超过 256 字符 | "Robot address cannot be empty and must not exceed 256 characters."（前端验证） |
+| `ROBOT_ADDRESS_EXISTS` | 同一解决方案下已存在相同地址 | "A robot with this address already exists in the current solution."（前端校验） |
+| `OBJECT_NOT_FOUND` | 对不存在的路径执行 GET/PUT/DELETE | "Object '{path}' not found."（通用对象存储错误） |
 
 ---
 
@@ -606,7 +553,11 @@ graph LR
 
 **UI-ROB-002**：Robots 子界面以数据表格形式展示机器人列表，列包括：`alias`、`address`、`model`、`robotSN`、`thingsId`、`megaCosmOSVersion`、操作按钮（查看详情、删除）。
 
-**UI-ROB-003**：表格上方应提供搜索框（按 alias/address/model/SN 过滤）、"Add Robot" 按钮、"Batch Add" 按钮。
+**UI-ROB-003**：表格上方应提供搜索框（按 alias/address/model/SN 过滤）、"Add Robot" 按钮。
+
+**UI-ROB-003a**：Robots 子界面应包含面包屑导航，显示 "Solutions > {Solution Name} > Robots"。
+
+**UI-ROB-003b**：添加机器人后，成功提示应在 5 秒后自动消失。
 
 **UI-ROB-004**：表格每行提供复选框，支持批量选择；选中后工具栏显示 "Batch Delete" 按钮。
 
@@ -614,9 +565,9 @@ graph LR
 
 **UI-ROB-006**：点击机器人行或 "View Details" 按钮，弹出模态框展示完整信息，模态框内使用标签页（Tabs）组织：基础信息、其他信息、软件版本、硬件版本。
 
-**UI-ROB-007**：基础信息标签页中，可编辑字段以输入框展示，只读字段以文本展示；提供 "Save" 按钮保存修改。
+**UI-ROB-007**：基础信息标签页中，`alias` 和 `address` 以输入框展示（可编辑），其余字段均为只读展示；提供 "Save" 按钮保存修改。
 
-**UI-ROB-008**：添加机器人弹窗应支持单台添加（输入 address + alias）和批量添加（文本域，每行一个 address）。
+**UI-ROB-008**：添加机器人弹窗应支持单台添加（输入 address + alias）。打开弹窗时，系统应默认生成一个别名（如 Robot-1、Robot-2）。
 
 **UI-ROB-009**：空状态时展示提示插图和 "Add your first robot" 按钮。
 

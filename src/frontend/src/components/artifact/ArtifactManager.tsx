@@ -191,16 +191,23 @@ export function ArtifactManager({
           <Table {...getTableProps()}>
             <TableHead>
               <TableRow>
-                {headers.map((header) => (
-                  <TableHeader {...getHeaderProps({ header })}>
-                    {header.header}
-                  </TableHeader>
-                ))}
+                {headers.map((header) => {
+                    const headerProps = getHeaderProps({ header });
+                    const { key: headerKey, ...headerRest } = headerProps;
+                    return (
+                      <TableHeader key={headerKey} {...headerRest}>
+                        {header.header}
+                      </TableHeader>
+                    );
+                  })}
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map((row) => (
-                <TableRow {...getRowProps({ row })}>
+              {rows.map((row) => {
+                const rowProps = getRowProps({ row });
+                const { key: rowKey, ...rowRest } = rowProps;
+                return (
+                  <TableRow key={rowKey} {...rowRest}>
                   {row.cells.map((cell) => {
                     if (cell.info.header === "refCount") {
                       const val = cell.value as number;
@@ -253,7 +260,8 @@ export function ArtifactManager({
                     );
                   })}
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         )}

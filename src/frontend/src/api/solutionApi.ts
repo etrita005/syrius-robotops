@@ -1,66 +1,139 @@
-import { get, post, put, del } from "./client.js";
+import { listObjects, getObject, putObject, deleteObject, cloneObject, exportObject, importObject } from "./objectStoreApi.js";
 import {
   SolutionMeta,
   CreateSolutionInput,
   SolutionListResult,
 } from "../types/solution.js";
 
-export const solutionApi = {
-  create(input: CreateSolutionInput): Promise<SolutionMeta> {
-    return post<SolutionMeta>("/solutions", input);
-  },
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
 
-  list(options?: {
-    filter?: { name?: string; tags?: string[] };
-    sort?: { field: string; order: string };
-  }): Promise<SolutionListResult> {
-    const params = new URLSearchParams();
-    if (options?.filter?.name) params.set("filter[name]", options.filter.name);
-    if (options?.filter?.tags) params.set("filter[tags]", options.filter.tags.join(","));
-    if (options?.sort) {
-      params.set("sort[field]", options.sort.field);
-      params.set("sort[order]", options.sort.order);
+function generateId(name: string): string {
+  const slug = slugify(name);
+  const nanoid = () => {
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let id = "";
+    for (let i = 0; i < 6; i++) {
+      id += chars[Math.floor(Math.random() * chars.length)];
     }
-    const qs = params.toString();
-    return get<SolutionListResult>(`/solutions${qs ? `?${qs}` : ""}`);
+    return id;
+  };
+  return `${slug || "solution"}-${nanoid()}`;
+}
+
+const SOLUTION_NAMESPACES = [
+  "robots",
+  "upgrade-packages",
+  "maps",
+  "configs",
+  "diagnostics",
+  "logs",
+];
+
+export const solutionApi = {
+  async create(input: CreateSolutionInput): Promise<SolutionMeta> {
+    const id = input.id ?? generateId(input.name);
+    const now = new Date().toISOString();
+    const meta: SolutionMeta = {
+      id,
+      name: input.name,
+      description: input.description ?? "",
+      createdAt: now,
+      updatedAt: now,
+      version: "1.0.0",
+      tags: input.tags ?? [],
+      metadata: input.metadata ?? {},
+    };
+
+    await putObject(`v1/solutions/${id}/meta`, meta);
+    for (const ns of SOLUTION_NAMESPACES) {
+      await putObject(`v1/solutions/${id}/${ns}/_keep`, "");
+    }
+
+    return meta;
   },
 
-  get(id: string): Promise<SolutionMeta> {
-    return get<SolutionMeta>(`/solutions/${encodeURIComponent(id)}`);
+  async list(): Promise<SolutionListResult> {
+    const dirs = await listObjects("v1/solutions");
+    const solutionDirs = dirs.filter((d) => d.type === "directory");
+
+    const items: SolutionMeta[] = [];
+    const corruptedIds: string[] = [];
+
+    for (const dir of solutionDirs) {
+      try {
+        const meta = await getObject<SolutionMeta>(`v1/solutions/${dir.name}/meta`);
+        if (meta) items.push(meta);
+        else corruptedIds.push(dir.name);
+      } catch {
+        corruptedIds.push(dir.name);
+      }
+    }
+
+    items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+    return { items, corruptedIds };
   },
 
-  update(
+  async get(id: string): Promise<SolutionMeta | null> {
+    return getObject<SolutionMeta>(`v1/solutions/${id}/meta`);
+  },
+
+  async update(
     id: string,
     patch: Partial<Omit<SolutionMeta, "id" | "createdAt" | "version">>
   ): Promise<SolutionMeta> {
-    return put<SolutionMeta>(`/solutions/${encodeURIComponent(id)}`, patch);
+    const current = await getObject<SolutionMeta>(`v1/solutions/${id}/meta`);
+    if (!current) throw new Error(`Solution '${id}' not found`);
+
+    const [major, minor, patchVersion] = current.version.split(".").map(Number);
+    const updated: SolutionMeta = {
+      ...current,
+      ...patch,
+      id: current.id,
+      createdAt: current.createdAt,
+      version: `${major}.${minor}.${patchVersion + 1}`,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await putObject(`v1/solutions/${id}/meta`, updated);
+    return updated;
   },
 
-  remove(id: string): Promise<void> {
-    return del<void>(`/solutions/${encodeURIComponent(id)}`);
+  async remove(id: string): Promise<void> {
+    await deleteObject(`v1/solutions/${id}`);
   },
 
-  clone(sourceId: string, newName: string): Promise<SolutionMeta> {
-    return post<SolutionMeta>(
-      `/solutions/${encodeURIComponent(sourceId)}/clone`,
-      { name: newName }
-    );
+  async clone(sourceId: string, newName: string): Promise<SolutionMeta> {
+    const newId = generateId(newName);
+    await cloneObject(`v1/solutions/${sourceId}`, `v1/solutions/${newId}`);
+
+    const now = new Date().toISOString();
+    const newMeta: SolutionMeta = {
+      id: newId,
+      name: newName,
+      description: "",
+      createdAt: now,
+      updatedAt: now,
+      version: "1.0.0",
+      tags: [],
+      metadata: {},
+    };
+    await putObject(`v1/solutions/${newId}/meta`, newMeta);
+
+    return newMeta;
   },
 
-  exportSolution(id: string, destinationPath?: string): Promise<{ filePath: string }> {
-    return post<{ filePath: string }>(
-      `/solutions/${encodeURIComponent(id)}/export`,
-      { destinationPath }
-    );
+  async exportSolution(id: string, destinationPath?: string): Promise<{ filePath: string }> {
+    return exportObject(`v1/solutions/${id}`, destinationPath);
   },
 
-  importSolution(
-    zipPath: string,
-    conflictResolution: "overwrite" | "rename" | "cancel" = "rename"
-  ): Promise<SolutionMeta> {
-    return post<SolutionMeta>("/solutions/import", {
-      zipPath,
-      conflictResolution,
-    });
+  async importSolution(zipPath: string, targetPath: string): Promise<{ ok: boolean }> {
+    return importObject(zipPath, targetPath);
   },
 };
