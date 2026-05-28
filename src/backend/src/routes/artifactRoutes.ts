@@ -6,6 +6,36 @@ import { AppError } from "../errors/appErrors.js";
 export function createArtifactRoutes(artifactService: ArtifactService): Hono {
   const router = new Hono();
 
+  router.post("/upload-file", async (c) => {
+    const body = await c.req.parseBody();
+    const file = body["file"];
+    if (!file || !(file instanceof File)) {
+      return c.json({ error: "INVALID_INPUT", message: "file is required as multipart form-data." }, 400);
+    }
+    const tagsRaw = body["tags"];
+    const metadataRaw = body["metadata"];
+    const customId = typeof body["customId"] === "string" ? body["customId"] : undefined;
+    const tags = typeof tagsRaw === "string" ? JSON.parse(tagsRaw) : undefined;
+    const metadata = typeof metadataRaw === "string" ? JSON.parse(metadataRaw) : undefined;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    try {
+      const result = await artifactService.uploadFromBuffer(file.name, buffer, {
+        tags,
+        metadata,
+        customId,
+      });
+      return c.json(result, result.status === "success" ? 201 : 200);
+    } catch (err) {
+      if (err instanceof AppError) {
+        return c.json({ error: err.code, message: err.message }, err.statusCode);
+      }
+      throw err;
+    }
+  });
+
   router.post("/upload", async (c) => {
     const { filePath, tags, metadata, customId } = await c.req.json();
     if (!filePath) {

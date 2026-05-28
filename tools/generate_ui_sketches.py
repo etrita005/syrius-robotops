@@ -363,6 +363,27 @@ def page_artifact_detail():
     img.save(os.path.join(ART_DIR, "03_artifact_detail.png"))
     print("Saved artifact-management/03_artifact_detail.png")
 
+# =============================================================================
+# 8. Delete Artifact Confirmation Modal
+# =============================================================================
+def page_delete_artifact_modal():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0,0,W,H], fill="#00000066")
+
+    mx, my, mw, mh = 350, 240, 500, 200
+    draw.rounded_rectangle([mx, my, mx+mw, my+mh], radius=8, fill="white", outline="#ccc", width=1)
+    draw.text((mx+24, my+24), "Delete Artifact", fill="#161616", font=FONT_LG)
+    draw.text((mx+24, my+64), "This will permanently delete the artifact file and its metadata.", fill="#525252", font=FONT_SM)
+    draw.text((mx+24, my+96), "os_upgrade_v2.1.pkg", fill="#161616", font=FONT_MD)
+
+    draw_button(draw, (mx+mw-160, my+mh-56, mx+mw-24, my+mh-24), "Delete", bg="#fa4d56", fg="white")
+    draw_button(draw, (mx+mw-310, my+mh-56, mx+mw-174, my+mh-24), "Cancel")
+
+    img.save(os.path.join(ART_DIR, "04_delete_confirm.png"))
+    print("Saved artifact-management/04_delete_confirm.png")
+
 if __name__ == "__main__":
     page_solution_selector()
     page_create_solution()
@@ -371,4 +392,5 @@ if __name__ == "__main__":
     page_artifact_manager()
     page_artifact_selector()
     page_artifact_detail()
+    page_delete_artifact_modal()
     print("\nAll UI sketches generated in", BASE_DIR)

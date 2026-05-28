@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, Fragment, useMemo } from "react";
 import {
   Button,
   DataTable,
@@ -13,9 +13,9 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
-  TextInput,
   InlineNotification,
   Loading,
+  TextInput,
 } from "@carbon/react";
 import { TrashCan, View, Download } from "@carbon/react/icons";
 import { ArtifactMeta } from "../../types/artifact.js";
@@ -38,14 +38,16 @@ export function ArtifactManager({
 }: ArtifactManagerProps) {
   const [selectedArtifact, setSelectedArtifact] =
     useState<ArtifactMeta | null>(null);
-  const [showDelete, setShowDelete] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState("");
+  const [showDelete, setShowDelete] = useState<ArtifactMeta | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("All");
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
+  const [showUnreferencedOnly, setShowUnreferencedOnly] = useState(false);
 
   const handleDelete = async (id: string) => {
     try {
       await artifactApi.remove(id);
       setShowDelete(null);
-      setDeleteConfirmId("");
       onRefresh();
     } catch (err) {
       console.error("Failed to delete artifact:", err);
@@ -59,6 +61,37 @@ export function ArtifactManager({
       console.error("Failed to download artifact:", err);
     }
   };
+
+  const contentTypes = useMemo(() => {
+    const types = new Set(artifacts.map((a) => a.contentType));
+    return Array.from(types);
+  }, [artifacts]);
+
+  const cycleTypeFilter = () => {
+    const options = ["All", ...contentTypes];
+    const idx = options.indexOf(typeFilter);
+    setTypeFilter(options[(idx + 1) % options.length]);
+  };
+
+  const filteredArtifacts = useMemo(() => {
+    let result = artifacts.filter((a) => {
+      if (searchText && !a.fileName.toLowerCase().includes(searchText.toLowerCase())) {
+        return false;
+      }
+      if (typeFilter !== "All" && a.contentType !== typeFilter) {
+        return false;
+      }
+      if (showUnreferencedOnly && a.refCount !== 0) {
+        return false;
+      }
+      return true;
+    });
+    result = [...result].sort((a, b) => {
+      const cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return sortOrder === "asc" ? cmp : -cmp;
+    });
+    return result;
+  }, [artifacts, searchText, typeFilter, showUnreferencedOnly, sortOrder]);
 
   const headers = [
     { key: "fileName", header: "File Name" },
@@ -77,30 +110,27 @@ export function ArtifactManager({
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
-  const rows = artifacts.map((a) => ({
+  const rows = filteredArtifacts.map((a) => ({
     id: a.id,
     fileName: a.fileName,
     size: formatSize(a.size),
     contentType: a.contentType,
     refCount: a.refCount,
     createdAt: new Date(a.createdAt).toLocaleString(),
-    raw: a,
   }));
+
+  const artifactMap = new Map(artifacts.map((a) => [a.id, a]));
 
   if (loading) {
     return (
-      <div style={{ padding: "2rem", textAlign: "center" }}>
+      <div style={{ padding: "2rem 0", textAlign: "center" }}>
         <Loading withOverlay={false} />
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
-      <h1 style={{ fontSize: "1.75rem", fontWeight: 600, marginBottom: "2rem" }}>
-        Artifact Management
-      </h1>
-
+    <Fragment>
       {error && (
         <InlineNotification
           kind="error"
@@ -110,13 +140,59 @@ export function ArtifactManager({
         />
       )}
 
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+        <TextInput
+          id="search-artifacts"
+          labelText=""
+          placeholder="Search artifacts..."
+          value={searchText}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchText(e.target.value)}
+          style={{ width: "260px" }}
+        />
+        <span
+          onClick={cycleTypeFilter}
+          style={{
+            color: "#0f62fe",
+            fontSize: "0.875rem",
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+        >
+          Type: {typeFilter}
+        </span>
+        <span style={{ color: "#8d8d8d", fontSize: "0.875rem" }}>|</span>
+        <span
+          onClick={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
+          style={{
+            color: "#0f62fe",
+            fontSize: "0.875rem",
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+        >
+          Sort: {sortOrder === "desc" ? "Recent" : "Oldest"}
+        </span>
+        <span style={{ color: "#8d8d8d", fontSize: "0.875rem" }}>|</span>
+        <span
+          onClick={() => setShowUnreferencedOnly((v) => !v)}
+          style={{
+            color: "#0f62fe",
+            fontSize: "0.875rem",
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+        >
+          Show: {showUnreferencedOnly ? "All" : "Unreferenced only"}
+        </span>
+      </div>
+
       <DataTable rows={rows} headers={headers}>
-        {({ rows, headers, getTableProps, getHeadProps, getRowProps, getCellProps }) => (
+        {({ rows, headers, getTableProps, getHeaderProps, getRowProps, getCellProps }) => (
           <Table {...getTableProps()}>
             <TableHead>
               <TableRow>
                 {headers.map((header) => (
-                  <TableHeader key={header.key} {...getHeadProps({ header })}>
+                  <TableHeader {...getHeaderProps({ header })}>
                     {header.header}
                   </TableHeader>
                 ))}
@@ -124,12 +200,12 @@ export function ArtifactManager({
             </TableHead>
             <TableBody>
               {rows.map((row) => (
-                <TableRow key={row.id} {...getRowProps({ row })}>
+                <TableRow {...getRowProps({ row })}>
                   {row.cells.map((cell) => {
                     if (cell.info.header === "refCount") {
                       const val = cell.value as number;
                       return (
-                        <TableCell key={cell.id} {...getCellProps({ cell })}>
+                        <TableCell {...getCellProps({ cell })}>
                           {val}
                           {val === 0 && (
                             <Tag type="gray" size="sm" style={{ marginLeft: "0.5rem" }}>
@@ -140,16 +216,16 @@ export function ArtifactManager({
                       );
                     }
                     if (cell.info.header === "actions") {
-                      const meta = row.raw as ArtifactMeta;
+                      const meta = artifactMap.get(row.id);
                       return (
-                        <TableCell key={cell.id} {...getCellProps({ cell })}>
+                        <TableCell key={cell.id}>
                           <Button
                             size="sm"
                             kind="ghost"
                             renderIcon={View}
                             iconDescription="View"
                             hasIconOnly
-                            onClick={() => setSelectedArtifact(meta)}
+                            onClick={() => meta && setSelectedArtifact(meta)}
                           />
                           <Button
                             size="sm"
@@ -157,7 +233,7 @@ export function ArtifactManager({
                             renderIcon={Download}
                             iconDescription="Download"
                             hasIconOnly
-                            onClick={() => handleDownload(meta.id)}
+                            onClick={() => meta && handleDownload(meta.id)}
                           />
                           <Button
                             size="sm"
@@ -165,13 +241,13 @@ export function ArtifactManager({
                             renderIcon={TrashCan}
                             iconDescription="Delete"
                             hasIconOnly
-                            onClick={() => setShowDelete(meta.id)}
+                            onClick={() => meta && setShowDelete(meta)}
                           />
                         </TableCell>
                       );
                     }
                     return (
-                      <TableCell key={cell.id} {...getCellProps({ cell })}>
+                      <TableCell {...getCellProps({ cell })}>
                         {cell.value}
                       </TableCell>
                     );
@@ -222,48 +298,36 @@ export function ArtifactManager({
         </ComposedModal>
       )}
 
-      <ComposedModal
-        open={showDelete !== null}
-        onClose={() => {
-          setShowDelete(null);
-          setDeleteConfirmId("");
-        }}
-      >
-        <ModalHeader title="Delete Artifact" />
-        <ModalBody>
-          <p style={{ marginBottom: "1rem" }}>
-            This will permanently delete the artifact file and its metadata.
-          </p>
-          <p style={{ marginBottom: "1rem", fontWeight: 600 }}>
-            Please type the artifact ID to confirm:
-          </p>
-          <TextInput
-            id="delete-confirm-id"
-            labelText=""
-            placeholder="Type artifact ID to confirm"
-            value={deleteConfirmId}
-            onChange={(e) => setDeleteConfirmId(e.target.value)}
-          />
-        </ModalBody>
-        <ModalFooter>
-          <Button
-            kind="secondary"
-            onClick={() => {
-              setShowDelete(null);
-              setDeleteConfirmId("");
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            kind="danger"
-            onClick={() => showDelete && handleDelete(showDelete)}
-            disabled={deleteConfirmId !== showDelete}
-          >
-            Delete artifact
-          </Button>
-        </ModalFooter>
-      </ComposedModal>
-    </div>
+      {showDelete && (
+        <ComposedModal
+          open
+          onClose={() => setShowDelete(null)}
+        >
+          <ModalHeader title="Delete Artifact" />
+          <ModalBody>
+            <p style={{ marginBottom: "1rem" }}>
+              This will permanently delete the artifact file and its metadata.
+            </p>
+            <p style={{ fontWeight: 600 }}>
+              {showDelete.fileName}
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              kind="secondary"
+              onClick={() => setShowDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              kind="danger"
+              onClick={() => handleDelete(showDelete.id)}
+            >
+              Delete
+            </Button>
+          </ModalFooter>
+        </ComposedModal>
+      )}
+    </Fragment>
   );
 }

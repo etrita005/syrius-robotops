@@ -394,8 +394,8 @@ sequenceDiagram
     participant OS as ObjectStore
 
     FAE->>UI: 点击制品的删除按钮
-    UI->>UI: 展示确认对话框（第一步）
-    FAE->>UI: 确认并输入制品 ID/名称（第二步）
+    UI->>UI: 展示确认对话框（展示文件名并提示不可撤销）
+    FAE->>UI: 确认删除
     UI->>ASI: remove(artifactId)
     ASI->>OS: GET /api/obs/v1/artifacts/{artifactId}_meta
     OS-->>ASI: ArtifactMeta
@@ -509,7 +509,7 @@ sequenceDiagram
 
 - **触发**：点击行或"查看"操作打开侧面板（`SidePanel`）或模态框。
 - **内容**：以只读表单布局展示全部 `ArtifactMeta` 字段。`tags` 渲染为 `Tag` 组件；`metadata` 渲染为键值列表。
-- **操作**："下载"按钮（保存到用户选择的本地路径）。"编辑"按钮切换 `tags` 和 `metadata` 的内联编辑。"删除"按钮（受 `refCount === 0` 与两步确认保护）。
+- **操作**："下载"按钮（保存到用户选择的本地路径）。"编辑"按钮切换 `tags` 和 `metadata` 的内联编辑。"删除"按钮（受 `refCount === 0` 与弹窗确认保护）。
 
 ### 7.3 制品选择器对话框
 

@@ -27,13 +27,13 @@ export default function App() {
         <HeaderNavigation aria-label="Main navigation">
           <HeaderMenuItem
             onClick={() => setCurrentView("solutions")}
-            isCurrent={currentView === "solutions"}
+            isActive={currentView === "solutions"}
           >
             Solutions
           </HeaderMenuItem>
           <HeaderMenuItem
             onClick={() => setCurrentView("artifacts")}
-            isCurrent={currentView === "artifacts"}
+            isActive={currentView === "artifacts"}
           >
             Artifacts
           </HeaderMenuItem>
@@ -59,7 +59,13 @@ export default function App() {
           />
         )}
         {currentView === "artifacts" && (
-          <>
+          <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "2rem" }}>
+            <h1 style={{ fontSize: "1.75rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+              Artifact Manager
+            </h1>
+            <p style={{ color: "#525252", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
+              Global binary artifacts shared across all solutions.
+            </p>
             <UploadDropZone onUploadComplete={artifactsState.refresh} />
             <ArtifactManager
               artifacts={artifactsState.items}
@@ -68,7 +74,7 @@ export default function App() {
               error={artifactsState.error}
               onRefresh={artifactsState.refresh}
             />
-          </>
+          </div>
         )}
       </Content>
     </Theme>

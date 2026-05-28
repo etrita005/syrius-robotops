@@ -6,6 +6,24 @@ import {
 } from "../types/artifact.js";
 
 export const artifactApi = {
+  uploadFile(file: File, options?: { tags?: string[]; metadata?: Record<string, unknown>; customId?: string }): Promise<UploadResult> {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (options?.tags) formData.append("tags", JSON.stringify(options.tags));
+    if (options?.metadata) formData.append("metadata", JSON.stringify(options.metadata));
+    if (options?.customId) formData.append("customId", options.customId);
+    return fetch("/api/artifacts/upload-file", {
+      method: "POST",
+      body: formData,
+    }).then(async (res) => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ message: "Unknown error" }));
+        throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
+      }
+      return res.json();
+    });
+  },
+
   upload(filePath: string, options?: { tags?: string[]; metadata?: Record<string, unknown>; customId?: string }): Promise<UploadResult> {
     return post<UploadResult>("/artifacts/upload", { filePath, ...options });
   },

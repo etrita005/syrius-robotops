@@ -79,7 +79,6 @@ export function ArtifactSelector({
     fileName: a.fileName,
     size: formatSize(a.size),
     refCount: a.refCount,
-    raw: a,
   }));
 
   return (
@@ -99,13 +98,13 @@ export function ArtifactSelector({
           <Loading withOverlay={false} />
         ) : (
           <DataTable rows={rows} headers={headers} radio>
-            {({ rows, headers, getTableProps, getHeadProps, getRowProps, getCellProps, selectRow }) => (
+            {({ rows, headers, getTableProps, getHeaderProps, getRowProps, getCellProps, selectRow }) => (
               <Table {...getTableProps()}>
                 <TableHead>
                   <TableRow>
                     <TableHeader />
                     {headers.map((header) => (
-                      <TableHeader key={header.key} {...getHeadProps({ header })}>
+                      <TableHeader {...getHeaderProps({ header })}>
                         {header.header}
                       </TableHeader>
                     ))}
@@ -114,7 +113,6 @@ export function ArtifactSelector({
                 <TableBody>
                   {rows.map((row) => (
                     <TableRow
-                      key={row.id}
                       {...getRowProps({ row })}
                       onClick={() => setSelectedId(row.id)}
                       style={{
@@ -133,7 +131,7 @@ export function ArtifactSelector({
                       {row.cells
                         .filter((c) => c.info.header !== "id")
                         .map((cell) => (
-                          <TableCell key={cell.id} {...getCellProps({ cell })}>
+                          <TableCell key={cell.id}>
                             {cell.value}
                           </TableCell>
                         ))}

@@ -1,5 +1,6 @@
 import { ObjectStore } from "./objectStore.js";
 import { ChecksumService } from "./checksumService.js";
+import { createHash } from "node:crypto";
 import {
   ArtifactMeta,
   UploadResult,
@@ -50,6 +51,58 @@ export class ArtifactService {
   constructor(obs: ObjectStore, checksumService: ChecksumService) {
     this.obs = obs;
     this.checksumService = checksumService;
+  }
+
+  async uploadFromBuffer(
+    fileName: string,
+    buffer: Buffer,
+    options?: {
+      tags?: string[];
+      metadata?: Record<string, unknown>;
+      customId?: string;
+    }
+  ): Promise<UploadResult> {
+    const checksum = computeBufferSha256(buffer);
+
+    const existing = await this.findByChecksum(checksum);
+    if (existing) {
+      return { status: "deduplicated", artifact: existing };
+    }
+
+    const artifactId = options?.customId ?? generateId(fileName);
+
+    if (options?.customId) {
+      validateArtifactId(artifactId);
+    }
+
+    const exists = await this.obs.exists(`v1/artifacts/${artifactId}_meta`);
+    if (exists) {
+      return { status: "failed", error: "Artifact ID already exists" };
+    }
+
+    if (buffer.length > MAX_FILE_SIZE) {
+      return { status: "failed", error: "FILE_TOO_LARGE" };
+    }
+
+    const contentType = inferContentType(fileName);
+
+    await this.obs.putBuffer(`v1/artifacts/${artifactId}`, buffer, contentType);
+
+    const meta: ArtifactMeta = {
+      id: artifactId,
+      fileName,
+      size: buffer.length,
+      checksum,
+      contentType,
+      createdAt: new Date().toISOString(),
+      refCount: 0,
+      tags: options?.tags ?? [],
+      metadata: options?.metadata ?? {},
+    };
+
+    await this.obs.putJson(`v1/artifacts/${artifactId}_meta`, meta);
+
+    return { status: "success", artifact: meta };
   }
 
   async upload(
@@ -369,4 +422,8 @@ function inferContentType(fileName: string): string {
     jpeg: "image/jpeg",
   };
   return mimeMap[ext] ?? "application/octet-stream";
+}
+
+function computeBufferSha256(buffer: Buffer): string {
+  return createHash("sha256").update(buffer).digest("hex");
 }
