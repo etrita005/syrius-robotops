@@ -16,14 +16,20 @@ class MockTaskBase implements ITaskResolver {
     const iterations = (params.iterations as number) ?? 3;
 
     for (let i = 1; i <= iterations; i++) {
-      const sleepMs = Math.floor(Math.random() * 5000) + 5000; // 5-10s
+      const sleepMs = Math.floor(Math.random() * 3000) + 2000;
       await sleep(sleepMs);
       console.log(
         `[${new Date().toISOString()}] [${this.className}] ${name}: iteration ${i}/${iterations}`
       );
     }
 
-    return { done: true };
+    return {
+      done: true,
+      taskName: name,
+      taskType: this.className,
+      iterations,
+      completedAt: new Date().toISOString(),
+    };
   }
 }
 

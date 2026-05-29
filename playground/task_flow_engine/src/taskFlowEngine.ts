@@ -18,11 +18,16 @@ export type TaskState = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "SKIPPE
 export interface FlowRecord {
   id: string;
   type: FlowType;
+  input?: ValueMap;
+  expectedResults?: string[];
   dag: FlowSpec;
   state: FlowState;
   taskStates: Record<string, TaskState>;
+  taskResults?: Record<string, ValueMap>;
+  results?: ValueMap;
   serializedRunStatus?: SerializedFlowRunStatus;
   createdAt: string;
+  finishedAt?: string;
 }
 
 export interface FlowSummary {
@@ -30,7 +35,17 @@ export interface FlowSummary {
   type: FlowType;
   state: FlowState;
   taskStates: Record<string, TaskState>;
+  taskResults?: Record<string, ValueMap>;
+  results?: ValueMap;
+  input?: ValueMap;
+  expectedResults?: string[];
   createdAt: string;
+  finishedAt?: string;
+}
+
+export interface TaskFlowEngineOptions {
+  completedFlowTtlMs?: number;
+  cleanupIntervalMs?: number;
 }
 
 interface SSEClient {
@@ -46,23 +61,71 @@ function getTaskCodes(dag: FlowSpec): string[] {
   return Object.keys(dag.tasks ?? {});
 }
 
+const DEFAULT_TTL_MS = 30 * 60 * 1000;
+const DEFAULT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
 export class TaskFlowEngine {
   private flows = new Map<string, FlowRecord>();
   private flowInstances = new Map<string, Flow>();
   private sseClients = new Set<SSEClient>();
+  private completedFlowTtlMs: number;
+  private cleanupIntervalMs: number;
+  private cleanupTimer?: ReturnType<typeof setInterval>;
 
-  constructor() {
+  constructor(options?: TaskFlowEngineOptions) {
+    this.completedFlowTtlMs = options?.completedFlowTtlMs ?? DEFAULT_TTL_MS;
+    this.cleanupIntervalMs = options?.cleanupIntervalMs ?? DEFAULT_CLEANUP_INTERVAL_MS;
     FlowManager.installLogger({ log: (entry) => this.handleLogEntry(entry) });
+    this.startCleanupTimer();
   }
 
-  // ---------------------------------------------------------------------------
-  // Flow lifecycle
-  // ---------------------------------------------------------------------------
+  private startCleanupTimer(): void {
+    this.cleanupTimer = setInterval(() => this.cleanupExpiredFlows(), this.cleanupIntervalMs);
+  }
 
-  async createFlow(type: FlowType, dag: FlowSpec): Promise<FlowSummary> {
+  private cleanupExpiredFlows(): void {
+    const now = Date.now();
+    const expiredIds: string[] = [];
+
+    for (const [id, record] of this.flows) {
+      if (
+        (record.state === "COMPLETED" || record.state === "FAILED" || record.state === "STOPPED") &&
+        record.finishedAt
+      ) {
+        const finishedMs = new Date(record.finishedAt).getTime();
+        if (now - finishedMs > this.completedFlowTtlMs) {
+          expiredIds.push(id);
+        }
+      }
+    }
+
+    for (const id of expiredIds) {
+      this.flows.delete(id);
+      this.flowInstances.delete(id);
+      const record = this.flows.get(id);
+      if (record?.type === "user") {
+        store.remove(["flows", id]).catch(() => {});
+      }
+      this.broadcast("task-flow-engine/flow-removed", { flowId: id });
+      console.log(`[TTL Cleanup] Removed expired flow: ${id}`);
+    }
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = undefined;
+    }
+  }
+
+  async createFlow(
+    type: FlowType,
+    dag: FlowSpec,
+    input?: ValueMap,
+    expectedResults?: string[]
+  ): Promise<FlowSummary> {
     const id = randomUUID();
 
-    // auto-patch resolver.results so flowed knows how to map MockTask return values
     const tasks = (dag as any).tasks ?? {};
     for (const code of Object.keys(tasks)) {
       const task = tasks[code];
@@ -80,6 +143,8 @@ export class TaskFlowEngine {
     const record: FlowRecord = {
       id,
       type,
+      input,
+      expectedResults,
       dag,
       state: "PENDING",
       taskStates,
@@ -93,7 +158,6 @@ export class TaskFlowEngine {
     await this.saveFlow(record);
     this.broadcast("task-flow-engine/flow-created", this.summarize(record));
 
-    // auto-start
     this.startFlow(id);
 
     return this.summarize(record);
@@ -108,11 +172,30 @@ export class TaskFlowEngine {
     this.saveFlow(record).catch(() => {});
     this.broadcast("task-flow-engine/flow-updated", this.summarize(record));
 
+    const startParams = record.input ?? {};
+
+    const allProvides: string[] = [];
+    const tasks = (record.dag as Record<string, unknown>).tasks as
+      | Record<string, { provides?: string[] }>
+      | undefined;
+    if (tasks) {
+      for (const taskSpec of Object.values(tasks)) {
+        if (taskSpec.provides) {
+          allProvides.push(...taskSpec.provides);
+        }
+      }
+    }
+    const expected = [...new Set([...allProvides, ...(record.expectedResults ?? [])])];
+
     flow
-      .start({}, [], mockResolvers, {}, { instanceId: id })
-      .then(() => {
+      .start(startParams, expected, mockResolvers, {}, { instanceId: id })
+      .then((flowResults: ValueMap) => {
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "COMPLETED";
+        }
+        if (flowResults && Object.keys(flowResults).length > 0) {
+          record.results = flowResults;
+          this.extractTaskResults(id, flowResults);
         }
         this.finalizeFlow(id);
       })
@@ -124,11 +207,40 @@ export class TaskFlowEngine {
       });
   }
 
+  private extractTaskResults(id: string, flowResults: ValueMap): void {
+    const record = this.flows.get(id);
+    if (!record) return;
+
+    if (!record.taskResults) {
+      record.taskResults = {};
+    }
+
+    const tasks = (record.dag as Record<string, unknown>).tasks as
+      | Record<string, { resolver?: { results?: Record<string, string> } }>
+      | undefined;
+
+    if (!tasks) return;
+
+    for (const [taskCode, taskSpec] of Object.entries(tasks)) {
+      const resultMapping = taskSpec?.resolver?.results;
+      if (!resultMapping) continue;
+
+      const taskResult: ValueMap = {};
+      for (const [resolverKey, flowKey] of Object.entries(resultMapping)) {
+        if (flowResults[flowKey] !== undefined) {
+          taskResult[resolverKey] = flowResults[flowKey];
+        }
+      }
+      if (Object.keys(taskResult).length > 0) {
+        record.taskResults[taskCode] = taskResult;
+      }
+    }
+  }
+
   private finalizeFlow(id: string): void {
     const record = this.flows.get(id);
     if (!record) return;
 
-    // mark remaining pending tasks as skipped for failed/stopped flows
     if (record.state === "FAILED" || record.state === "STOPPED") {
       for (const code of Object.keys(record.taskStates)) {
         if (record.taskStates[code] === "PENDING") {
@@ -136,6 +248,8 @@ export class TaskFlowEngine {
         }
       }
     }
+
+    record.finishedAt = nowISO();
 
     const flow = this.flowInstances.get(id);
     if (flow) {
@@ -148,6 +262,12 @@ export class TaskFlowEngine {
 
     this.saveFlow(record).catch(() => {});
     this.broadcast("task-flow-engine/flow-updated", this.summarize(record));
+    this.broadcast("task-flow-engine/flow-completed", {
+      flowId: id,
+      state: record.state,
+      results: record.results ?? null,
+      finishedAt: record.finishedAt,
+    });
   }
 
   async pauseFlow(id: string): Promise<void> {
@@ -179,9 +299,13 @@ export class TaskFlowEngine {
 
     flow
       .resume()
-      .then(() => {
+      .then((flowResults: ValueMap) => {
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "COMPLETED";
+        }
+        if (flowResults && Object.keys(flowResults).length > 0) {
+          record.results = flowResults;
+          this.extractTaskResults(id, flowResults);
         }
         this.finalizeFlow(id);
       })
@@ -218,7 +342,7 @@ export class TaskFlowEngine {
     this.flowInstances.delete(id);
 
     if (record.type === "user") {
-      await store.remove(["flows", id]);
+      await store.remove(["flows", id]).catch(() => {});
     }
 
     this.broadcast("task-flow-engine/flow-removed", { flowId: id });
@@ -236,14 +360,9 @@ export class TaskFlowEngine {
         results.push(this.summarize(record));
       }
     }
-    // sort by createdAt desc
     results.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return results;
   }
-
-  // ---------------------------------------------------------------------------
-  // Batch operations
-  // ---------------------------------------------------------------------------
 
   async batchPause(ids: string[]): Promise<void> {
     await Promise.all(ids.map((id) => this.pauseFlow(id).catch(() => {})));
@@ -260,10 +379,6 @@ export class TaskFlowEngine {
   async batchDelete(ids: string[]): Promise<void> {
     await Promise.all(ids.map((id) => this.deleteFlow(id).catch(() => {})));
   }
-
-  // ---------------------------------------------------------------------------
-  // SSE
-  // ---------------------------------------------------------------------------
 
   addSSEClient(client: SSEClient): void {
     this.sseClients.add(client);
@@ -294,10 +409,6 @@ export class TaskFlowEngine {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Persistence
-  // ---------------------------------------------------------------------------
-
   async saveFlow(record: FlowRecord): Promise<void> {
     if (record.type === "internal") return;
     const flow = this.flowInstances.get(record.id);
@@ -326,7 +437,6 @@ export class TaskFlowEngine {
       if (!result || result.type !== "file") continue;
       try {
         const record = JSON.parse(result.content.toString("utf-8")) as FlowRecord;
-        // validate
         if (!record.id || !record.dag) continue;
 
         const flow = new Flow(record.dag, record.serializedRunStatus);
@@ -336,17 +446,11 @@ export class TaskFlowEngine {
         if (record.state === "RUNNING") {
           this.startFlow(record.id);
         }
-        // if PAUSED, leave as-is; user must resume manually
-        // if COMPLETED/FAILED/STOPPED, leave as terminal state
       } catch (err) {
         console.error(`Failed to load flow ${child.name}:`, err);
       }
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Internal helpers
-  // ---------------------------------------------------------------------------
 
   private handleLogEntry(entry: FlowedLogEntry): void {
     const flowId = entry.objectId;
@@ -369,15 +473,53 @@ export class TaskFlowEngine {
       if (taskCode) {
         const isError = entry.level === "error";
         record.taskStates[taskCode] = isError ? "FAILED" : "COMPLETED";
+
+        if (!record.taskResults) {
+          record.taskResults = {};
+        }
+
+        const flow = this.flowInstances.get(flowId);
+        if (flow && !isError) {
+          try {
+            const serializableState = flow.getSerializableState();
+            const flowResults = serializableState?.results as ValueMap | undefined;
+            const taskSpec = (record.dag as Record<string, unknown>).tasks as
+              | Record<string, { resolver?: { results?: Record<string, string> } }>
+              | undefined;
+            const resultMapping = taskSpec?.[taskCode]?.resolver?.results;
+            if (resultMapping && flowResults) {
+              const taskResult: ValueMap = {};
+              for (const [resolverKey, flowKey] of Object.entries(resultMapping)) {
+                if (flowResults[flowKey] !== undefined) {
+                  taskResult[resolverKey] = flowResults[flowKey];
+                }
+              }
+              if (Object.keys(taskResult).length > 0) {
+                record.taskResults[taskCode] = taskResult;
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+
         this.broadcast("task-flow-engine/task-updated", {
           flowId,
           taskName: taskCode,
           state: record.taskStates[taskCode],
         });
+
+        if (!isError && record.taskResults[taskCode]) {
+          this.broadcast("task-flow-engine/task-result", {
+            flowId,
+            taskName: taskCode,
+            state: "COMPLETED",
+            result: record.taskResults[taskCode],
+          });
+        }
       }
     }
 
-    // Persist on task events
     if (entry.eventType === "Task.Started" || entry.eventType === "Task.Finished") {
       const flow = this.flowInstances.get(flowId);
       if (flow) {
@@ -398,7 +540,12 @@ export class TaskFlowEngine {
       type: record.type,
       state: record.state,
       taskStates: { ...record.taskStates },
+      taskResults: record.taskResults ? { ...record.taskResults } : undefined,
+      results: record.results,
+      input: record.input,
+      expectedResults: record.expectedResults,
       createdAt: record.createdAt,
+      finishedAt: record.finishedAt,
     };
   }
 }
