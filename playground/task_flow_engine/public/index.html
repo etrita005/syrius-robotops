@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Engine Playground</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f6f8;
+      color: #161616;
+    }
+    h1, h2 { margin-top: 0; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .panel {
+      background: #fff;
+      border-radius: 4px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; }
+    select, textarea, button {
+      font-family: inherit;
+      font-size: 14px;
+    }
+    select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #c6c6c6;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+    textarea { min-height: 220px; font-family: monospace; }
+    .row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 12px; }
+    .row > div { flex: 1; }
+    button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: #0f62fe;
+      color: #fff;
+      font-weight: 600;
+    }
+    button:hover { background: #0353e9; }
+    button.secondary { background: #393939; }
+    button.secondary:hover { background: #4c4c4c; }
+    button.danger { background: #da1e28; }
+    button.danger:hover { background: #b81921; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e0e0e0; }
+    th { background: #f4f4f4; font-weight: 600; }
+    tr:hover { background: #f4f4f4; }
+    .state {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .state-PENDING { background: #e8e8e8; color: #525252; }
+    .state-RUNNING { background: #c6e0ff; color: #0043ce; }
+    .state-PAUSED { background: #fde607; color: #684e00; }
+    .state-COMPLETED { background: #c6f6c6; color: #044317; }
+    .state-FAILED { background: #ffd6d6; color: #750e0e; }
+    .state-STOPPED { background: #e8e8e8; color: #161616; }
+    .state-SKIPPED { background: #e8e8e8; color: #8d8d8d; }
+    .actions { display: flex; gap: 6px; }
+    .actions button { padding: 6px 10px; font-size: 12px; }
+    .subtask-table { width: 100%; margin-top: 8px; font-size: 13px; }
+    .subtask-table th, .subtask-table td { padding: 6px 10px; }
+    .expand-btn {
+      background: none;
+      border: none;
+      color: #0f62fe;
+      padding: 0;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .expand-btn:hover { text-decoration: underline; background: none; }
+    .event-log {
+      height: 160px;
+      overflow-y: auto;
+      background: #262626;
+      color: #f4f4f4;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      border-radius: 4px;
+    }
+    .event-log .entry { margin-bottom: 4px; }
+    .filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .filter-row select { width: auto; margin-bottom: 0; }
+    .message { padding: 10px; border-radius: 4px; margin-bottom: 12px; font-size: 14px; }
+    .message.success { background: #c6f6c6; color: #044317; }
+    .message.error { background: #ffd6d6; color: #750e0e; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Task Engine Playground</h1>
+
+    <div id="msg" class="message hidden"></div>
+
+    <div class="panel">
+      <h2>Create Flow</h2>
+      <div class="row">
+        <div>
+          <label for="flowType">Type</label>
+          <select id="flowType">
+            <option value="internal">Internal</option>
+            <option value="user">User</option>
+          </select>
+        </div>
+        <div>
+          <button type="button" class="secondary" onclick="loadExample()">Load Example</button>
+          <button type="button" class="secondary" onclick="loadParallelExample()">Load Parallel Example</button>
+        </div>
+      </div>
+      <label for="dagJson">DAG JSON</label>
+      <textarea id="dagJson" placeholder='{ "tasks": { ... } }'></textarea>
+      <button type="button" onclick="createFlow()">Create & Start Flow</button>
+    </div>
+
+    <div class="panel">
+      <h2>Flows</h2>
+      <div class="filter-row">
+        <label for="filterType" style="margin-bottom:0">Filter:</label>
+        <select id="filterType" onchange="loadFlows()">
+          <option value="">All</option>
+          <option value="internal">Internal</option>
+          <option value="user">User</option>
+        </select>
+        <div style="flex:1"></div>
+        <div class="toolbar">
+          <button type="button" class="secondary" onclick="batchAction('pause')">Pause Selected</button>
+          <button type="button" class="secondary" onclick="batchAction('resume')">Resume Selected</button>
+          <button type="button" class="danger" onclick="batchAction('stop')">Stop Selected</button>
+        </div>
+      </div>
+      <div id="flowTableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+              <th>ID</th>
+              <th>Type</th>
+              <th>State</th>
+              <th>Created At</th>
+              <th>Sub-tasks</th>
+              <th style="width:180px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="flowTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Event Log (SSE)</h2>
+      <div class="event-log" id="eventLog"></div>
+    </div>
+  </div>
+
+  <script>
+    const API = "/api";
+    let flowsCache = [];
+    let expandedFlows = new Set();
+
+    function showMsg(text, isError) {
+      const el = document.getElementById("msg");
+      el.textContent = text;
+      el.className = "message " + (isError ? "error" : "success");
+      setTimeout(() => { el.className = "message hidden"; }, 4000);
+    }
+
+    function logEvent(text) {
+      const el = document.getElementById("eventLog");
+      const entry = document.createElement("div");
+      entry.className = "entry";
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+      el.appendChild(entry);
+      el.scrollTop = el.scrollHeight;
+      while (el.children.length > 100) el.removeChild(el.firstChild);
+    }
+
+    function loadExample() {
+      document.getElementById("dagJson").value = JSON.stringify({
+        tasks: {
+          taskA: {
+            resolver: {
+              name: "MockTask1",
+              params: {
+                name: { value: "TaskA" },
+                iterations: { value: 3 }
+              }
+            },
+            provides: ["depA"]
+          },
+          taskB: {
+            requires: ["depA"],
+            resolver: {
+              name: "MockTask2",
+              params: {
+                name: { value: "TaskB" },
+                iterations: { value: 2 }
+              }
+            },
+            provides: ["depB"]
+          },
+          taskC: {
+            requires: ["depB"],
+            resolver: {
+              name: "MockTask3",
+              params: {
+                name: { value: "TaskC" },
+                iterations: { value: 2 }
+              }
+            },
+            provides: ["depC"]
+          }
+        }
+      }, null, 2);
+    }
+
+    function loadParallelExample() {
+      document.getElementById("dagJson").value = JSON.stringify({
+        tasks: {
+          taskA: {
+            resolver: {
+              name: "MockTask1",
+              params: {
+                name: { value: "ParallelA" },
+                iterations: { value: 2 }
+              }
+            },
+            provides: ["depA"]
+          },
+          taskB: {
+            resolver: {
+              name: "MockTask2",
+              params: {
+                name: { value: "ParallelB" },
+                iterations: { value: 2 }
+              }
+            },
+            provides: ["depB"]
+          },
+          taskC: {
+            requires: ["depA", "depB"],
+            resolver: {
+              name: "MockTask3",
+              params: {
+                name: { value: "JoinC" },
+                iterations: { value: 2 }
+              }
+            },
+            provides: ["depC"]
+          }
+        }
+      }, null, 2);
+    }
+
+    async function createFlow() {
+      const type = document.getElementById("flowType").value;
+      const dagText = document.getElementById("dagJson").value.trim();
+      if (!dagText) { showMsg("Please enter DAG JSON", true); return; }
+      let dag;
+      try { dag = JSON.parse(dagText); } catch (e) { showMsg("Invalid JSON: " + e.message, true); return; }
+      try {
+        const res = await fetch(`${API}/flows`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type, dag })
+        });
+        if (!res.ok) throw new Error((await res.json()).error || "Failed");
+        showMsg("Flow created and started", false);
+        document.getElementById("dagJson").value = "";
+        loadFlows();
+      } catch (err) {
+        showMsg(err.message, true);
+      }
+    }
+
+    async function loadFlows() {
+      const type = document.getElementById("filterType").value;
+      try {
+        const res = await fetch(`${API}/flows` + (type ? `?type=${type}` : ""));
+        flowsCache = await res.json();
+        renderFlows(flowsCache);
+      } catch (err) {
+        showMsg("Failed to load flows: " + err.message, true);
+      }
+    }
+
+    function stateClass(state) {
+      return "state state-" + state;
+    }
+
+    function renderFlows(flows) {
+      const tbody = document.getElementById("flowTableBody");
+      tbody.innerHTML = "";
+      if (!flows.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8d8d8d">No flows</td></tr>';
+        return;
+      }
+      for (const f of flows) {
+        const tr = document.createElement("tr");
+        const taskCodes = Object.keys(f.taskStates || {});
+        const taskSummary = taskCodes.map(c => `${c}: ${f.taskStates[c]}`).join(", ");
+        tr.innerHTML = `
+          <td><input type="checkbox" class="sel" data-id="${f.id}"></td>
+          <td title="${f.id}">${f.id.slice(0, 8)}...</td>
+          <td>${f.type}</td>
+          <td><span class="${stateClass(f.state)}">${f.state}</span></td>
+          <td>${new Date(f.createdAt).toLocaleString()}</td>
+          <td>
+            <span style="color:#525252;font-size:12px">${taskCodes.length} tasks</span>
+            <button type="button" class="expand-btn" onclick="toggleSubtasks('${f.id}')">Show/Hide</button>
+            <div id="sub-${f.id}" class="hidden">
+              <table class="subtask-table">
+                <thead><tr><th>Task</th><th>State</th></tr></thead>
+                <tbody>${taskCodes.map(c => `<tr><td>${c}</td><td><span class="${stateClass(f.taskStates[c])}">${f.taskStates[c]}</span></td></tr>`).join("")}</tbody>
+              </table>
+            </div>
+          </td>
+          <td>
+            <div class="actions">
+              <button type="button" class="secondary" onclick="actionFlow('${f.id}', 'pause')" ${f.state !== "RUNNING" ? "disabled" : ""}>Pause</button>
+              <button type="button" class="secondary" onclick="actionFlow('${f.id}', 'resume')" ${f.state !== "PAUSED" ? "disabled" : ""}>Resume</button>
+              <button type="button" class="danger" onclick="actionFlow('${f.id}', 'stop')">Stop</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+        if (expandedFlows.has(f.id)) {
+          const subEl = document.getElementById("sub-" + f.id);
+          if (subEl) subEl.classList.remove("hidden");
+        }
+      }
+    }
+
+    function toggleSubtasks(id) {
+      const el = document.getElementById("sub-" + id);
+      el.classList.toggle("hidden");
+      if (el.classList.contains("hidden")) {
+        expandedFlows.delete(id);
+      } else {
+        expandedFlows.add(id);
+      }
+    }
+
+    async function actionFlow(id, action) {
+      try {
+        const res = await fetch(`${API}/flows/${id}/${action}`, { method: "POST" });
+        if (!res.ok) throw new Error((await res.json()).error || "Failed");
+        showMsg(`Flow ${action}d`, false);
+        loadFlows();
+      } catch (err) {
+        showMsg(err.message, true);
+      }
+    }
+
+    function getSelectedIds() {
+      return Array.from(document.querySelectorAll(".sel:checked")).map(el => el.dataset.id);
+    }
+
+    function toggleSelectAll() {
+      const checked = document.getElementById("selectAll").checked;
+      document.querySelectorAll(".sel").forEach(el => el.checked = checked);
+    }
+
+    async function batchAction(action) {
+      const ids = getSelectedIds();
+      if (!ids.length) { showMsg("No flows selected", true); return; }
+      try {
+        const res = await fetch(`${API}/flows/batch/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids })
+        });
+        if (!res.ok) throw new Error((await res.json()).error || "Failed");
+        showMsg(`Batch ${action} completed`, false);
+        document.getElementById("selectAll").checked = false;
+        loadFlows();
+      } catch (err) {
+        showMsg(err.message, true);
+      }
+    }
+
+    function connectSSE() {
+      const evtSource = new EventSource(`${API}/events`);
+      evtSource.addEventListener("connected", () => {
+        logEvent("SSE connected");
+      });
+      evtSource.addEventListener("task-flow-engine/flow-created", (e) => {
+        const data = JSON.parse(e.data);
+        logEvent(`Flow created: ${data.id} (${data.type}) - ${data.state}`);
+        loadFlows();
+      });
+      evtSource.addEventListener("task-flow-engine/flow-updated", (e) => {
+        const data = JSON.parse(e.data);
+        logEvent(`Flow updated: ${data.id} - ${data.state}`);
+        // update cache in-place for smoother UI
+        const idx = flowsCache.findIndex(f => f.id === data.id);
+        if (idx >= 0) {
+          flowsCache[idx] = data;
+          renderFlows(flowsCache);
+        } else {
+          loadFlows();
+        }
+      });
+      evtSource.addEventListener("task-flow-engine/task-updated", (e) => {
+        const data = JSON.parse(e.data);
+        logEvent(`Task updated: ${data.flowId} / ${data.taskName} -> ${data.state}`);
+        const idx = flowsCache.findIndex(f => f.id === data.flowId);
+        if (idx >= 0 && flowsCache[idx].taskStates) {
+          flowsCache[idx].taskStates[data.taskName] = data.state;
+          renderFlows(flowsCache);
+        }
+      });
+      evtSource.addEventListener("task-flow-engine/flow-removed", (e) => {
+        const data = JSON.parse(e.data);
+        logEvent(`Flow removed: ${data.flowId}`);
+        loadFlows();
+      });
+      evtSource.onerror = () => {
+        logEvent("SSE error / reconnecting...");
+      };
+    }
+
+    loadFlows();
+    connectSSE();
+    setInterval(loadFlows, 5000); // fallback polling
+  </script>
+</body>
+</html>
