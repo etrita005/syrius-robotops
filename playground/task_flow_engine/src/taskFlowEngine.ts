@@ -100,9 +100,9 @@ export class TaskFlowEngine {
     }
 
     for (const id of expiredIds) {
+      const record = this.flows.get(id);
       this.flows.delete(id);
       this.flowInstances.delete(id);
-      const record = this.flows.get(id);
       if (record?.type === "user") {
         store.remove(["flows", id]).catch(() => {});
       }
