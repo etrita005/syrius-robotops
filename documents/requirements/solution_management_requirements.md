@@ -129,12 +129,13 @@ v1/
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["id", "address", "addressType", "alias", "createdAt", "updatedAt"],
+  "required": ["id", "address", "addressType", "alias", "port", "createdAt", "updatedAt"],
   "properties": {
     "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$" },
     "address": { "type": "string", "minLength": 1, "description": "IP address or mDNS hostname" },
     "addressType": { "type": "string", "enum": ["ip", "mdns"] },
     "alias": { "type": "string", "maxLength": 128, "description": "User-editable robot alias" },
+    "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 22, "description": "SSH connection port" },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }
   }
@@ -146,7 +147,7 @@ v1/
 以下字段不在对象存储中持久化，而是由前端动态生成（当前阶段使用基于地址的确定性随机模拟，后续替换为真实通信协议）：
 
 - `model`、`robotSN`、`thingsId`、`vendorId`、`productId`
-- `mainboardSN`、`mainboardId`、`mainSOMId`
+- `mainboardSN`、`mainboardId`、`mainSOMSN`
 - `megaCosmOSVersion`、`movebaseVersion`、`ggrVersion`
 - `mcuFirmwareVersions`、`actuatorFirmwareVersions`、`sensorFirmwareVersions`
 - `mainControlHardwareVersion`、`mcuHardwareVersions`、`actuatorHardwareVersions`、`sensorHardwareVersions`
@@ -184,6 +185,7 @@ v1/
   "address": "192.168.1.101",
   "addressType": "ip",
   "alias": "AGV-01",
+  "port": 22,
   "createdAt": "2026-05-27T08:00:00.000Z",
   "updatedAt": "2026-05-27T08:00:00.000Z"
 }
@@ -330,7 +332,7 @@ v1/
 
 **FR-SOL-018**：系统应支持手动添加单台机器人到当前解决方案。
 
-- 输入：`address`（IP 地址或 mDNS 域名，必填）、`alias`（可选，默认与 address 相同）。
+- 输入：`address`（IP 地址或 mDNS 域名，必填）、`alias`（可选，默认与 address 相同）、`port`（SSH 连接端口，可选，默认 22）。
 - 系统生成唯一 `robotId`，规则为 `robot-{nanoid(6)}`。
 - 系统通过对象存储 `PUT /api/objects/v1/solutions/{solutionId}/robots/{robotId}` 持久化机器人存储数据。
 - 添加后，前端生成机器人动态信息（当前阶段使用基于地址的确定性随机值模拟）。
@@ -349,25 +351,25 @@ v1/
 - 列表支持批量选择（复选框），以便执行批量删除。
 - 空状态时提示用户添加机器人。
 
-**FR-SOL-022**：系统应支持编辑机器人别名和地址。
+**FR-SOL-022**：系统应支持编辑机器人别名、地址和端口。
 
 - 用户在列表中可直接编辑 `alias` 字段（内联编辑或弹窗编辑）。
-- 用户在详情对话框中可编辑 `alias` 和 `address` 字段。
+- 用户在详情对话框中可编辑 `alias`、`address` 和 `port` 字段。
 - 编辑后通过 `PUT /api/objects/v1/solutions/{solutionId}/robots/{robotId}` 更新对象存储中的机器人存储数据，并更新 `updatedAt`。
 
 **FR-SOL-023**：系统应支持点击机器人后弹出详情对话框，展示完整机器人信息。
 
 - 对话框分区域展示：
-  - **基础信息**：`alias`（可编辑）、`address`（可编辑）、`model`（只读）、`robotSN`（只读）、`thingsId`（只读）、`vendorId`（只读）、`productId`（只读）、`mainboardSN`（只读）、`mainboardId`（只读）、`mainSOMId`（只读）。
+  - **基础信息**：`alias`（可编辑）、`address`（可编辑）、`port`（可编辑）、`model`（只读）、`robotSN`（只读）、`thingsId`（只读）、`vendorId`（只读）、`productId`（只读）、`mainboardSN`（只读）、`mainboardId`（只读）、`mainSOMSN`（只读）。
   - **其他信息**：`hardwareDeviceTree`（硬件设备树表格）。
   - **软件版本信息**：`megaCosmOSVersion`、`movebaseVersion`、`ggrVersion`、`mcuFirmwareVersions`、`actuatorFirmwareVersions`、`sensorFirmwareVersions`（均为只读）。
   - **硬件版本信息**：`mainControlHardwareVersion`、`mcuHardwareVersions`、`actuatorHardwareVersions`、`sensorHardwareVersions`（均为只读）。
-- 对话框提供"保存"按钮，保存 `alias` 和 `address` 的修改。
+- 对话框提供"保存"按钮，保存 `alias`、`address` 和 `port` 的修改。
 - 对话框提供"关闭"按钮。
 
 **FR-SOL-024**：机器人信息获取策略（当前阶段）。
 
-- 对象存储中仅持久化 `id`、`address`、`addressType`、`alias`、`createdAt`、`updatedAt`。
+- 对象存储中仅持久化 `id`、`address`、`addressType`、`alias`、`port`、`createdAt`、`updatedAt`。
 - 其他机器人信息（model、SN、版本等）由前端动态生成（当前阶段使用基于地址的确定性随机模拟）。
 - 后续阶段将设计真实的机器人通信协议以获取实际信息，届时仅需替换前端的数据获取逻辑。
 - 模拟数据应具有一致性：同一台机器人（相同地址）始终返回相同的信息。
@@ -508,6 +510,7 @@ graph LR
 | 无激活解决方案 | 子资源 API 需要激活上下文或显式 `solutionId` | 拒绝并返回 `NO_ACTIVE_SOLUTION` |
 | 机器人 ID | 必须匹配 `^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$` | 拒绝并返回 `INVALID_ROBOT_ID` |
 | 机器人地址 | 非空字符串，最大 256 个字符 | 拒绝并返回 `INVALID_ROBOT_ADDRESS` |
+| 机器人端口 | 1–65535 整数，默认 22 | 拒绝并返回 `INVALID_ROBOT_PORT` |
 | 机器人别名 | 最大 128 个字符 | 截断或拒绝 |
 
 ---
@@ -530,6 +533,7 @@ graph LR
 | `INVALID_ARTIFACT_ID` | 制品 ID 违反安全名称正则 | "制品 ID 包含非法字符。" |
 | `ROBOT_NOT_FOUND` | 对不存在的 robotId 执行读取/更新/删除 | "Robot '{robotId}' does not exist."（前端处理） |
 | `INVALID_ROBOT_ADDRESS` | 地址为空或超过 256 字符 | "Robot address cannot be empty and must not exceed 256 characters."（前端验证） |
+| `INVALID_ROBOT_PORT` | 端口不在 1–65535 范围内 | "Robot port must be between 1 and 65535."（前端验证） |
 | `ROBOT_ADDRESS_EXISTS` | 同一解决方案下已存在相同地址 | "A robot with this address already exists in the current solution."（前端校验） |
 | `OBJECT_NOT_FOUND` | 对不存在的路径执行 GET/PUT/DELETE | "Object '{path}' not found."（通用对象存储错误） |
 
@@ -565,9 +569,9 @@ graph LR
 
 **UI-ROB-006**：点击机器人行或 "View Details" 按钮，弹出模态框展示完整信息，模态框内使用标签页（Tabs）组织：基础信息、其他信息、软件版本、硬件版本。
 
-**UI-ROB-007**：基础信息标签页中，`alias` 和 `address` 以输入框展示（可编辑），其余字段均为只读展示；提供 "Save" 按钮保存修改。
+**UI-ROB-007**：基础信息标签页中，`alias`、`address` 和 `port` 以输入框展示（可编辑），其余字段均为只读展示；提供 "Save" 按钮保存修改。
 
-**UI-ROB-008**：添加机器人弹窗应支持单台添加（输入 address + alias）。打开弹窗时，系统应默认生成一个别名（如 Robot-1、Robot-2）。
+**UI-ROB-008**：添加机器人弹窗应支持单台添加（输入 address + alias + port）。`port` 默认值 22。打开弹窗时，系统应默认生成一个别名（如 Robot-1、Robot-2）。
 
 **UI-ROB-009**：空状态时展示提示插图和 "Add your first robot" 按钮。
 

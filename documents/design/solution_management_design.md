@@ -193,7 +193,7 @@ interface RobotDefinition extends StoredRobotData {
   productId: string;
   mainboardSN: string;
   mainboardId: string;
-  mainSOMId: string;
+  mainSOMSN: string;
   megaCosmOSVersion: string;
   movebaseVersion: string;
   ggrVersion: string;
@@ -785,7 +785,7 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
 - **Trigger**: Click table row or "Details" button.
 - **Layout**: Carbon `Modal` (size="lg") with embedded `Tabs`.
 - **Tabs**:
-  - **Basic Info**: `alias` (editable), `address` (editable), `model` (read-only), `robotSN` (read-only), `thingsId` (read-only), `vendorId` (read-only), `productId` (read-only), `mainboardSN` (read-only), `mainboardId` (read-only), `mainSOMId` (read-only).
+  - **Basic Info**: `alias` (editable), `address` (editable), `model` (read-only), `robotSN` (read-only), `thingsId` (read-only), `vendorId` (read-only), `productId` (read-only), `mainboardSN` (read-only), `mainboardId` (read-only), `mainSOMSN` (read-only).
   - **Other Info**: `hardwareDeviceTree` as `DataTable` (columns: name, firmwareVersion, hardwareVersion, serialNumber, hardwareId, online).
   - **Software Versions**: `megaCosmOSVersion`, `movebaseVersion`, `ggrVersion` as read-only form fields; MCU / actuator / sensor firmware versions as key-value lists.
   - **Hardware Versions**: `mainControlHardwareVersion`, MCU / actuator / sensor hardware versions as key-value lists.

@@ -269,7 +269,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
               SN: {robot.robotSN}
             </div>
             <div style={{ fontSize: "0.8125rem", color: "#525252" }}>
-              megaCosmOS: {robot.megaCosmOSVersion}
+              megacosmOS: {robot.megaCosmOSVersion}
             </div>
           </div>
         ))}
@@ -286,7 +286,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
       { key: "model", header: "Model" },
       { key: "robotSN", header: "Robot SN" },
       { key: "thingsId", header: "Things ID" },
-      { key: "megaCosmOSVersion", header: "megaCosmOS" },
+      { key: "megaCosmOSVersion", header: "megacosmOS" },
       { key: "actions", header: "Actions" },
     ];
 

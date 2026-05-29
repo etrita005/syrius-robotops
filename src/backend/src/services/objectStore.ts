@@ -26,7 +26,7 @@ class StoreResponse {
     return this.content.buffer.slice(
       this.content.byteOffset,
       this.content.byteOffset + this.content.byteLength
-    );
+    ) as ArrayBuffer;
   }
 }
 

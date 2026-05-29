@@ -25,7 +25,7 @@ export interface RobotDefinition extends StoredRobotData {
   productId: string;
   mainboardSN: string;
   mainboardId: string;
-  mainSOMId: string;
+  mainSOMSN: string;
   megaCosmOSVersion: string;
   movebaseVersion: string;
   ggrVersion: string;
@@ -141,7 +141,7 @@ export function generateMockRobotInfo(address: string, alias: string): Omit<Robo
     productId: `${model}-STD`,
     mainboardSN: randSN("MB-SN"),
     mainboardId: randSN("MB-ID"),
-    mainSOMId: randSN("SOM-ID"),
+    mainSOMSN: randSN("SOM-SN"),
     megaCosmOSVersion: randVersion(),
     movebaseVersion: randVersion(),
     ggrVersion: randVersion(),

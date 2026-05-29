@@ -261,7 +261,7 @@ def page_robots_sub_interface():
         # Info lines
         draw.text((cx+12, cy+114), f"{address}  |  {model}", fill="#525252", font=FONT_SM)
         draw.text((cx+12, cy+134), f"SN: {sn}", fill="#525252", font=FONT_SM)
-        draw.text((cx+12, cy+154), f"megaCosmOS: {osver}", fill="#525252", font=FONT_SM)
+        draw.text((cx+12, cy+154), f"megacosmOS: {osver}", fill="#525252", font=FONT_SM)
 
     img.save(os.path.join(SOL_DIR, "05_robots_sub_interface.png"))
     print("Saved solution-management/05_robots_sub_interface.png")
@@ -316,7 +316,7 @@ def page_robots_list_view():
     draw.rectangle([260, y, W-40, y+36], fill="#e0e0e0")
     cols = [
         ("", 270), ("Alias", 320), ("Address", 440), ("Model", 580),
-        ("Robot SN", 660), ("Things ID", 780), ("megaCosmOS", 900), ("Actions", 1020)
+        ("Robot SN", 660), ("Things ID", 780), ("megacosmOS", 900), ("Actions", 1020)
     ]
     for text, cx in cols:
         draw.text((cx, y+8), text, fill="#161616", font=FONT_MD)

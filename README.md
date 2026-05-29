@@ -12,6 +12,7 @@ RobotOps Studio provides a unified interface for managing multiple robots in the
 |--------|-------------|
 | **Solution Management** | Top-level organizational unit. All sub-resources (robots, upgrades, maps, configs, diagnostics, logs) belong to a solution. CRUD, clone, export/import (ZIP), active solution context, recent solutions. |
 | **Artifact Management** | Global shared resource store for immutable large files (firmware, maps, etc.). Upload with SHA-256 deduplication, reference counting, artifact selector for cross-module use. |
+| **Task Flow Engine** | DAG-based task execution engine (powered by `flowed`). Create, pause, resume, stop task flows. Built-in resolvers: SshCommandTask, GetRobotBasicInfoTask. SSE real-time status updates. Persistence and crash recovery for user flows. |
 
 ### Architecture
 
@@ -122,9 +123,10 @@ The test runner starts a temporary embedded Object Store instance and API server
 |--------|-----------|-------------|
 | Solution Management | TC-SOL-001 ~ TC-SOL-015 | CRUD, validation, clone, version auto-increment, filter/sort |
 | Artifact Management | TC-ART-001 ~ TC-ART-015 | Upload, deduplication, refCount, delete protection, audit |
-| Cross-Module | TC-CROSS-001 ~ TC-CROSS-004 | Solution delete → refCount decrement, clone → refCount increment |
+| Task Flow Engine | TC-TFE-001 ~ TC-TFE-035 | Flow lifecycle, SSE, persistence, recovery, resolver registry |
+| Cross-Module | TC-CROSS-001 ~ TC-CROSS-005 | Solution delete → refCount decrement, clone → refCount increment |
 
-Test case documents: `documents/test/solution_management_test_cases.md`, `documents/test/artifact_management_test_cases.md`, `documents/test/cross_module_test_cases.md`
+Test case documents: `documents/test/solution_management_test_cases.md`, `documents/test/artifact_management_test_cases.md`, `documents/test/task_flow_engine_test_cases.md`, `documents/test/cross_module_test_cases.md`
 
 ## API Reference
 
@@ -155,6 +157,20 @@ Test case documents: `documents/test/solution_management_test_cases.md`, `docume
 | `POST` | `/api/artifacts/:id/increment-ref` | Increment refCount |
 | `POST` | `/api/artifacts/:id/decrement-ref` | Decrement refCount |
 | `POST` | `/api/artifacts/audit/ref-count` | Run refCount consistency audit |
+
+### Task Flow Engine
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/flows` | Create and start a task flow (body: `{ type, dag }`) |
+| `GET` | `/api/flows` | List flows (query: `?type=internal\|user`) |
+| `POST` | `/api/flows/:id/pause` | Pause a running flow |
+| `POST` | `/api/flows/:id/resume` | Resume a paused flow |
+| `POST` | `/api/flows/:id/stop` | Stop and delete a flow |
+| `POST` | `/api/flows/batch/pause` | Batch pause (body: `{ ids: string[] }`) |
+| `POST` | `/api/flows/batch/resume` | Batch resume (body: `{ ids: string[] }`) |
+| `POST` | `/api/flows/batch/stop` | Batch stop and delete (body: `{ ids: string[] }`) |
+| `GET` | `/api/flows/events` | SSE endpoint for real-time flow/task state updates |
 
 ## Technology Stack
 

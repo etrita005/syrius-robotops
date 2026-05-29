@@ -124,7 +124,7 @@ Robot Commissioning & Operations Studio
 - ProductId
 - 主控板 SN
 - 主控板 Id
-- 主控 SOM Id
+- 主控 SOM SN
 
 系统需要支持修改以下持久化字段：
 - 别名（Alias）
@@ -139,7 +139,7 @@ Robot Commissioning & Operations Studio
   - 硬件 Id
 
 软件版本信息包括：
-- megaCosmOS 版本（机器人操作系统）
+- megacosmOS 版本（机器人操作系统）
 - Movebase 版本（机器人操作系统中下位机版本）
 - GGR 版本（机器人操作系统中上位机版本）
 - 各 MCU 板卡固件版本
@@ -396,14 +396,15 @@ project/solution 的目标是把现场环境、机器人清单、包版本、配
 - ProductId（动态获取，只读）
 - 主控板 SN（动态获取，只读）
 - 主控板 Id（动态获取，只读）
-- 主控 SOM Id（动态获取，只读）
+- 主控 SOM SN（动态获取，只读）
 
 系统应支持修改以下持久化字段：
 - 别名（Alias）
 - 机器人IP / mDNS地址（Address）
+- 机器人端口（Port）
 
 系统应支持显示软件版本信息（动态获取，只读）：
-- megaCosmOS 版本
+- megacosmOS 版本
 - Movebase 版本
 - GGR 版本
 - MCU 板卡固件版本

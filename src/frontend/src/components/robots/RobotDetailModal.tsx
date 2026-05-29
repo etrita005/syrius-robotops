@@ -127,7 +127,7 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
               <TextInput id="rd-productid" labelText="Product ID" value={robot.productId} readOnly />
               <TextInput id="rd-mainboardsn" labelText="Mainboard SN" value={robot.mainboardSN} readOnly />
               <TextInput id="rd-mainboardid" labelText="Mainboard ID" value={robot.mainboardId} readOnly />
-              <TextInput id="rd-mainsomid" labelText="Main SOM ID" value={robot.mainSOMId} readOnly />
+              <TextInput id="rd-mainsomsn" labelText="Main SOM SN" value={robot.mainSOMSN} readOnly />
             </div>
           </TabPanel>
            <TabPanel>
@@ -168,7 +168,7 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1rem" }}>
                <section>
                  <h5 style={{ marginBottom: "0.5rem" }}>OS Versions</h5>
-                 <TextInput id="sw-megacosmos" labelText="megaCosmOS" value={robot.megaCosmOSVersion} readOnly />
+                 <TextInput id="sw-megacosmos" labelText="megacosmOS" value={robot.megaCosmOSVersion} readOnly />
                  <TextInput id="sw-movebase" labelText="Movebase" value={robot.movebaseVersion} readOnly />
                  <TextInput id="sw-ggr" labelText="GGR" value={robot.ggrVersion} readOnly />
                </section>
