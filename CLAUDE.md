@@ -104,4 +104,5 @@ syrius-robotops/
 - When there are questions about requirements, the agent MUST confirm with the user first and clarify all ambiguities before proceeding. Do NOT start implementation when requirements are unclear.
 - After modifying code, the agent MUST check whether requirements documents, design documents, UI/UX specifications, test case design documents, usage manuals, and README.md remain consistent with the code. If inconsistencies are found, the agent MUST update the documents to match the code.
 - Use `tools/generate_ui_sketches.py` to generate or update UI/UX wireframe sketches. Re-run this script after any UI-related changes to keep the sketches in sync with the implementation.
+- UI/UX wireframe sketches under `documents/ui-ux/` MUST be organized by module and sub-module hierarchy. Each module gets its own directory; sub-modules are nested as sub-directories reflecting the parent-child relationship (e.g., `solution-management/robots/`, `artifact-management/`).
 - After writing code, check code formatting and eliminate warnings and unused imports.

@@ -37,7 +37,7 @@
 | Priority | High |
 | Precondition | A solution with robots exists |
 | Input | Read robot data via `GET /api/objects/v1/solutions/{id}/robots/{robotId}` |
-| Expected Result | Returns `StoredRobotData` (only id, address, addressType, alias, timestamps); no model/SN/version fields in stored data |
+| Expected Result | Returns `StoredRobotData` (only id, address, addressType, alias, port, timestamps); no model/SN/version fields in stored data |
 | Verification | Frontend `enrichRobot()` produces full `RobotDefinition` with mock dynamic data |
 
 ## TC-CROSS-005: Clone solution copies robot data

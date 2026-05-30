@@ -4,15 +4,19 @@ Quickly produce PNG wireframe sketches for key RobotOps Studio screens.
 Uses Pillow only; no external UI framework needed.
 
 Run:  python tools/generate_ui_sketches.py
-Output: documents/ui-ux/solution-management/*.png
+Output: documents/ui-ux/{module}/*.png
 """
 
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-BASE_DIR = os.path.join(os.path.dirname(__file__), "..", "documents", "ui-ux", "solution-management")
+BASE_DIR = os.path.join(os.path.dirname(__file__), "..", "documents", "ui-ux")
 SOL_DIR = os.path.join(BASE_DIR, "solution-management")
+ROBOTS_DIR = os.path.join(SOL_DIR, "robots")
+ARTIFACT_DIR = os.path.join(BASE_DIR, "artifact-management")
 os.makedirs(SOL_DIR, exist_ok=True)
+os.makedirs(ROBOTS_DIR, exist_ok=True)
+os.makedirs(ARTIFACT_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,28 +66,40 @@ def draw_card(draw, bbox, title, desc, tags, corrupted=False):
     draw_button(draw, (x2-140, y1+14, x2-70, y1+42), "Open")
     draw_button(draw, (x2-60, y1+14, x2-16, y1+42), "Delete", bg="#fa4d56", fg="white")
 
-# ---------------------------------------------------------------------------
-# 1. Solution Selector (landing page)
-# ---------------------------------------------------------------------------
-def page_solution_selector():
-    W, H = 1200, 800
-    img = Image.new("RGB", (W, H), "#f4f4f4")
-    draw = ImageDraw.Draw(img)
-
-    # Header
+def draw_common_header(draw, W):
     draw.rectangle([0, 0, W, 56], fill="#161616")
     draw.text((20, 18), "RobotOps Studio", fill="white", font=FONT_LG)
     draw.text((280, 22), "Solutions", fill="#8d8d8d", font=FONT_MD)
     draw.text((380, 22), "Artifacts", fill="#8d8d8d", font=FONT_MD)
     draw.text((W-140, 22), "v1.0.0", fill="#8d8d8d", font=FONT_SM)
 
-    # Active solution bar
+def draw_active_solution_bar(draw, W):
     draw.rectangle([0, 56, W, 96], fill="#e8e8e8")
     draw.text((20, 64), "Active Solution:  Customer A — Site Alpha", fill="#161616", font=FONT_MD)
     draw_button(draw, (W-180, 62, W-100, 90), "Switch")
     draw_button(draw, (W-90, 62, W-20, 90), "Settings")
 
-    # Content
+def draw_sidebar(draw, H, active_index=0):
+    draw.rectangle([0, 96, 220, H], fill="#f4f4f4", outline="#e0e0e0", width=1)
+    nav_items = ["Robots", "Upgrade Packages", "Maps", "Program Configs", "Diagnostics", "Logs"]
+    for i, item in enumerate(nav_items):
+        y = 120 + i*44
+        fill = "#e0e0e0" if i == active_index else None
+        if fill:
+            draw.rectangle([4, y-4, 216, y+32], fill=fill)
+        draw.text((24, y), item, fill="#161616", font=FONT)
+
+# ---------------------------------------------------------------------------
+# Solution Management: 01 — Solution Selector (landing page)
+# ---------------------------------------------------------------------------
+def page_solution_selector():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+
+    draw_common_header(draw, W)
+    draw_active_solution_bar(draw, W)
+
     draw.text((40, 120), "Solutions", fill="#161616", font=FONT_LG)
     draw_button(draw, (W-200, 120, W-40, 152), "Create solution", bg="#0f62fe", fg="white")
     draw_input(draw, (40, 120, 400, 152), placeholder="Search solutions...")
@@ -101,18 +117,18 @@ def page_solution_selector():
               "Metadata unreadable",
               [], corrupted=True)
 
-    img.save(os.path.join(SOL_DIR, "01_solution_selector.png"))
-    print("Saved solution-management/01_solution_selector.png")
+    path = os.path.join(SOL_DIR, "01_solution_selector.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# 2. Create Solution Modal
+# Solution Management: 02 — Create Solution Modal
 # ---------------------------------------------------------------------------
 def page_create_solution():
     W, H = 1200, 800
     img = Image.new("RGB", (W, H), "#f4f4f4")
     draw = ImageDraw.Draw(img)
-    page_solution_selector()  # background
-    # Modal overlay
+    page_solution_selector()
     draw.rectangle([0, 0, W, H], fill="#00000080")
     mx, my, mw, mh = 300, 200, 600, 400
     draw.rectangle([mx, my, mx+mw, my+mh], fill="white", outline="#c6c6c6", width=1)
@@ -123,13 +139,14 @@ def page_create_solution():
     draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Cancel")
     draw_button(draw, (mx+mw-110, my+mh-60, mx+mw-24, my+mh-28), "Create", bg="#0f62fe", fg="white")
 
-    img.save(os.path.join(SOL_DIR, "02_create_solution.png"))
-    print("Saved solution-management/02_create_solution.png")
+    path = os.path.join(SOL_DIR, "02_create_solution.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# 3. Delete Confirm Modal
+# Solution Management: 03 — Delete Solution Confirm Modal
 # ---------------------------------------------------------------------------
-def page_delete_confirm():
+def page_delete_solution_confirm():
     W, H = 1200, 800
     img = Image.new("RGB", (W, H), "#f4f4f4")
     draw = ImageDraw.Draw(img)
@@ -143,99 +160,56 @@ def page_delete_confirm():
     draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Cancel")
     draw_button(draw, (mx+mw-110, my+mh-60, mx+mw-24, my+mh-28), "Delete solution", bg="#fa4d56", fg="white")
 
-    img.save(os.path.join(SOL_DIR, "03_delete_confirm.png"))
-    print("Saved solution-management/03_delete_confirm.png")
+    path = os.path.join(SOL_DIR, "03_delete_confirm.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# 4. Main Workspace (after selecting a solution)
+# Solution Management: 04 — Main Workspace (after selecting a solution)
 # ---------------------------------------------------------------------------
 def page_main_workspace():
     W, H = 1200, 800
     img = Image.new("RGB", (W, H), "#f4f4f4")
     draw = ImageDraw.Draw(img)
 
-    # Header
-    draw.rectangle([0, 0, W, 56], fill="#161616")
-    draw.text((20, 18), "RobotOps Studio", fill="white", font=FONT_LG)
-    draw.text((280, 22), "Solutions", fill="#8d8d8d", font=FONT_MD)
-    draw.text((380, 22), "Artifacts", fill="#8d8d8d", font=FONT_MD)
-    draw.text((W-140, 22), "v1.0.0", fill="#8d8d8d", font=FONT_SM)
+    draw_common_header(draw, W)
+    draw_active_solution_bar(draw, W)
+    draw_sidebar(draw, H, active_index=0)
 
-    # Active solution bar
-    draw.rectangle([0, 56, W, 96], fill="#e8e8e8")
-    draw.text((20, 64), "Active Solution:  Customer A — Site Alpha", fill="#161616", font=FONT_MD)
-    draw_button(draw, (W-180, 62, W-100, 90), "Switch")
-    draw_button(draw, (W-90, 62, W-20, 90), "Settings")
-
-    # Left sidebar
-    draw.rectangle([0, 96, 220, H], fill="#f4f4f4", outline="#e0e0e0", width=1)
-    nav_items = ["Robots", "Upgrade Packages", "Maps", "Program Configs", "Diagnostics", "Logs"]
-    for i, item in enumerate(nav_items):
-        y = 120 + i*44
-        fill = "#e0e0e0" if i == 0 else None
-        if fill:
-            draw.rectangle([4, y-4, 216, y+32], fill=fill)
-        draw.text((24, y), item, fill="#161616", font=FONT)
-
-    # Main content placeholder
     draw.text((260, 120), "Robots", fill="#161616", font=FONT_LG)
     draw.text((260, 170), "Select a robot to view details or perform actions.", fill="#525252", font=FONT_MD)
 
-    img.save(os.path.join(SOL_DIR, "04_main_workspace.png"))
-    print("Saved solution-management/04_main_workspace.png")
+    path = os.path.join(SOL_DIR, "04_main_workspace.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# 5. Robots Sub Interface — Thumbnail View (default)
+# Robots: 01 — Thumbnail View (default)
 # ---------------------------------------------------------------------------
-def page_robots_sub_interface():
+def page_robots_grid_view():
     W, H = 1200, 800
     img = Image.new("RGB", (W, H), "#f4f4f4")
     draw = ImageDraw.Draw(img)
 
-    # Header
-    draw.rectangle([0, 0, W, 56], fill="#161616")
-    draw.text((20, 18), "RobotOps Studio", fill="white", font=FONT_LG)
-    draw.text((280, 22), "Solutions", fill="#8d8d8d", font=FONT_MD)
-    draw.text((380, 22), "Artifacts", fill="#8d8d8d", font=FONT_MD)
-    draw.text((W-140, 22), "v1.0.0", fill="#8d8d8d", font=FONT_SM)
+    draw_common_header(draw, W)
+    draw_active_solution_bar(draw, W)
+    draw_sidebar(draw, H, active_index=0)
 
-    # Active solution bar
-    draw.rectangle([0, 56, W, 96], fill="#e8e8e8")
-    draw.text((20, 64), "Active Solution:  Customer A — Site Alpha", fill="#161616", font=FONT_MD)
-    draw_button(draw, (W-180, 62, W-100, 90), "Switch")
-    draw_button(draw, (W-90, 62, W-20, 90), "Settings")
-
-    # Left sidebar
-    draw.rectangle([0, 96, 220, H], fill="#f4f4f4", outline="#e0e0e0", width=1)
-    nav_items = ["Robots", "Upgrade Packages", "Maps", "Program Configs", "Diagnostics", "Logs"]
-    for i, item in enumerate(nav_items):
-        y = 120 + i*44
-        fill = "#e0e0e0" if i == 0 else None
-        if fill:
-            draw.rectangle([4, y-4, 216, y+32], fill=fill)
-        draw.text((24, y), item, fill="#161616", font=FONT)
-
-    # Main content area — Robots Thumbnail View
-    # Breadcrumb with back navigation
     draw.text((260, 116), "<  Solutions", fill="#0f62fe", font=FONT_MD)
     draw.text((260, 140), "Robots", fill="#161616", font=FONT_LG)
 
-    # Toolbar
     draw_input(draw, (260, 180, 520, 214), placeholder="Search by alias, address, model or SN...")
     draw_button(draw, (540, 180, 660, 214), "Add Robot", bg="#0f62fe", fg="white")
-    draw_button(draw, (670, 180, 790, 214), "Batch Add")
     draw_button(draw, (810, 180, 950, 214), "Batch Delete (2)", bg="#fa4d56", fg="white")
-    # View toggle buttons
     draw_button(draw, (970, 180, 1030, 214), "Grid", bg="#0f62fe", fg="white")
     draw_button(draw, (1040, 180, 1100, 214), "List")
 
-    # Thumbnail cards (3 columns)
     cards = [
-        ("AGV-01", "192.168.1.101", "X100", "SN123456", "2.3.1"),
-        ("AGV-02", "192.168.1.102", "X100", "SN123457", "2.3.1"),
-        ("AGV-03", "robot-03.local", "X200", "SN789012", "2.4.0"),
-        ("AGV-04", "192.168.1.104", "X100", "SN123458", "2.3.2"),
-        ("AGV-05", "192.168.1.105", "X300", "SN999001", "2.5.0"),
+        ("AGV-01", "192.168.1.101:22", "X100", "SN123456", "2.3.1"),
+        ("AGV-02", "192.168.1.102:22", "X100", "SN123457", "2.3.1"),
+        ("AGV-03", "robot-03.local:22", "X200", "SN789012", "2.4.0"),
+        ("AGV-04", "192.168.1.104:22", "X100", "SN123458", "2.3.2"),
+        ("AGV-05", "192.168.1.105:22", "X300", "SN999001", "2.5.0"),
     ]
     card_w, card_h = 280, 180
     gap = 20
@@ -245,73 +219,44 @@ def page_robots_sub_interface():
         row = i // cols
         cx = 260 + col * (card_w + gap)
         cy = 220 + row * (card_h + gap)
-        # Card background
         draw.rectangle([cx, cy, cx+card_w, cy+card_h], fill="white", outline="#e0e0e0", width=1)
-        # Checkbox (top-left)
         cb_x, cb_y = cx+12, cy+12
         draw.rectangle([cb_x, cb_y, cb_x+16, cb_y+16], outline="#555", width=1)
-        if i == 0:  # first card checked
+        if i == 0:
             draw.line([(cb_x+3, cb_y+8), (cb_x+7, cb_y+12), (cb_x+13, cb_y+4)], fill="#0f62fe", width=2)
-        # Robot icon placeholder (center-top)
         icon_cx, icon_cy = cx + card_w//2, cy + 50
         draw.ellipse([icon_cx-28, icon_cy-28, icon_cx+28, icon_cy+28], fill="#e0e0e0", outline="#c6c6c6", width=1)
         draw.text((icon_cx-18, icon_cy-8), "Robot", fill="#8d8d8d", font=FONT_SM)
-        # Alias
         draw.text((cx+12, cy+90), alias, fill="#161616", font=FONT_MD)
-        # Info lines
         draw.text((cx+12, cy+114), f"{address}  |  {model}", fill="#525252", font=FONT_SM)
         draw.text((cx+12, cy+134), f"SN: {sn}", fill="#525252", font=FONT_SM)
         draw.text((cx+12, cy+154), f"megacosmOS: {osver}", fill="#525252", font=FONT_SM)
 
-    img.save(os.path.join(SOL_DIR, "05_robots_sub_interface.png"))
-    print("Saved solution-management/05_robots_sub_interface.png")
+    path = os.path.join(ROBOTS_DIR, "01_grid_view.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# 6. Robots Sub Interface — List View
+# Robots: 02 — List View
 # ---------------------------------------------------------------------------
 def page_robots_list_view():
     W, H = 1200, 800
     img = Image.new("RGB", (W, H), "#f4f4f4")
     draw = ImageDraw.Draw(img)
 
-    # Header
-    draw.rectangle([0, 0, W, 56], fill="#161616")
-    draw.text((20, 18), "RobotOps Studio", fill="white", font=FONT_LG)
-    draw.text((280, 22), "Solutions", fill="#8d8d8d", font=FONT_MD)
-    draw.text((380, 22), "Artifacts", fill="#8d8d8d", font=FONT_MD)
-    draw.text((W-140, 22), "v1.0.0", fill="#8d8d8d", font=FONT_SM)
+    draw_common_header(draw, W)
+    draw_active_solution_bar(draw, W)
+    draw_sidebar(draw, H, active_index=0)
 
-    # Active solution bar
-    draw.rectangle([0, 56, W, 96], fill="#e8e8e8")
-    draw.text((20, 64), "Active Solution:  Customer A — Site Alpha", fill="#161616", font=FONT_MD)
-    draw_button(draw, (W-180, 62, W-100, 90), "Switch")
-    draw_button(draw, (W-90, 62, W-20, 90), "Settings")
-
-    # Left sidebar
-    draw.rectangle([0, 96, 220, H], fill="#f4f4f4", outline="#e0e0e0", width=1)
-    nav_items = ["Robots", "Upgrade Packages", "Maps", "Program Configs", "Diagnostics", "Logs"]
-    for i, item in enumerate(nav_items):
-        y = 120 + i*44
-        fill = "#e0e0e0" if i == 0 else None
-        if fill:
-            draw.rectangle([4, y-4, 216, y+32], fill=fill)
-        draw.text((24, y), item, fill="#161616", font=FONT)
-
-    # Main content area — Robots List View
-    # Breadcrumb with back navigation
     draw.text((260, 116), "<  Solutions", fill="#0f62fe", font=FONT_MD)
     draw.text((260, 140), "Robots", fill="#161616", font=FONT_LG)
 
-    # Toolbar
     draw_input(draw, (260, 180, 520, 214), placeholder="Search by alias, address, model or SN...")
     draw_button(draw, (540, 180, 660, 214), "Add Robot", bg="#0f62fe", fg="white")
-    draw_button(draw, (670, 180, 790, 214), "Batch Add")
     draw_button(draw, (810, 180, 950, 214), "Batch Delete (2)", bg="#fa4d56", fg="white")
-    # View toggle buttons
     draw_button(draw, (970, 180, 1030, 214), "Grid")
     draw_button(draw, (1040, 180, 1100, 214), "List", bg="#0f62fe", fg="white")
 
-    # Table header
     y = 240
     draw.rectangle([260, y, W-40, y+36], fill="#e0e0e0")
     cols = [
@@ -321,17 +266,15 @@ def page_robots_list_view():
     for text, cx in cols:
         draw.text((cx, y+8), text, fill="#161616", font=FONT_MD)
 
-    # Table rows
     rows = [
-        (True, "AGV-01", "192.168.1.101", "X100", "SN123456", "thing-abc-001", "2.3.1"),
-        (False, "AGV-02", "192.168.1.102", "X100", "SN123457", "thing-abc-002", "2.3.1"),
-        (False, "AGV-03", "robot-03.local", "X200", "SN789012", "thing-abc-003", "2.4.0"),
+        (True, "AGV-01", "192.168.1.101:22", "X100", "SN123456", "thing-abc-001", "2.3.1"),
+        (False, "AGV-02", "192.168.1.102:22", "X100", "SN123457", "thing-abc-002", "2.3.1"),
+        (False, "AGV-03", "robot-03.local:22", "X200", "SN789012", "thing-abc-003", "2.4.0"),
     ]
     for i, (checked, alias, address, model, sn, things, osver) in enumerate(rows):
         y = 280 + i*44
         fill = "white" if i % 2 == 0 else "#fafafa"
         draw.rectangle([260, y, W-40, y+40], fill=fill, outline="#e0e0e0", width=1)
-        # Checkbox
         cb_x, cb_y = 270, y+10
         draw.rectangle([cb_x, cb_y, cb_x+16, cb_y+16], outline="#555", width=1)
         if checked:
@@ -345,43 +288,101 @@ def page_robots_list_view():
         draw_button(draw, (1020, y+6, 1090, y+34), "Details")
         draw_button(draw, (1100, y+6, 1160, y+34), "Delete", bg="#fa4d56", fg="white")
 
-    img.save(os.path.join(SOL_DIR, "06_robots_list_view.png"))
-    print("Saved solution-management/06_robots_list_view.png")
+    path = os.path.join(ROBOTS_DIR, "02_list_view.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# 7. Artifact Manager
+# Robots: 03 — Add Robot Modal
+# ---------------------------------------------------------------------------
+def page_add_robot_modal():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_robots_grid_view()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 350, 220, 500, 300
+    draw.rectangle([mx, my, mx+mw, my+mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx+24, my+20), "Add Robot", fill="#161616", font=FONT_LG)
+    draw_input(draw, (mx+24, my+80, mx+mw-24, my+114), placeholder="IP:port or mDNS:port (e.g. 192.168.1.101:22)")
+    draw.text((mx+24, my+120), "Address *", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx+24, my+140, mx+mw-24, my+174), placeholder="Robot alias")
+    draw.text((mx+24, my+180), "Alias", fill="#525252", font=FONT_SM)
+    draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Cancel")
+    draw_button(draw, (mx+mw-110, my+mh-60, mx+mw-24, my+mh-28), "Add", bg="#0f62fe", fg="white")
+
+    path = os.path.join(ROBOTS_DIR, "03_add_robot_modal.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Robots: 04 — Robot Detail Modal
+# ---------------------------------------------------------------------------
+def page_robot_detail_modal():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_robots_grid_view()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 200, 80, 800, 640
+    draw.rectangle([mx, my, mx+mw, my+mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx+24, my+20), "Robot Details — AGV-01", fill="#161616", font=FONT_LG)
+
+    tabs = ["Basic Info", "Other Info", "Software Versions", "Hardware Versions"]
+    tx = mx + 24
+    for i, tab in enumerate(tabs):
+        bg = "#e0e0e0" if i == 0 else None
+        if bg:
+            draw.rectangle([tx-4, my+52, tx+120, my+78], fill=bg)
+        draw.text((tx, my+56), tab, fill="#161616" if i == 0 else "#525252", font=FONT_SM)
+        tx += 160
+
+    fields = [
+        ("Alias", "AGV-01", True),
+        ("Address", "192.168.1.101:22", True),
+        ("Model", "X100", False),
+        ("Robot SN", "SN-123456", False),
+        ("Things ID", "THING-789012", False),
+        ("Vendor ID", "SYRIUS", False),
+        ("Product ID", "X100-STD", False),
+    ]
+    fy = my + 90
+    for label, value, editable in fields:
+        draw.text((mx+24, fy), label, fill="#525252", font=FONT_MD)
+        if editable:
+            draw_input(draw, (mx+180, fy-4, mx+mw-24, fy+22), placeholder=value)
+        else:
+            draw.text((mx+180, fy), value, fill="#161616", font=FONT_MD)
+        fy += 36
+
+    draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Close")
+    draw_button(draw, (mx+mw-110, my+mh-60, mx+mw-24, my+mh-28), "Save", bg="#0f62fe", fg="white")
+
+    path = os.path.join(ROBOTS_DIR, "04_robot_detail_modal.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Artifact Management: 01 — Artifact Manager
 # ---------------------------------------------------------------------------
 def page_artifact_manager():
     W, H = 1200, 800
     img = Image.new("RGB", (W, H), "#f4f4f4")
     draw = ImageDraw.Draw(img)
 
-    # Header
-    draw.rectangle([0, 0, W, 56], fill="#161616")
-    draw.text((20, 18), "RobotOps Studio", fill="white", font=FONT_LG)
-    draw.text((280, 22), "Solutions", fill="#8d8d8d", font=FONT_MD)
-    draw.text((380, 22), "Artifacts", fill="#8d8d8d", font=FONT_MD)
-    draw.text((W-140, 22), "v1.0.0", fill="#8d8d8d", font=FONT_SM)
+    draw_common_header(draw, W)
+    draw_active_solution_bar(draw, W)
 
-    # Active solution bar
-    draw.rectangle([0, 56, W, 96], fill="#e8e8e8")
-    draw.text((20, 64), "Active Solution:  Customer A — Site Alpha", fill="#161616", font=FONT_MD)
-    draw_button(draw, (W-180, 62, W-100, 90), "Switch")
-    draw_button(draw, (W-90, 62, W-20, 90), "Settings")
-
-    # Content
     draw.text((40, 120), "Artifact Manager", fill="#161616", font=FONT_LG)
     draw.text((40, 150), "Global binary artifacts shared across all solutions.", fill="#525252", font=FONT_MD)
     draw_input(draw, (40, 190, 400, 224), placeholder="Search artifacts...")
     draw_button(draw, (W-200, 190, W-40, 224), "Upload artifact", bg="#0f62fe", fg="white")
 
-    # Table header
     y = 260
     draw.rectangle([40, y, W-40, y+36], fill="#e0e0e0")
     for text, cx in [("Name", 60), ("Type", 300), ("Size", 450), ("Checksum", 580), ("Created", 780), ("Actions", 980)]:
         draw.text((cx, y+8), text, fill="#161616", font=FONT_MD)
 
-    # Rows
     for i, (name, typ, size, checksum, created) in enumerate([
         ("firmware_v1.2.3.bin", "Firmware", "12.5 MB", "a1b2c3...", "2026-05-27"),
         ("map_floor_2.zip", "Map", "45.2 MB", "d4e5f6...", "2026-05-26"),
@@ -397,11 +398,12 @@ def page_artifact_manager():
         draw_button(draw, (980, y+6, 1050, y+34), "Details")
         draw_button(draw, (1060, y+6, 1120, y+34), "Delete", bg="#fa4d56", fg="white")
 
-    img.save(os.path.join(SOL_DIR, "07_artifact_manager.png"))
-    print("Saved solution-management/07_artifact_manager.png")
+    path = os.path.join(ARTIFACT_DIR, "01_artifact_manager.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# 8. Artifact Selector Modal
+# Artifact Management: 02 — Artifact Selector Modal
 # ---------------------------------------------------------------------------
 def page_artifact_selector():
     W, H = 1200, 800
@@ -415,7 +417,6 @@ def page_artifact_selector():
     draw_input(draw, (mx+24, my+70, mx+400, my+104), placeholder="Search artifacts...")
     draw_button(draw, (mx+mw-120, my+70, mx+mw-24, my+104), "Confirm", bg="#0f62fe", fg="white")
 
-    # Table header
     y = my + 130
     draw.rectangle([mx+24, y, mx+mw-24, y+36], fill="#e0e0e0")
     for text, cx in [("Name", mx+40), ("Type", mx+300), ("Size", mx+450), ("Created", mx+580)]:
@@ -433,11 +434,12 @@ def page_artifact_selector():
         draw.text((mx+450, y+10), size, fill="#525252", font=FONT_SM)
         draw.text((mx+580, y+10), created, fill="#525252", font=FONT_SM)
 
-    img.save(os.path.join(SOL_DIR, "08_artifact_selector.png"))
-    print("Saved solution-management/08_artifact_selector.png")
+    path = os.path.join(ARTIFACT_DIR, "02_artifact_selector.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# 9. Artifact Detail Modal
+# Artifact Management: 03 — Artifact Detail Modal
 # ---------------------------------------------------------------------------
 def page_artifact_detail():
     W, H = 1200, 800
@@ -466,11 +468,12 @@ def page_artifact_detail():
     draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Close")
     draw_button(draw, (mx+mw-110, my+mh-60, mx+mw-24, my+mh-28), "Download", bg="#0f62fe", fg="white")
 
-    img.save(os.path.join(SOL_DIR, "09_artifact_detail.png"))
-    print("Saved solution-management/09_artifact_detail.png")
+    path = os.path.join(ARTIFACT_DIR, "03_artifact_detail.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# 10. Delete Artifact Modal
+# Artifact Management: 04 — Delete Artifact Confirm Modal
 # ---------------------------------------------------------------------------
 def page_delete_artifact_modal():
     W, H = 1200, 800
@@ -486,18 +489,30 @@ def page_delete_artifact_modal():
     draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Cancel")
     draw_button(draw, (mx+mw-110, my+mh-60, mx+mw-24, my+mh-28), "Delete", bg="#fa4d56", fg="white")
 
-    img.save(os.path.join(SOL_DIR, "10_delete_artifact_modal.png"))
-    print("Saved solution-management/10_delete_artifact_modal.png")
+    path = os.path.join(ARTIFACT_DIR, "04_delete_confirm.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
+    # Solution Management
     page_solution_selector()
     page_create_solution()
-    page_delete_confirm()
+    page_delete_solution_confirm()
     page_main_workspace()
-    page_robots_sub_interface()
+
+    # Robots (sub-module of Solution Management)
+    page_robots_grid_view()
     page_robots_list_view()
+    page_add_robot_modal()
+    page_robot_detail_modal()
+
+    # Artifact Management
     page_artifact_manager()
     page_artifact_selector()
     page_artifact_detail()
     page_delete_artifact_modal()
-    print("\nAll UI sketches generated in", BASE_DIR)
+
+    print(f"\nAll UI sketches generated in {BASE_DIR}")

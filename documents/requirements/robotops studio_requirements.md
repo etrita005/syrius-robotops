@@ -114,7 +114,8 @@ Robot Commissioning & Operations Studio
 
 机器人存储数据（持久化）包括：
 - 别名（Alias）
-- 机器人IP / mDNS地址（Address）
+- 机器人IP / mDNS地址（Address，输入格式为 `<IP>:<port>` 或 `<mDNS>:<port>`，port 可选，默认 22）
+- 机器人端口（Port，从 Address 中解析，默认 22）
 
 机器人基础信息（动态获取，当前阶段由前端模拟）包括：
 - Model
@@ -400,8 +401,8 @@ project/solution 的目标是把现场环境、机器人清单、包版本、配
 
 系统应支持修改以下持久化字段：
 - 别名（Alias）
-- 机器人IP / mDNS地址（Address）
-- 机器人端口（Port）
+- 机器人IP / mDNS地址（Address，格式为 `<host>:<port>`，port 可选，默认 22）
+- 机器人端口（Port，从 Address 中解析）
 
 系统应支持显示软件版本信息（动态获取，只读）：
 - megacosmOS 版本

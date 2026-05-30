@@ -4,7 +4,7 @@ import {
   TextInput,
   InlineNotification,
 } from "@carbon/react";
-import { CreateRobotInput } from "../../types/robot.js";
+import { CreateRobotInput, parseAddressInput } from "../../types/robot.js";
 
 interface AddRobotModalProps {
   open: boolean;
@@ -23,6 +23,8 @@ export default function AddRobotModal({ open, onClose, onAdd }: AddRobotModalPro
   const [alias, setAlias] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [addressInvalid, setAddressInvalid] = useState(false);
+  const [addressInvalidText, setAddressInvalidText] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -35,6 +37,8 @@ export default function AddRobotModal({ open, onClose, onAdd }: AddRobotModalPro
     setAlias("");
     setError(null);
     setSubmitting(false);
+    setAddressInvalid(false);
+    setAddressInvalidText("");
   };
 
   const handleClose = () => {
@@ -42,9 +46,27 @@ export default function AddRobotModal({ open, onClose, onAdd }: AddRobotModalPro
     onClose();
   };
 
+  const validateAddress = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setAddressInvalid(true);
+      setAddressInvalidText("Address is required.");
+      return false;
+    }
+    const parsed = parseAddressInput(trimmed);
+    if (!parsed) {
+      setAddressInvalid(true);
+      setAddressInvalidText("Format: <IP>:<port> or <mDNS>:<port> (port defaults to 22).");
+      return false;
+    }
+    setAddressInvalid(false);
+    setAddressInvalidText("");
+    return true;
+  };
+
   const handleAdd = async () => {
     const trimmed = address.trim();
-    if (!trimmed) return;
+    if (!validateAddress(address)) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -66,7 +88,7 @@ export default function AddRobotModal({ open, onClose, onAdd }: AddRobotModalPro
       onRequestClose={handleClose}
       onRequestSubmit={handleAdd}
       primaryButtonDisabled={
-        submitting || !address.trim()
+        submitting || !address.trim() || addressInvalid
       }
     >
       {error && (
@@ -82,9 +104,15 @@ export default function AddRobotModal({ open, onClose, onAdd }: AddRobotModalPro
         <TextInput
           id="robot-address"
           labelText="Address *"
-          placeholder="IP address or mDNS hostname"
+          placeholder="IP:port or mDNS:port (e.g. 192.168.1.101:22)"
           value={address}
-          onChange={(e) => setAddress(e.target.value)}
+          onChange={(e) => {
+            setAddress(e.target.value);
+            if (addressInvalid) validateAddress(e.target.value);
+          }}
+          invalid={addressInvalid}
+          invalidText={addressInvalidText}
+          onBlur={() => { if (address.trim()) validateAddress(address); }}
         />
         <TextInput
           id="robot-alias"

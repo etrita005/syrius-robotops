@@ -54,7 +54,7 @@ export function useRobots(solutionId: string | null) {
   );
 
   const editRobot = useCallback(
-    async (robotId: string, patch: Partial<Pick<StoredRobotData, "alias" | "address">>) => {
+    async (robotId: string, patch: Partial<Pick<StoredRobotData, "alias" | "address" | "port">>) => {
       if (!solutionId) throw new Error("No active solution");
       const updated = await updateRobot(solutionId, robotId, patch);
       const enriched = enrichRobot(updated);

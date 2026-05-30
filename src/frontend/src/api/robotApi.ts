@@ -5,6 +5,7 @@ import {
   createStoredRobotData,
   enrichRobot,
   generateRobotId,
+  parseAddressInput,
 } from "../types/robot.js";
 
 export async function listRobots(solutionId: string): Promise<StoredRobotData[]> {
@@ -33,14 +34,32 @@ export async function createRobot(solutionId: string, input: CreateRobotInput): 
 export async function updateRobot(
   solutionId: string,
   robotId: string,
-  patch: Partial<Pick<StoredRobotData, "alias" | "address">>
+  patch: Partial<Pick<StoredRobotData, "alias" | "address" | "port">>
 ): Promise<StoredRobotData> {
   const current = await getRobot(solutionId, robotId);
   if (!current) throw new Error(`Robot '${robotId}' not found`);
 
+  const resolvedPatch: Partial<StoredRobotData> = {};
+
+  if (patch.alias !== undefined) {
+    resolvedPatch.alias = patch.alias;
+  }
+
+  if (patch.address !== undefined) {
+    const parsed = parseAddressInput(patch.address);
+    if (!parsed) {
+      throw new Error("Invalid address format. Expected <IP>:<port> or <mDNS>:<port> (port defaults to 22).");
+    }
+    resolvedPatch.address = parsed.host;
+    resolvedPatch.addressType = parsed.addressType;
+    resolvedPatch.port = parsed.port;
+  } else if (patch.port !== undefined) {
+    resolvedPatch.port = patch.port;
+  }
+
   const updated: StoredRobotData = {
     ...current,
-    ...patch,
+    ...resolvedPatch,
     updatedAt: new Date().toISOString(),
   };
 

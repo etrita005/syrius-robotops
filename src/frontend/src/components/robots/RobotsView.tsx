@@ -17,7 +17,7 @@ import {
 } from "@carbon/react";
 import { Grid, List } from "@carbon/react/icons";
 import { useRobots } from "../../hooks/useRobots.js";
-import { RobotDefinition } from "../../types/robot.js";
+import { RobotDefinition, formatAddressDisplay } from "../../types/robot.js";
 import AddRobotModal from "./AddRobotModal.js";
 import RobotDetailModal from "./RobotDetailModal.js";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
@@ -93,7 +93,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
     return robots.filter(
       (r) =>
         r.alias.toLowerCase().includes(term) ||
-        r.address.toLowerCase().includes(term) ||
+        formatAddressDisplay(r.address, r.port).toLowerCase().includes(term) ||
         r.model.toLowerCase().includes(term) ||
         r.robotSN.toLowerCase().includes(term)
     );
@@ -263,7 +263,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
               {robot.alias}
             </div>
             <div style={{ fontSize: "0.8125rem", color: "#525252", marginBottom: "0.25rem" }}>
-              {robot.address} | {robot.model}
+              {formatAddressDisplay(robot.address, robot.port)} | {robot.model}
             </div>
             <div style={{ fontSize: "0.8125rem", color: "#525252", marginBottom: "0.25rem" }}>
               SN: {robot.robotSN}
@@ -323,7 +323,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
             {r.alias}
           </span>
         ),
-      address: r.address,
+      address: formatAddressDisplay(r.address, r.port),
       model: r.model,
       robotSN: r.robotSN,
       thingsId: r.thingsId,
@@ -583,7 +583,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
         </p>
         {deleteTarget && (
           <p style={{ marginTop: "0.5rem", fontWeight: 600 }}>
-            {deleteTarget.alias} ({deleteTarget.address})
+            {deleteTarget.alias} ({formatAddressDisplay(deleteTarget.address, deleteTarget.port)})
           </p>
         )}
       </Modal>

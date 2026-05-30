@@ -115,6 +115,42 @@
 | Expected Response | `{ ok: true }` |
 | Postcondition | Robot appears in listing; frontend enriches with mock data for display |
 
+## TC-ROB-001a: Add Robot (address with port)
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | Active solution exists |
+| Input | Address field value `192.168.1.101:2222`, alias `Test-Robot` |
+| Expected Result | Stored data has `address: "192.168.1.101"`, `port: 2222`, `addressType: "ip"` |
+
+## TC-ROB-001b: Add Robot (address without port)
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | Active solution exists |
+| Input | Address field value `192.168.1.101`, alias `Test-Robot` |
+| Expected Result | Stored data has `address: "192.168.1.101"`, `port: 22`, `addressType: "ip"` |
+
+## TC-ROB-001c: Add Robot (mDNS with port)
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | Active solution exists |
+| Input | Address field value `robot-01.local:22` |
+| Expected Result | Stored data has `address: "robot-01.local"`, `port: 22`, `addressType: "mdns"` |
+
+## TC-ROB-001d: Add Robot (invalid address format)
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | Active solution exists |
+| Input | Address field value `:22` (missing host) |
+| Expected Result | Validation error displayed: address format invalid
+
 ## TC-ROB-002: List Robots
 
 | Item | Value |
@@ -133,7 +169,7 @@
 | Precondition | A robot with known ID exists |
 | Input | `GET /api/objects/v1/solutions/{solutionId}/robots/{robotId}` |
 | Expected Status | 200 |
-| Expected Response | `StoredRobotData` object with `id`, `address`, `addressType`, `alias`, `createdAt`, `updatedAt` |
+| Expected Response | `StoredRobotData` object with `id`, `address`, `addressType`, `alias`, `port`, `createdAt`, `updatedAt` |
 
 ## TC-ROB-004: Update Robot Alias
 

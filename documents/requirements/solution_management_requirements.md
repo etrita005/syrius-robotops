@@ -132,7 +132,7 @@ v1/
   "required": ["id", "address", "addressType", "alias", "port", "createdAt", "updatedAt"],
   "properties": {
     "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$" },
-    "address": { "type": "string", "minLength": 1, "description": "IP address or mDNS hostname" },
+    "address": { "type": "string", "minLength": 1, "description": "IP address or mDNS hostname (without port; port is stored separately)" },
     "addressType": { "type": "string", "enum": ["ip", "mdns"] },
     "alias": { "type": "string", "maxLength": 128, "description": "User-editable robot alias" },
     "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 22, "description": "SSH connection port" },
@@ -332,7 +332,8 @@ v1/
 
 **FR-SOL-018**：系统应支持手动添加单台机器人到当前解决方案。
 
-- 输入：`address`（IP 地址或 mDNS 域名，必填）、`alias`（可选，默认与 address 相同）、`port`（SSH 连接端口，可选，默认 22）。
+- 输入：`address`（格式为 `<IP>:<port>` 或 `<mDNS>:<port>`，其中 port 可选，默认 22；必填）、`alias`（可选，默认与 address 的主机部分相同）。
+- 系统自动从输入的 address 中解析出主机部分和端口号，并自动推断 `addressType`（IP 或 mDNS）。
 - 系统生成唯一 `robotId`，规则为 `robot-{nanoid(6)}`。
 - 系统通过对象存储 `PUT /api/objects/v1/solutions/{solutionId}/robots/{robotId}` 持久化机器人存储数据。
 - 添加后，前端生成机器人动态信息（当前阶段使用基于地址的确定性随机值模拟）。
@@ -345,26 +346,26 @@ v1/
 
 **FR-SOL-020**：系统应展示当前解决方案中已添加的机器人基础信息列表。
 
-- 列表展示字段（核心信息）：`address`（IP 地址/mDNS 域名）、`alias`（别名，用户可编辑）、`model`、`robotSN`、`thingsId`、`megaCosmOSVersion`。
+- 列表展示字段（核心信息）：`address`（格式为 `<host>:<port>`，如 `192.168.1.101:22` 或 `robot.local:22`）、`alias`（别名，用户可编辑）、`model`、`robotSN`、`thingsId`、`megaCosmOSVersion`。
 - 列表支持按 `alias`、`address`、`model`、`robotSN` 进行子串搜索过滤。
 - 列表支持按字段排序。
 - 列表支持批量选择（复选框），以便执行批量删除。
 - 空状态时提示用户添加机器人。
 
-**FR-SOL-022**：系统应支持编辑机器人别名、地址和端口。
+**FR-SOL-022**：系统应支持编辑机器人别名和地址。
 
 - 用户在列表中可直接编辑 `alias` 字段（内联编辑或弹窗编辑）。
-- 用户在详情对话框中可编辑 `alias`、`address` 和 `port` 字段。
+- 用户在详情对话框中可编辑 `alias` 和 `address` 字段（address 格式为 `<host>:<port>`，port 可选，默认 22）。
 - 编辑后通过 `PUT /api/objects/v1/solutions/{solutionId}/robots/{robotId}` 更新对象存储中的机器人存储数据，并更新 `updatedAt`。
 
 **FR-SOL-023**：系统应支持点击机器人后弹出详情对话框，展示完整机器人信息。
 
 - 对话框分区域展示：
-  - **基础信息**：`alias`（可编辑）、`address`（可编辑）、`port`（可编辑）、`model`（只读）、`robotSN`（只读）、`thingsId`（只读）、`vendorId`（只读）、`productId`（只读）、`mainboardSN`（只读）、`mainboardId`（只读）、`mainSOMSN`（只读）。
+  - **基础信息**：`alias`（可编辑）、`address`（可编辑，格式为 `<host>:<port>`，port 可选，默认 22）、`model`（只读）、`robotSN`（只读）、`thingsId`（只读）、`vendorId`（只读）、`productId`（只读）、`mainboardSN`（只读）、`mainboardId`（只读）、`mainSOMSN`（只读）。
   - **其他信息**：`hardwareDeviceTree`（硬件设备树表格）。
   - **软件版本信息**：`megaCosmOSVersion`、`movebaseVersion`、`ggrVersion`、`mcuFirmwareVersions`、`actuatorFirmwareVersions`、`sensorFirmwareVersions`（均为只读）。
   - **硬件版本信息**：`mainControlHardwareVersion`、`mcuHardwareVersions`、`actuatorHardwareVersions`、`sensorHardwareVersions`（均为只读）。
-- 对话框提供"保存"按钮，保存 `alias`、`address` 和 `port` 的修改。
+- 对话框提供"保存"按钮，保存 `alias` 和 `address` 的修改（address 中包含端口信息）。
 - 对话框提供"关闭"按钮。
 
 **FR-SOL-024**：机器人信息获取策略（当前阶段）。
@@ -482,7 +483,7 @@ graph LR
 | UC-SOL-07 | 克隆解决方案 | FAE | 源解决方案已存在 | 新解决方案包含源方案全部数据副本 | 1. FAE 选择源方案并指定新名称；2. 系统生成新 ID；3. 系统递归复制所有子资源；4. 系统写入新 meta |
 | UC-SOL-08 | 导出解决方案 | FAE | 解决方案已存在 | 本地生成 ZIP 归档文件 | 1. FAE 选择导出；2. 系统流式打包目录树；3. 系统保存为 `{id}-v{version}-{timestamp}.zip` |
 | UC-SOL-09 | 导入解决方案 | FAE | 无 | 新解决方案出现在列表中 | 1. FAE 选择 ZIP 文件；2. 系统验证归档结构；3. 若 ID 冲突，提示用户选择覆盖/重命名/取消；4. 系统解压并写入对象存储 |
-| UC-ROB-01 | 手动添加单台机器人 | FAE | 当前存在激活解决方案 | 新机器人出现在当前解决方案的机器人列表中 | 1. FAE 输入 IP 地址或 mDNS 域名及别名；2. 前端生成 robotId；3. 前端写入对象存储；4. 前端生成动态机器人信息 |
+| UC-ROB-01 | 手动添加单台机器人 | FAE | 当前存在激活解决方案 | 新机器人出现在当前解决方案的机器人列表中 | 1. FAE 输入地址（格式为 `<IP>:<port>` 或 `<mDNS>:<port>`，port 可选默认 22）及别名；2. 前端解析地址并生成 robotId；3. 前端写入对象存储；4. 前端生成动态机器人信息 |
 | UC-ROB-02 | 删除/批量删除机器人 | FAE | 机器人已存在于当前解决方案 | 指定机器人从列表和存储中移除 | 1. FAE 选择要删除的机器人（单台或批量）；2. 系统展示确认对话框；3. 前端执行 DELETE 操作；4. 前端刷新列表 |
 | UC-ROB-03 | 查看机器人列表 | FAE | 当前存在激活解决方案 | 展示当前解决方案下所有机器人的核心基础信息 | 1. FAE 打开 Robots 子界面；2. 前端从对象存储读取所有机器人存储数据；3. 前端生成动态信息并合并展示 |
 | UC-ROB-04 | 编辑机器人别名和地址 | FAE | 机器人已存在 | 机器人别名和/或地址已更新 | 1. FAE 编辑别名或地址；2. 前端保存并更新对象存储 |
@@ -509,8 +510,8 @@ graph LR
 | 名称重复 | 显示名称允许重复；ID 必须唯一 | 允许重复名称，给予警告 |
 | 无激活解决方案 | 子资源 API 需要激活上下文或显式 `solutionId` | 拒绝并返回 `NO_ACTIVE_SOLUTION` |
 | 机器人 ID | 必须匹配 `^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$` | 拒绝并返回 `INVALID_ROBOT_ID` |
-| 机器人地址 | 非空字符串，最大 256 个字符 | 拒绝并返回 `INVALID_ROBOT_ADDRESS` |
-| 机器人端口 | 1–65535 整数，默认 22 | 拒绝并返回 `INVALID_ROBOT_PORT` |
+| 机器人地址 | 非空字符串，格式为 `<host>:<port>` 或 `<host>`（port 可选，默认 22），host 部分最大 256 个字符 | 拒绝并返回 `INVALID_ROBOT_ADDRESS` |
+| 机器人端口 | 从 address 中解析，1–65535 整数，默认 22 | 拒绝并返回 `INVALID_ROBOT_PORT` |
 | 机器人别名 | 最大 128 个字符 | 截断或拒绝 |
 
 ---
@@ -532,9 +533,9 @@ graph LR
 | `ARTIFACT_DUPLICATE_CHECKSUM` | 上传的制品校验和与已有文件相同 | 返回已有制品元数据，提示用户可直接引用。 |
 | `INVALID_ARTIFACT_ID` | 制品 ID 违反安全名称正则 | "制品 ID 包含非法字符。" |
 | `ROBOT_NOT_FOUND` | 对不存在的 robotId 执行读取/更新/删除 | "Robot '{robotId}' does not exist."（前端处理） |
-| `INVALID_ROBOT_ADDRESS` | 地址为空或超过 256 字符 | "Robot address cannot be empty and must not exceed 256 characters."（前端验证） |
+| `INVALID_ROBOT_ADDRESS` | 地址为空、格式不合法（未通过 `<host>:<port>` 或 `<host>` 解析）或 host 部分超过 256 字符 | "Robot address format invalid. Expected <IP>:<port> or <mDNS>:<port> (port defaults to 22)."（前端验证） |
 | `INVALID_ROBOT_PORT` | 端口不在 1–65535 范围内 | "Robot port must be between 1 and 65535."（前端验证） |
-| `ROBOT_ADDRESS_EXISTS` | 同一解决方案下已存在相同地址 | "A robot with this address already exists in the current solution."（前端校验） |
+| `ROBOT_ADDRESS_EXISTS` | 同一解决方案下已存在相同地址（host + port 组合） | "A robot with this address already exists in the current solution."（前端校验） |
 | `OBJECT_NOT_FOUND` | 对不存在的路径执行 GET/PUT/DELETE | "Object '{path}' not found."（通用对象存储错误） |
 
 ---
@@ -569,9 +570,9 @@ graph LR
 
 **UI-ROB-006**：点击机器人行或 "View Details" 按钮，弹出模态框展示完整信息，模态框内使用标签页（Tabs）组织：基础信息、其他信息、软件版本、硬件版本。
 
-**UI-ROB-007**：基础信息标签页中，`alias`、`address` 和 `port` 以输入框展示（可编辑），其余字段均为只读展示；提供 "Save" 按钮保存修改。
+**UI-ROB-007**：基础信息标签页中，`alias` 和 `address` 以输入框展示（可编辑，address 格式为 `<host>:<port>`，port 可选，默认 22），其余字段均为只读展示；提供 "Save" 按钮保存修改。
 
-**UI-ROB-008**：添加机器人弹窗应支持单台添加（输入 address + alias + port）。`port` 默认值 22。打开弹窗时，系统应默认生成一个别名（如 Robot-1、Robot-2）。
+**UI-ROB-008**：添加机器人弹窗应支持单台添加（输入 address + alias）。address 输入框格式为 `<IP>:<port>` 或 `<mDNS>:<port>`，port 可选，默认 22。打开弹窗时，系统应默认生成一个别名（如 Robot-1、Robot-2）。
 
 **UI-ROB-009**：空状态时展示提示插图和 "Add your first robot" 按钮。
 

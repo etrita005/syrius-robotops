@@ -13,6 +13,7 @@ export interface StoredRobotData {
   address: string;
   addressType: "ip" | "mdns";
   alias: string;
+  port: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,6 +45,12 @@ export interface CreateRobotInput {
   alias?: string;
 }
 
+export interface ParsedAddress {
+  host: string;
+  port: number;
+  addressType: "ip" | "mdns";
+}
+
 function seededRandom(seed: string): () => number {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
@@ -57,8 +64,34 @@ function seededRandom(seed: string): () => number {
   };
 }
 
-function isMdns(address: string): boolean {
-  return !/^(\d{1,3}\.){3}\d{1,3}$/.test(address);
+function isMdns(host: string): boolean {
+  return !/^(\d{1,3}\.){3}\d{1,3}$/.test(host);
+}
+
+const DEFAULT_PORT = 22;
+
+export function parseAddressInput(input: string): ParsedAddress | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const lastColon = trimmed.lastIndexOf(":");
+  if (lastColon > 0) {
+    const host = trimmed.substring(0, lastColon);
+    const portStr = trimmed.substring(lastColon + 1);
+    const port = parseInt(portStr, 10);
+    if (isNaN(port) || port < 1 || port > 65535 || portStr !== String(port)) {
+      return null;
+    }
+    return { host, port, addressType: isMdns(host) ? "mdns" : "ip" };
+  }
+
+  if (lastColon === 0) return null;
+
+  return { host: trimmed, port: DEFAULT_PORT, addressType: isMdns(trimmed) ? "mdns" : "ip" };
+}
+
+export function formatAddressDisplay(host: string, port: number): string {
+  return `${host}:${port}`;
 }
 
 export function generateMockRobotInfo(address: string, alias: string): Omit<RobotDefinition, keyof StoredRobotData> {
@@ -162,14 +195,18 @@ export function enrichRobot(stored: StoredRobotData): RobotDefinition {
 }
 
 export function createStoredRobotData(input: CreateRobotInput, id: string): StoredRobotData {
-  const address = input.address.trim();
-  const alias = input.alias?.trim() || address;
+  const parsed = parseAddressInput(input.address);
+  if (!parsed) {
+    throw new Error("Invalid address format. Expected <IP>:<port> or <mDNS>:<port> (port defaults to 22).");
+  }
+  const alias = input.alias?.trim() || parsed.host;
   const now = new Date().toISOString();
   return {
     id,
-    address,
-    addressType: isMdns(address) ? "mdns" : "ip",
+    address: parsed.host,
+    addressType: parsed.addressType,
     alias,
+    port: parsed.port,
     createdAt: now,
     updatedAt: now,
   };

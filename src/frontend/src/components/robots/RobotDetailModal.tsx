@@ -16,41 +16,62 @@ import {
   TableCell,
   Tag,
 } from "@carbon/react";
-import { RobotDefinition } from "../../types/robot.js";
+import { RobotDefinition, formatAddressDisplay, parseAddressInput } from "../../types/robot.js";
 
 interface RobotDetailModalProps {
   open: boolean;
   robot: RobotDefinition | null;
   onClose: () => void;
-  onSave: (patch: Partial<Pick<RobotDefinition, "alias" | "address">>) => Promise<void>;
+  onSave: (patch: Partial<Pick<RobotDefinition, "alias" | "address" | "port">>) => Promise<void>;
 }
 
 export default function RobotDetailModal({ open, robot, onClose, onSave }: RobotDetailModalProps) {
   const [activeTab, setActiveTab] = useState(0);
   const [editedAlias, setEditedAlias] = useState("");
   const [editedAddress, setEditedAddress] = useState("");
+  const [addressInvalid, setAddressInvalid] = useState(false);
+  const [addressInvalidText, setAddressInvalidText] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open && robot) {
       setEditedAlias(robot.alias);
-      setEditedAddress(robot.address);
+      setEditedAddress(formatAddressDisplay(robot.address, robot.port));
       setActiveTab(0);
+      setAddressInvalid(false);
+      setAddressInvalidText("");
     }
   }, [open, robot]);
 
   if (!robot) return null;
 
   const hasChanges =
-    editedAlias !== robot.alias || editedAddress !== robot.address;
+    editedAlias !== robot.alias ||
+    editedAddress !== formatAddressDisplay(robot.address, robot.port);
 
   const handleSave = async () => {
     if (!hasChanges) return;
+
+    if (editedAddress.trim()) {
+      const parsed = parseAddressInput(editedAddress);
+      if (!parsed) {
+        setAddressInvalid(true);
+        setAddressInvalidText("Format: <IP>:<port> or <mDNS>:<port> (port defaults to 22).");
+        return;
+      }
+    }
+
     setSaving(true);
     try {
-      const patch: Partial<Pick<RobotDefinition, "alias" | "address">> = {};
+      const patch: Partial<Pick<RobotDefinition, "alias" | "address" | "port">> = {};
       if (editedAlias !== robot.alias) patch.alias = editedAlias;
-      if (editedAddress !== robot.address) patch.address = editedAddress;
+      if (editedAddress !== formatAddressDisplay(robot.address, robot.port)) {
+        const parsed = parseAddressInput(editedAddress);
+        if (parsed) {
+          patch.address = parsed.host;
+          patch.port = parsed.port;
+        }
+      }
       await onSave(patch);
     } finally {
       setSaving(false);
@@ -117,8 +138,32 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
               <TextInput
                 id="rd-address"
                 labelText="Address"
+                placeholder="IP:port or mDNS:port (e.g. 192.168.1.101:22)"
                 value={editedAddress}
-                onChange={(e) => setEditedAddress(e.target.value)}
+                onChange={(e) => {
+                  setEditedAddress(e.target.value);
+                  if (addressInvalid) {
+                    const parsed = parseAddressInput(e.target.value);
+                    if (parsed) {
+                      setAddressInvalid(false);
+                      setAddressInvalidText("");
+                    }
+                  }
+                }}
+                invalid={addressInvalid}
+                invalidText={addressInvalidText}
+                onBlur={() => {
+                  if (editedAddress.trim()) {
+                    const parsed = parseAddressInput(editedAddress);
+                    if (!parsed) {
+                      setAddressInvalid(true);
+                      setAddressInvalidText("Format: <IP>:<port> or <mDNS>:<port> (port defaults to 22).");
+                    } else {
+                      setAddressInvalid(false);
+                      setAddressInvalidText("");
+                    }
+                  }
+                }}
               />
               <TextInput id="rd-model" labelText="Model" value={robot.model} readOnly />
               <TextInput id="rd-robotsn" labelText="Robot SN" value={robot.robotSN} readOnly />
