@@ -7,8 +7,11 @@ import { ChecksumService } from "./services/checksumService.js";
 import { ArtifactService } from "./services/artifactService.js";
 import { createObjectStoreRoutes } from "./routes/objectStoreRoutes.js";
 import { createArtifactRoutes } from "./routes/artifactRoutes.js";
+import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
+import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
+import { SshCommandTask, GetRobotBasicInfoTask } from "./tasks/index.js";
 
 function parseArgs(): { dataDir: string; port: number } {
   const args = process.argv.slice(2);
@@ -45,6 +48,16 @@ app.get("/api/health", (c) => c.json({ status: "ok" }));
 
 app.route("/api/objects", createObjectStoreRoutes(objectStore, dataDir));
 app.route("/api/artifacts", createArtifactRoutes(artifactService));
+
+const sseManager = new SseManager();
+const resolverRegistry = new ResolverRegistry();
+resolverRegistry.register("SshCommandTask", SshCommandTask);
+resolverRegistry.register("GetRobotBasicInfoTask", GetRobotBasicInfoTask);
+
+const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
+await taskFlowEngine.loadPersistedFlows();
+
+app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine, sseManager));
 
 app.onError((err, _c) => {
   if (err instanceof AppError) {

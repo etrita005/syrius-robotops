@@ -50,3 +50,33 @@ export class RefCountNegativeError extends AppError {
     super("REFCOUNT_NEGATIVE", "Reference count anomaly detected. Please contact technical support.", 500);
   }
 }
+
+export class FlowNotFoundError extends AppError {
+  constructor(id: string) {
+    super("FLOW_NOT_FOUND", "Flow not found", 404);
+  }
+}
+
+export class MissingTypeOrDagError extends AppError {
+  constructor() {
+    super("MISSING_TYPE_OR_DAG", "Missing type or dag", 400);
+  }
+}
+
+export class InvalidFlowTypeError extends AppError {
+  constructor() {
+    super("INVALID_TYPE", "Invalid type, must be internal or user", 400);
+  }
+}
+
+export class InvalidIdsError extends AppError {
+  constructor() {
+    super("INVALID_IDS", "ids must be an array", 400);
+  }
+}
+
+export class ResolverNotFoundError extends AppError {
+  constructor(name: string) {
+    super("RESOLVER_NOT_FOUND", `Resolver '${name}' is not registered`, 400);
+  }
+}

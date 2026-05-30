@@ -19,11 +19,16 @@ export type TaskState = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "SKIPPE
 export interface FlowRecord {
   id: string;
   type: FlowType;
+  input?: ValueMap;
+  expectedResults?: string[];
   dag: FlowSpec;
   state: FlowState;
   taskStates: Record<string, TaskState>;
+  taskResults?: Record<string, ValueMap>;
+  results?: ValueMap;
   serializedRunStatus?: SerializedFlowRunStatus;
   createdAt: string;
+  finishedAt?: string;
 }
 
 export interface FlowSummary {
@@ -31,7 +36,17 @@ export interface FlowSummary {
   type: FlowType;
   state: FlowState;
   taskStates: Record<string, TaskState>;
+  taskResults?: Record<string, ValueMap>;
+  results?: ValueMap;
+  input?: ValueMap;
+  expectedResults?: string[];
   createdAt: string;
+  finishedAt?: string;
+}
+
+export interface TaskFlowEngineOptions {
+  completedFlowTtlMs?: number;
+  cleanupIntervalMs?: number;
 }
 
 function nowISO(): string {
@@ -42,6 +57,8 @@ function getTaskCodes(dag: FlowSpec): string[] {
   return Object.keys(dag.tasks ?? {});
 }
 
+const DEFAULT_TTL_MS = 30 * 60 * 1000;
+const DEFAULT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const SSE_PREFIX = "task-flow-engine";
 
 export class TaskFlowEngine {
@@ -51,28 +68,102 @@ export class TaskFlowEngine {
   private resolverRegistry: ResolverRegistry;
   private objectStore: ObjectStore;
   private loggerInstalled = false;
+  private completedFlowTtlMs: number;
+  private cleanupIntervalMs: number;
+  private cleanupTimer?: ReturnType<typeof setInterval>;
 
-  constructor(objectStore: ObjectStore, sseManager: SseManager, resolverRegistry: ResolverRegistry) {
+  constructor(
+    objectStore: ObjectStore,
+    sseManager: SseManager,
+    resolverRegistry: ResolverRegistry,
+    options?: TaskFlowEngineOptions
+  ) {
     this.objectStore = objectStore;
     this.sseManager = sseManager;
     this.resolverRegistry = resolverRegistry;
+    this.completedFlowTtlMs = options?.completedFlowTtlMs ?? DEFAULT_TTL_MS;
+    this.cleanupIntervalMs = options?.cleanupIntervalMs ?? DEFAULT_CLEANUP_INTERVAL_MS;
+    this.startCleanupTimer();
+  }
+
+  private startCleanupTimer(): void {
+    this.cleanupTimer = setInterval(() => this.cleanupExpiredFlows(), this.cleanupIntervalMs);
+  }
+
+  private cleanupExpiredFlows(): void {
+    const now = Date.now();
+    const expiredIds: string[] = [];
+
+    for (const [id, record] of this.flows) {
+      if (
+        (record.state === "COMPLETED" || record.state === "FAILED" || record.state === "STOPPED") &&
+        record.finishedAt
+      ) {
+        const finishedMs = new Date(record.finishedAt).getTime();
+        if (now - finishedMs > this.completedFlowTtlMs) {
+          expiredIds.push(id);
+        }
+      }
+    }
+
+    for (const id of expiredIds) {
+      const record = this.flows.get(id);
+      this.flows.delete(id);
+      this.flowInstances.delete(id);
+      if (record?.type === "user") {
+        this.objectStore.deletePath(`flows/${id}`).catch(() => {});
+      }
+      this.sseManager.broadcast(`${SSE_PREFIX}/flow-removed`, { flowId: id });
+    }
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = undefined;
+    }
   }
 
   private ensureLogger(): void {
     if (this.loggerInstalled) return;
-    FlowManager.installLogger({ log: (entry) => this.handleLogEntry(entry) });
+    FlowManager.installLogger({ log: (entry: FlowedLogEntry) => this.handleLogEntry(entry) });
     this.loggerInstalled = true;
   }
 
-  async createFlow(type: FlowType, dag: FlowSpec): Promise<FlowSummary> {
+  private validateResolvers(dag: FlowSpec): void {
+    const tasks = (dag as Record<string, unknown>).tasks as
+      | Record<string, { resolver?: { name?: string } }>
+      | undefined;
+    if (!tasks) return;
+    for (const [taskCode, taskSpec] of Object.entries(tasks)) {
+      const resolverName = taskSpec?.resolver?.name;
+      if (resolverName && !this.resolverRegistry.has(resolverName)) {
+        throw new Error(`Resolver '${resolverName}' is not registered`);
+      }
+    }
+  }
+
+  async createFlow(
+    type: FlowType,
+    dag: FlowSpec,
+    input?: ValueMap,
+    expectedResults?: string[]
+  ): Promise<FlowSummary> {
     this.ensureLogger();
+    this.validateResolvers(dag);
+
     const id = randomUUID();
 
-    const tasks = (dag as any).tasks ?? {};
-    for (const code of Object.keys(tasks)) {
-      const task = tasks[code];
-      if (task?.provides?.length && task.resolver && !task.resolver.results) {
-        task.resolver.results = { done: task.provides[0] };
+    const tasks = (dag as Record<string, unknown>).tasks as
+      | Record<string, { provides?: string[]; resolver?: { results?: Record<string, string> } }>
+      | undefined;
+
+    if (tasks) {
+      for (const code of Object.keys(tasks)) {
+        const task = tasks[code];
+        if (task?.provides?.length && task.resolver && !task.resolver.results) {
+          task.resolver.results = { done: task.provides[0] };
+        }
       }
     }
 
@@ -85,6 +176,8 @@ export class TaskFlowEngine {
     const record: FlowRecord = {
       id,
       type,
+      input,
+      expectedResults,
       dag,
       state: "PENDING",
       taskStates,
@@ -112,13 +205,24 @@ export class TaskFlowEngine {
     this.saveFlow(record).catch(() => {});
     this.sseManager.broadcast(`${SSE_PREFIX}/flow-updated`, this.summarize(record));
 
+    const startParams = record.input ?? {};
+    const expected = this.computeExpectedResults(record);
     const resolvers = this.resolverRegistry.getAll();
 
     flow
-      .start({}, [], resolvers, {}, { instanceId: id })
-      .then(() => {
+      .start(startParams, expected, resolvers, {}, { instanceId: id })
+      .then((flowResults: ValueMap) => {
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "COMPLETED";
+        }
+        if (flowResults && Object.keys(flowResults).length > 0) {
+          record.results = {};
+          for (const key of record.expectedResults ?? []) {
+            if (flowResults[key] !== undefined) {
+              (record.results as ValueMap)[key] = flowResults[key];
+            }
+          }
+          this.extractTaskResults(id, flowResults);
         }
         this.finalizeFlow(id);
       })
@@ -128,6 +232,89 @@ export class TaskFlowEngine {
         }
         this.finalizeFlow(id);
       });
+  }
+
+  private computeExpectedResults(record: FlowRecord): string[] {
+    const allProvides: string[] = [];
+    const tasks = (record.dag as Record<string, unknown>).tasks as
+      | Record<string, { provides?: string[] }>
+      | undefined;
+
+    if (tasks) {
+      for (const taskSpec of Object.values(tasks)) {
+        if (taskSpec.provides) {
+          allProvides.push(...taskSpec.provides);
+        }
+      }
+    }
+
+    return [...new Set([...allProvides, ...(record.expectedResults ?? [])])];
+  }
+
+  private extractTaskResults(id: string, flowResults: ValueMap): void {
+    const record = this.flows.get(id);
+    if (!record) return;
+
+    if (!record.taskResults) {
+      record.taskResults = {};
+    }
+
+    const tasks = (record.dag as Record<string, unknown>).tasks as
+      | Record<string, { resolver?: { results?: Record<string, string> } }>
+      | undefined;
+
+    if (!tasks) return;
+
+    for (const [taskCode, taskSpec] of Object.entries(tasks)) {
+      const resultMapping = taskSpec?.resolver?.results;
+      if (!resultMapping) continue;
+
+      const taskResult: ValueMap = {};
+      for (const [resolverKey, flowKey] of Object.entries(resultMapping)) {
+        if (flowResults[flowKey] !== undefined) {
+          taskResult[resolverKey] = flowResults[flowKey];
+        }
+      }
+      if (Object.keys(taskResult).length > 0) {
+        record.taskResults[taskCode] = taskResult;
+      }
+    }
+  }
+
+  private extractTaskResultOnFinish(id: string, taskCode: string): void {
+    const record = this.flows.get(id);
+    if (!record) return;
+
+    if (!record.taskResults) {
+      record.taskResults = {};
+    }
+
+    const flow = this.flowInstances.get(id);
+    if (!flow) return;
+
+    try {
+      const serializableState = flow.getSerializableState();
+      const flowResults = serializableState?.results as ValueMap | undefined;
+
+      const tasks = (record.dag as Record<string, unknown>).tasks as
+        | Record<string, { resolver?: { results?: Record<string, string> } }>
+        | undefined;
+
+      const resultMapping = tasks?.[taskCode]?.resolver?.results;
+      if (resultMapping && flowResults) {
+        const taskResult: ValueMap = {};
+        for (const [resolverKey, flowKey] of Object.entries(resultMapping)) {
+          if (flowResults[flowKey] !== undefined) {
+            taskResult[resolverKey] = flowResults[flowKey];
+          }
+        }
+        if (Object.keys(taskResult).length > 0) {
+          record.taskResults[taskCode] = taskResult;
+        }
+      }
+    } catch {
+      // ignore extraction errors
+    }
   }
 
   private finalizeFlow(id: string): void {
@@ -142,6 +329,8 @@ export class TaskFlowEngine {
       }
     }
 
+    record.finishedAt = nowISO();
+
     const flow = this.flowInstances.get(id);
     if (flow) {
       try {
@@ -153,6 +342,12 @@ export class TaskFlowEngine {
 
     this.saveFlow(record).catch(() => {});
     this.sseManager.broadcast(`${SSE_PREFIX}/flow-updated`, this.summarize(record));
+    this.sseManager.broadcast(`${SSE_PREFIX}/flow-completed`, {
+      flowId: id,
+      state: record.state,
+      results: record.results ?? null,
+      finishedAt: record.finishedAt,
+    });
   }
 
   async pauseFlow(id: string): Promise<void> {
@@ -184,9 +379,18 @@ export class TaskFlowEngine {
 
     flow
       .resume()
-      .then(() => {
+      .then((flowResults: ValueMap) => {
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "COMPLETED";
+        }
+        if (flowResults && Object.keys(flowResults).length > 0) {
+          record.results = {};
+          for (const key of record.expectedResults ?? []) {
+            if (flowResults[key] !== undefined) {
+              (record.results as ValueMap)[key] = flowResults[key];
+            }
+          }
+          this.extractTaskResults(id, flowResults);
         }
         this.finalizeFlow(id);
       })
@@ -315,11 +519,25 @@ export class TaskFlowEngine {
       if (taskCode) {
         const isError = entry.level === "error";
         record.taskStates[taskCode] = isError ? "FAILED" : "COMPLETED";
+
+        if (!isError) {
+          this.extractTaskResultOnFinish(flowId, taskCode);
+        }
+
         this.sseManager.broadcast(`${SSE_PREFIX}/task-updated`, {
           flowId,
           taskName: taskCode,
           state: record.taskStates[taskCode],
         });
+
+        if (!isError && record.taskResults?.[taskCode]) {
+          this.sseManager.broadcast(`${SSE_PREFIX}/task-result`, {
+            flowId,
+            taskName: taskCode,
+            state: "COMPLETED",
+            result: record.taskResults[taskCode],
+          });
+        }
       }
     }
 
@@ -343,7 +561,12 @@ export class TaskFlowEngine {
       type: record.type,
       state: record.state,
       taskStates: { ...record.taskStates },
+      taskResults: record.taskResults ? { ...record.taskResults } : undefined,
+      results: record.results,
+      input: record.input,
+      expectedResults: record.expectedResults,
       createdAt: record.createdAt,
+      finishedAt: record.finishedAt,
     };
   }
 }
