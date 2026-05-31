@@ -5,8 +5,12 @@ import { join } from "node:path";
 import { ObjectStore } from "./services/objectStore.js";
 import { ChecksumService } from "./services/checksumService.js";
 import { ArtifactService } from "./services/artifactService.js";
+import { SolutionService } from "./services/solutionService.js";
+import { RobotService } from "./services/robotService.js";
 import { createObjectStoreRoutes } from "./routes/objectStoreRoutes.js";
 import { createArtifactRoutes } from "./routes/artifactRoutes.js";
+import { createSolutionRoutes } from "./routes/solutionRoutes.js";
+import { createRobotRoutes } from "./routes/robotRoutes.js";
 import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
@@ -39,6 +43,8 @@ store.configure(dataDir);
 const objectStore = new ObjectStore();
 const checksumService = new ChecksumService();
 const artifactService = new ArtifactService(objectStore, checksumService);
+const solutionService = new SolutionService(objectStore);
+const robotService = new RobotService(objectStore);
 
 const app = new Hono();
 
@@ -48,6 +54,8 @@ app.get("/api/health", (c) => c.json({ status: "ok" }));
 
 app.route("/api/objects", createObjectStoreRoutes(objectStore, dataDir));
 app.route("/api/artifacts", createArtifactRoutes(artifactService));
+app.route("/api/solutions", createSolutionRoutes(solutionService));
+app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
 
 const sseManager = new SseManager();
 const resolverRegistry = new ResolverRegistry();

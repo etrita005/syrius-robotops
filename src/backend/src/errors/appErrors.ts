@@ -80,3 +80,45 @@ export class ResolverNotFoundError extends AppError {
     super("RESOLVER_NOT_FOUND", `Resolver '${name}' is not registered`, 400);
   }
 }
+
+export class SolutionNotFoundError extends AppError {
+  constructor(id: string) {
+    super("SOLUTION_NOT_FOUND", `Solution '${id}' does not exist.`, 404);
+  }
+}
+
+export class SolutionAlreadyExistsError extends AppError {
+  constructor(id: string) {
+    super("SOLUTION_ALREADY_EXISTS", `Solution '${id}' already exists.`, 409);
+  }
+}
+
+export class InvalidSolutionIdError extends AppError {
+  constructor(id: string) {
+    super("INVALID_SOLUTION_ID", `Solution ID '${id}' contains invalid characters.`, 400);
+  }
+}
+
+export class RobotNotFoundError extends AppError {
+  constructor(id: string) {
+    super("ROBOT_NOT_FOUND", `Robot '${id}' does not exist.`, 404);
+  }
+}
+
+export class InvalidRobotIdError extends AppError {
+  constructor(id: string) {
+    super("INVALID_ROBOT_ID", `Robot ID '${id}' contains invalid characters.`, 400);
+  }
+}
+
+export class InvalidRobotAddressError extends AppError {
+  constructor() {
+    super("INVALID_ROBOT_ADDRESS", "Robot address format invalid. Expected <IP>:<port> or <mDNS>:<port> (port defaults to 22).", 400);
+  }
+}
+
+export class RobotAddressExistsError extends AppError {
+  constructor() {
+    super("ROBOT_ADDRESS_EXISTS", "A robot with this address already exists in the current solution.", 409);
+  }
+}

@@ -70,6 +70,86 @@ class InMemoryObjectStore {
   }
 }
 
+class EnhancedObjectStore {
+  private store = new Map<string, unknown>();
+
+  async exists(path: string): Promise<boolean> {
+    const keys = [...this.store.keys()];
+    if (this.store.has(path)) return true;
+    const prefix = path.replace(/\/$/, "") + "/";
+    return keys.some((k) => k.startsWith(prefix));
+  }
+
+  async put(path: string, _body: Buffer | string, _contentType?: string): Promise<void> {
+    this.store.set(path, _body);
+  }
+
+  async putJson(path: string, data: unknown): Promise<void> {
+    this.store.set(path, data);
+  }
+
+  async putBuffer(path: string, data: Buffer, contentType: string): Promise<void> {
+    this.store.set(path, { data, contentType });
+  }
+
+  async list(path: string): Promise<ObjectStoreResource[]> {
+    const prefix = path.replace(/\/$/, "") + "/";
+    const directChildren = new Map<string, Set<string>>();
+    for (const key of this.store.keys()) {
+      if (key.startsWith(prefix)) {
+        const rest = key.slice(prefix.length);
+        const parts = rest.split("/");
+        const childName = parts[0];
+        if (!directChildren.has(childName)) {
+          directChildren.set(childName, new Set());
+        }
+        if (parts.length > 1) {
+          directChildren.get(childName)!.add(parts[1]);
+        }
+      }
+    }
+    const entries: ObjectStoreResource[] = [];
+    for (const [name, subParts] of directChildren) {
+      if (subParts.size > 0) {
+        entries.push({ name, type: "directory" });
+      } else {
+        entries.push({ name, type: "file" });
+      }
+    }
+    return entries;
+  }
+
+  async getJson<T>(path: string): Promise<T | null> {
+    const val = this.store.get(path);
+    return val !== undefined ? (val as T) : null;
+  }
+
+  async get(path: string): Promise<{ ok: boolean; text: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> }> {
+    const val = this.store.get(path);
+    if (val === undefined) return { ok: false, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0) };
+    const str = typeof val === "string" ? val : JSON.stringify(val);
+    const buf = Buffer.from(str, "utf-8");
+    return {
+      ok: true,
+      text: async () => str,
+      arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer,
+    };
+  }
+
+  async deletePath(path: string): Promise<boolean> {
+    const prefix = path.replace(/\/$/, "") + "/";
+    const keysToDelete = [...this.store.keys()].filter(
+      (k) => k === path || k.startsWith(prefix)
+    );
+    let deleted = false;
+    for (const key of keysToDelete) {
+      this.store.delete(key);
+      deleted = true;
+    }
+    return deleted;
+  }
+}
+
 class SpySseManager {
   events: { event: string; data: unknown }[] = [];
 
@@ -1261,5 +1341,793 @@ describe("TaskFlowEngine - Routes", () => {
     assert.equal(res.status, 200);
     assert.equal(engine.getFlow(s1.id), undefined);
     engine.destroy();
+  });
+});
+
+import { SolutionService } from "./services/solutionService.js";
+import { RobotService } from "./services/robotService.js";
+import { createSolutionRoutes } from "./routes/solutionRoutes.js";
+import { createRobotRoutes } from "./routes/robotRoutes.js";
+import type { SolutionMeta } from "./types/solution.js";
+import type { StoredRobotData } from "./types/robot.js";
+
+function createEnhancedTestServices() {
+  const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+  const solutionService = new SolutionService(objStore);
+  const robotService = new RobotService(objStore);
+  return { solutionService, robotService, objStore: objStore as unknown as EnhancedObjectStore };
+}
+
+describe("SolutionService - Core", () => {
+  describe("create", () => {
+    it("TC-SOL-SVC-001: should create a solution with valid input", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const meta = await solutionService.create({ name: "Test Solution" });
+      assert.ok(meta.id);
+      assert.equal(meta.name, "Test Solution");
+      assert.equal(meta.description, "");
+      assert.equal(meta.version, "1.0.0");
+      assert.ok(meta.createdAt);
+      assert.ok(meta.updatedAt);
+      assert.deepEqual(meta.tags, []);
+      assert.deepEqual(meta.metadata, {});
+    });
+
+    it("TC-SOL-SVC-002: should create a solution with all optional fields", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const meta = await solutionService.create({
+        name: "Full Solution",
+        description: "A full solution",
+        tags: ["tag1", "tag2"],
+        metadata: { location: "Shanghai" },
+      });
+      assert.equal(meta.name, "Full Solution");
+      assert.equal(meta.description, "A full solution");
+      assert.deepEqual(meta.tags, ["tag1", "tag2"]);
+      assert.deepEqual(meta.metadata, { location: "Shanghai" });
+    });
+
+    it("TC-SOL-SVC-003: should create a solution with custom ID", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const meta = await solutionService.create({ id: "my-custom-id", name: "Custom" });
+      assert.equal(meta.id, "my-custom-id");
+    });
+
+    it("TC-SOL-SVC-004: should reject invalid solution ID", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      await assert.rejects(
+        () => solutionService.create({ id: "invalid id!", name: "Bad" }),
+        { code: "INVALID_SOLUTION_ID" }
+      );
+    });
+
+    it("TC-SOL-SVC-005: should reject duplicate ID", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      await solutionService.create({ id: "dup-id", name: "First" });
+      await assert.rejects(
+        () => solutionService.create({ id: "dup-id", name: "Second" }),
+        { code: "SOLUTION_ALREADY_EXISTS" }
+      );
+    });
+
+    it("TC-SOL-SVC-006: should create directory skeleton", async () => {
+      const { solutionService, objStore } = createEnhancedTestServices();
+      await solutionService.create({ id: "skel-test", name: "Skeleton" });
+      const robotsKeep = await objStore.getJson("v1/solutions/skel-test/robots/_keep");
+      assert.ok(robotsKeep !== null);
+    });
+  });
+
+  describe("list", () => {
+    it("TC-SOL-SVC-007: should list all solutions", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      await solutionService.create({ name: "Sol A" });
+      await solutionService.create({ name: "Sol B" });
+      const result = await solutionService.list();
+      assert.equal(result.items.length, 2);
+      assert.equal(result.corruptedIds.length, 0);
+    });
+
+    it("TC-SOL-SVC-008: should sort by updatedAt descending", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const s1 = await solutionService.create({ name: "First" });
+      await solutionService.update(s1.id, { description: "updated" });
+      const s2 = await solutionService.create({ name: "Second" });
+      const result = await solutionService.list();
+      assert.equal(result.items.length, 2);
+    });
+
+    it("TC-SOL-SVC-009: should return corrupted IDs for solutions with missing meta", async () => {
+      const { solutionService, objStore } = createEnhancedTestServices();
+      await objStore.putJson("v1/solutions/corrupted-sol/_keep", "");
+      const result = await solutionService.list();
+      assert.ok(result.corruptedIds.includes("corrupted-sol"));
+    });
+  });
+
+  describe("get", () => {
+    it("TC-SOL-SVC-010: should get a solution by ID", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const created = await solutionService.create({ name: "GetTest" });
+      const fetched = await solutionService.get(created.id);
+      assert.equal(fetched.id, created.id);
+      assert.equal(fetched.name, "GetTest");
+    });
+
+    it("TC-SOL-SVC-011: should throw for non-existent solution", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      await assert.rejects(
+        () => solutionService.get("nonexistent"),
+        { code: "SOLUTION_NOT_FOUND" }
+      );
+    });
+  });
+
+  describe("update", () => {
+    it("TC-SOL-SVC-012: should update solution fields and bump version", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const created = await solutionService.create({ name: "Original" });
+      const updated = await solutionService.update(created.id, { name: "Updated", description: "New desc" });
+      assert.equal(updated.name, "Updated");
+      assert.equal(updated.description, "New desc");
+      assert.equal(updated.version, "1.0.1");
+      assert.equal(updated.id, created.id);
+      assert.equal(updated.createdAt, created.createdAt);
+    });
+
+    it("TC-SOL-SVC-013: should throw when updating non-existent solution", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      await assert.rejects(
+        () => solutionService.update("nonexistent", { name: "X" }),
+        { code: "SOLUTION_NOT_FOUND" }
+      );
+    });
+
+    it("TC-SOL-SVC-014: should not change id or createdAt on update", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const created = await solutionService.create({ name: "Stable" });
+      const updated = await solutionService.update(created.id, { name: "Stable2" } as any);
+      assert.equal(updated.id, created.id);
+      assert.equal(updated.createdAt, created.createdAt);
+    });
+  });
+
+  describe("remove", () => {
+    it("TC-SOL-SVC-015: should remove a solution", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const created = await solutionService.create({ name: "DeleteMe" });
+      await solutionService.remove(created.id);
+      await assert.rejects(
+        () => solutionService.get(created.id),
+        { code: "SOLUTION_NOT_FOUND" }
+      );
+    });
+
+    it("TC-SOL-SVC-016: should throw when removing non-existent solution", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      await assert.rejects(
+        () => solutionService.remove("nonexistent"),
+        { code: "SOLUTION_NOT_FOUND" }
+      );
+    });
+  });
+
+  describe("open and close (in-memory state)", () => {
+    it("TC-SOL-SVC-017: should open a solution and track it in memory", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const created = await solutionService.create({ name: "OpenMe" });
+      const opened = await solutionService.open(created.id);
+      assert.equal(opened.id, created.id);
+      assert.ok(solutionService.isOpened(created.id));
+    });
+
+    it("TC-SOL-SVC-018: should list opened solutions", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const s1 = await solutionService.create({ name: "Sol1" });
+      const s2 = await solutionService.create({ name: "Sol2" });
+      await solutionService.open(s1.id);
+      await solutionService.open(s2.id);
+      const opened = solutionService.getOpenedSolutions();
+      assert.equal(opened.length, 2);
+    });
+
+    it("TC-SOL-SVC-019: should close a solution", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const created = await solutionService.create({ name: "CloseMe" });
+      await solutionService.open(created.id);
+      assert.ok(solutionService.isOpened(created.id));
+      solutionService.closeSolution(created.id);
+      assert.ok(!solutionService.isOpened(created.id));
+    });
+
+    it("TC-SOL-SVC-020: should remove from opened when solution is deleted", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const created = await solutionService.create({ name: "DelOpened" });
+      await solutionService.open(created.id);
+      assert.ok(solutionService.isOpened(created.id));
+      await solutionService.remove(created.id);
+      assert.ok(!solutionService.isOpened(created.id));
+    });
+
+    it("TC-SOL-SVC-021: should throw when opening non-existent solution", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      await assert.rejects(
+        () => solutionService.open("nonexistent"),
+        { code: "SOLUTION_NOT_FOUND" }
+      );
+    });
+  });
+
+  describe("clone", () => {
+    it("TC-SOL-SVC-022: should clone a solution", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      const source = await solutionService.create({ name: "Source" });
+      const cloned = await solutionService.clone(source.id, "Cloned Copy");
+      assert.notEqual(cloned.id, source.id);
+      assert.equal(cloned.name, "Cloned Copy");
+      assert.equal(cloned.version, "1.0.0");
+    });
+
+    it("TC-SOL-SVC-023: should throw when cloning non-existent solution", async () => {
+      const { solutionService } = createEnhancedTestServices();
+      await assert.rejects(
+        () => solutionService.clone("nonexistent", "Copy"),
+        { code: "SOLUTION_NOT_FOUND" }
+      );
+    });
+  });
+});
+
+describe("RobotService - Core", () => {
+  async function createSolutionWithService() {
+    const services = createEnhancedTestServices();
+    const solution = await services.solutionService.create({ name: "Test Solution" });
+    return { ...services, solution };
+  }
+
+  describe("create", () => {
+    it("TC-ROB-SVC-001: should create a robot with valid IP address", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
+      assert.ok(robot.id);
+      assert.equal(robot.address, "192.168.1.100");
+      assert.equal(robot.port, 22);
+      assert.equal(robot.addressType, "ip");
+      assert.equal(robot.alias, "192.168.1.100");
+    });
+
+    it("TC-ROB-SVC-002: should create a robot with mDNS address", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const robot = await robotService.create(solution.id, { address: "robot-01.local:22" });
+      assert.equal(robot.address, "robot-01.local");
+      assert.equal(robot.port, 22);
+      assert.equal(robot.addressType, "mdns");
+    });
+
+    it("TC-ROB-SVC-003: should default port to 22 when not specified", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const robot = await robotService.create(solution.id, { address: "10.0.0.1" });
+      assert.equal(robot.port, 22);
+    });
+
+    it("TC-ROB-SVC-004: should use alias when provided", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const robot = await robotService.create(solution.id, { address: "10.0.0.1", alias: "MyRobot" });
+      assert.equal(robot.alias, "MyRobot");
+    });
+
+    it("TC-ROB-SVC-005: should default alias to host when not provided", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const robot = await robotService.create(solution.id, { address: "10.0.0.1" });
+      assert.equal(robot.alias, "10.0.0.1");
+    });
+
+    it("TC-ROB-SVC-006: should reject invalid address format", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      await assert.rejects(
+        () => robotService.create(solution.id, { address: ":22" }),
+        { code: "INVALID_ROBOT_ADDRESS" }
+      );
+    });
+
+    it("TC-ROB-SVC-007: should reject duplicate address in same solution", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      await robotService.create(solution.id, { address: "10.0.0.1:22" });
+      await assert.rejects(
+        () => robotService.create(solution.id, { address: "10.0.0.1:22" }),
+        { code: "ROBOT_ADDRESS_EXISTS" }
+      );
+    });
+
+    it("TC-ROB-SVC-008: should allow same address in different solutions", async () => {
+      const { robotService, solutionService } = createEnhancedTestServices();
+      const sol1 = await solutionService.create({ name: "Sol1" });
+      const sol2 = await solutionService.create({ name: "Sol2" });
+      const r1 = await robotService.create(sol1.id, { address: "10.0.0.1:22" });
+      const r2 = await robotService.create(sol2.id, { address: "10.0.0.1:22" });
+      assert.ok(r1.id);
+      assert.ok(r2.id);
+      assert.notEqual(r1.id, r2.id);
+    });
+
+    it("TC-ROB-SVC-009: should throw when creating robot in non-existent solution", async () => {
+      const { robotService } = createEnhancedTestServices();
+      await assert.rejects(
+        () => robotService.create("nonexistent", { address: "10.0.0.1" }),
+        { code: "SOLUTION_NOT_FOUND" }
+      );
+    });
+  });
+
+  describe("list", () => {
+    it("TC-ROB-SVC-010: should list robots in a solution", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      await robotService.create(solution.id, { address: "10.0.0.1" });
+      await robotService.create(solution.id, { address: "10.0.0.2" });
+      const robots = await robotService.list(solution.id);
+      assert.equal(robots.length, 2);
+    });
+
+    it("TC-ROB-SVC-011: should return empty list for solution with no robots", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const robots = await robotService.list(solution.id);
+      assert.equal(robots.length, 0);
+    });
+
+    it("TC-ROB-SVC-012: should use cached robots on subsequent calls", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      await robotService.create(solution.id, { address: "10.0.0.1" });
+      const first = await robotService.list(solution.id);
+      const second = await robotService.list(solution.id);
+      assert.deepEqual(first, second);
+    });
+
+    it("TC-ROB-SVC-013: should throw when listing robots in non-existent solution", async () => {
+      const { robotService } = createEnhancedTestServices();
+      await assert.rejects(
+        () => robotService.list("nonexistent"),
+        { code: "SOLUTION_NOT_FOUND" }
+      );
+    });
+  });
+
+  describe("get", () => {
+    it("TC-ROB-SVC-014: should get a robot by ID", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const created = await robotService.create(solution.id, { address: "10.0.0.1" });
+      const fetched = await robotService.get(solution.id, created.id);
+      assert.equal(fetched.id, created.id);
+      assert.equal(fetched.address, "10.0.0.1");
+    });
+
+    it("TC-ROB-SVC-015: should throw for non-existent robot", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      await assert.rejects(
+        () => robotService.get(solution.id, "nonexistent-robot"),
+        { code: "ROBOT_NOT_FOUND" }
+      );
+    });
+
+    it("TC-ROB-SVC-016: should throw for non-existent solution", async () => {
+      const { robotService } = createEnhancedTestServices();
+      await assert.rejects(
+        () => robotService.get("nonexistent", "some-robot"),
+        { code: "SOLUTION_NOT_FOUND" }
+      );
+    });
+  });
+
+  describe("update", () => {
+    it("TC-ROB-SVC-017: should update robot alias", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const created = await robotService.create(solution.id, { address: "10.0.0.1" });
+      const updated = await robotService.update(solution.id, created.id, { alias: "NewAlias" });
+      assert.equal(updated.alias, "NewAlias");
+      assert.equal(updated.address, created.address);
+    });
+
+    it("TC-ROB-SVC-018: should update robot address", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const created = await robotService.create(solution.id, { address: "10.0.0.1" });
+      const updated = await robotService.update(solution.id, created.id, { address: "10.0.0.2:22" });
+      assert.equal(updated.address, "10.0.0.2");
+      assert.equal(updated.port, 22);
+    });
+
+    it("TC-ROB-SVC-019: should update in-memory cache after update", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const created = await robotService.create(solution.id, { address: "10.0.0.1" });
+      await robotService.update(solution.id, created.id, { alias: "Cached" });
+      const cached = await robotService.get(solution.id, created.id);
+      assert.equal(cached.alias, "Cached");
+    });
+
+    it("TC-ROB-SVC-020: should throw when updating non-existent robot", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      await assert.rejects(
+        () => robotService.update(solution.id, "nonexistent", { alias: "X" }),
+        { code: "ROBOT_NOT_FOUND" }
+      );
+    });
+
+    it("TC-ROB-SVC-021: should reject duplicate address on update", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      await robotService.create(solution.id, { address: "10.0.0.1" });
+      const r2 = await robotService.create(solution.id, { address: "10.0.0.2" });
+      await assert.rejects(
+        () => robotService.update(solution.id, r2.id, { address: "10.0.0.1:22" }),
+        { code: "ROBOT_ADDRESS_EXISTS" }
+      );
+    });
+  });
+
+  describe("remove", () => {
+    it("TC-ROB-SVC-022: should remove a robot", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const created = await robotService.create(solution.id, { address: "10.0.0.1" });
+      await robotService.remove(solution.id, created.id);
+      await assert.rejects(
+        () => robotService.get(solution.id, created.id),
+        { code: "ROBOT_NOT_FOUND" }
+      );
+    });
+
+    it("TC-ROB-SVC-023: should update in-memory cache after remove", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const created = await robotService.create(solution.id, { address: "10.0.0.1" });
+      await robotService.remove(solution.id, created.id);
+      const robots = await robotService.list(solution.id);
+      assert.equal(robots.length, 0);
+    });
+
+    it("TC-ROB-SVC-024: should throw when removing non-existent robot", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      await assert.rejects(
+        () => robotService.remove(solution.id, "nonexistent"),
+        { code: "ROBOT_NOT_FOUND" }
+      );
+    });
+  });
+
+  describe("removeSolutionCache", () => {
+    it("TC-ROB-SVC-025: should clear cached robots for a solution", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      await robotService.create(solution.id, { address: "10.0.0.1" });
+      const robots1 = await robotService.list(solution.id);
+      assert.equal(robots1.length, 1);
+      robotService.removeSolutionCache(solution.id);
+      const robots2 = await robotService.list(solution.id);
+      assert.equal(robots2.length, 1);
+    });
+  });
+});
+
+describe("Solution Routes - API", () => {
+  function setupSolutionApp() {
+    const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const solutionService = new SolutionService(objStore);
+    const robotService = new RobotService(objStore);
+    const app = new Hono();
+    app.route("/api/solutions", createSolutionRoutes(solutionService));
+    app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
+    return { app, solutionService, robotService };
+  }
+
+  it("TC-SOL-API-001: POST /api/solutions should create a solution", async () => {
+    const { app } = setupSolutionApp();
+    const res = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "API Test" }),
+    });
+    assert.equal(res.status, 201);
+    const body = await res.json() as SolutionMeta;
+    assert.equal(body.name, "API Test");
+  });
+
+  it("TC-SOL-API-002: POST /api/solutions should return 400 without name", async () => {
+    const { app } = setupSolutionApp();
+    const res = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: "No name" }),
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("TC-SOL-API-003: GET /api/solutions should list solutions", async () => {
+    const { app } = setupSolutionApp();
+    await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Sol1" }),
+    });
+    await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Sol2" }),
+    });
+    const res = await app.request("/api/solutions");
+    assert.equal(res.status, 200);
+    const body = await res.json() as { items: SolutionMeta[]; corruptedIds: string[] };
+    assert.equal(body.items.length, 2);
+  });
+
+  it("TC-SOL-API-004: GET /api/solutions/:id should return a solution", async () => {
+    const { app } = setupSolutionApp();
+    const createRes = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "GetTest" }),
+    });
+    const created = await createRes.json() as SolutionMeta;
+    const res = await app.request(`/api/solutions/${created.id}`);
+    assert.equal(res.status, 200);
+    const body = await res.json() as SolutionMeta;
+    assert.equal(body.id, created.id);
+  });
+
+  it("TC-SOL-API-005: GET /api/solutions/:id should return 404 for non-existent", async () => {
+    const { app } = setupSolutionApp();
+    const res = await app.request("/api/solutions/nonexistent");
+    assert.equal(res.status, 404);
+  });
+
+  it("TC-SOL-API-006: PUT /api/solutions/:id should update a solution", async () => {
+    const { app } = setupSolutionApp();
+    const createRes = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "UpdateTest" }),
+    });
+    const created = await createRes.json() as SolutionMeta;
+    const res = await app.request(`/api/solutions/${created.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Updated" }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as SolutionMeta;
+    assert.equal(body.name, "Updated");
+  });
+
+  it("TC-SOL-API-007: DELETE /api/solutions/:id should delete a solution", async () => {
+    const { app } = setupSolutionApp();
+    const createRes = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "DeleteTest" }),
+    });
+    const created = await createRes.json() as SolutionMeta;
+    const res = await app.request(`/api/solutions/${created.id}`, { method: "DELETE" });
+    assert.equal(res.status, 200);
+    const getRes = await app.request(`/api/solutions/${created.id}`);
+    assert.equal(getRes.status, 404);
+  });
+
+  it("TC-SOL-API-008: POST /api/solutions/:id/open should open a solution", async () => {
+    const { app } = setupSolutionApp();
+    const createRes = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "OpenTest" }),
+    });
+    const created = await createRes.json() as SolutionMeta;
+    const res = await app.request(`/api/solutions/${created.id}/open`, { method: "POST" });
+    assert.equal(res.status, 200);
+    const body = await res.json() as SolutionMeta;
+    assert.equal(body.id, created.id);
+  });
+
+  it("TC-SOL-API-009: GET /api/solutions/opened should list opened solutions", async () => {
+    const { app } = setupSolutionApp();
+    const createRes = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "OpenedTest" }),
+    });
+    const created = await createRes.json() as SolutionMeta;
+    await app.request(`/api/solutions/${created.id}/open`, { method: "POST" });
+    const res = await app.request("/api/solutions/opened");
+    assert.equal(res.status, 200);
+    const body = await res.json() as { id: string; name: string }[];
+    assert.ok(body.some((e) => e.id === created.id));
+  });
+
+  it("TC-SOL-API-010: POST /api/solutions/:id/close should close a solution", async () => {
+    const { app } = setupSolutionApp();
+    const createRes = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "CloseTest" }),
+    });
+    const created = await createRes.json() as SolutionMeta;
+    await app.request(`/api/solutions/${created.id}/open`, { method: "POST" });
+    const res = await app.request(`/api/solutions/${created.id}/close`, { method: "POST" });
+    assert.equal(res.status, 200);
+  });
+
+  it("TC-SOL-API-011: POST /api/solutions/:id/clone should clone a solution", async () => {
+    const { app } = setupSolutionApp();
+    const createRes = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "CloneSource" }),
+    });
+    const created = await createRes.json() as SolutionMeta;
+    const res = await app.request(`/api/solutions/${created.id}/clone`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newName: "Cloned" }),
+    });
+    assert.equal(res.status, 201);
+    const body = await res.json() as SolutionMeta;
+    assert.equal(body.name, "Cloned");
+    assert.notEqual(body.id, created.id);
+  });
+
+  it("TC-SOL-API-012: POST /api/solutions/:id/clone should return 400 without newName", async () => {
+    const { app } = setupSolutionApp();
+    const createRes = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "CloneNoName" }),
+    });
+    const created = await createRes.json() as SolutionMeta;
+    const res = await app.request(`/api/solutions/${created.id}/clone`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
+describe("Robot Routes - API", () => {
+  function setupRobotApp() {
+    const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const solutionService = new SolutionService(objStore);
+    const robotService = new RobotService(objStore);
+    const app = new Hono();
+    app.route("/api/solutions", createSolutionRoutes(solutionService));
+    app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
+    return { app, solutionService, robotService };
+  }
+
+  async function createSolution(app: Hono) {
+    const res = await app.request("/api/solutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Robot Test Solution" }),
+    });
+    return (await res.json()) as SolutionMeta;
+  }
+
+  it("TC-ROB-API-001: POST /api/solutions/:id/robots should create a robot", async () => {
+    const { app } = setupRobotApp();
+    const sol = await createSolution(app);
+    const res = await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "192.168.1.100:22" }),
+    });
+    assert.equal(res.status, 201);
+    const body = await res.json() as StoredRobotData;
+    assert.equal(body.address, "192.168.1.100");
+    assert.equal(body.port, 22);
+  });
+
+  it("TC-ROB-API-002: POST /api/solutions/:id/robots should return 400 without address", async () => {
+    const { app } = setupRobotApp();
+    const sol = await createSolution(app);
+    const res = await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alias: "NoAddr" }),
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("TC-ROB-API-003: POST /api/solutions/:id/robots should return 409 for duplicate address", async () => {
+    const { app } = setupRobotApp();
+    const sol = await createSolution(app);
+    await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "10.0.0.1:22" }),
+    });
+    const res = await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "10.0.0.1:22" }),
+    });
+    assert.equal(res.status, 409);
+  });
+
+  it("TC-ROB-API-004: GET /api/solutions/:id/robots should list robots", async () => {
+    const { app } = setupRobotApp();
+    const sol = await createSolution(app);
+    await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "10.0.0.1" }),
+    });
+    await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "10.0.0.2" }),
+    });
+    const res = await app.request(`/api/solutions/${sol.id}/robots`);
+    assert.equal(res.status, 200);
+    const body = await res.json() as StoredRobotData[];
+    assert.equal(body.length, 2);
+  });
+
+  it("TC-ROB-API-005: GET /api/solutions/:id/robots/:robotId should get a robot", async () => {
+    const { app } = setupRobotApp();
+    const sol = await createSolution(app);
+    const createRes = await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "10.0.0.1" }),
+    });
+    const created = await createRes.json() as StoredRobotData;
+    const res = await app.request(`/api/solutions/${sol.id}/robots/${created.id}`);
+    assert.equal(res.status, 200);
+    const body = await res.json() as StoredRobotData;
+    assert.equal(body.id, created.id);
+  });
+
+  it("TC-ROB-API-006: GET /api/solutions/:id/robots/:robotId should return 404 for non-existent", async () => {
+    const { app } = setupRobotApp();
+    const sol = await createSolution(app);
+    const res = await app.request(`/api/solutions/${sol.id}/robots/nonexistent`);
+    assert.equal(res.status, 404);
+  });
+
+  it("TC-ROB-API-007: PUT /api/solutions/:id/robots/:robotId should update a robot", async () => {
+    const { app } = setupRobotApp();
+    const sol = await createSolution(app);
+    const createRes = await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "10.0.0.1" }),
+    });
+    const created = await createRes.json() as StoredRobotData;
+    const res = await app.request(`/api/solutions/${sol.id}/robots/${created.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alias: "UpdatedAlias" }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as StoredRobotData;
+    assert.equal(body.alias, "UpdatedAlias");
+  });
+
+  it("TC-ROB-API-008: DELETE /api/solutions/:id/robots/:robotId should delete a robot", async () => {
+    const { app } = setupRobotApp();
+    const sol = await createSolution(app);
+    const createRes = await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "10.0.0.1" }),
+    });
+    const created = await createRes.json() as StoredRobotData;
+    const res = await app.request(`/api/solutions/${sol.id}/robots/${created.id}`, { method: "DELETE" });
+    assert.equal(res.status, 200);
+    const getRes = await app.request(`/api/solutions/${sol.id}/robots/${created.id}`);
+    assert.equal(getRes.status, 404);
+  });
+
+  it("TC-ROB-API-009: robot operations should return 404 for non-existent solution", async () => {
+    const { app } = setupRobotApp();
+    const listRes = await app.request("/api/solutions/nonexistent/robots");
+    assert.equal(listRes.status, 404);
+    const createRes = await app.request("/api/solutions/nonexistent/robots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "10.0.0.1" }),
+    });
+    assert.equal(createRes.status, 404);
   });
 });

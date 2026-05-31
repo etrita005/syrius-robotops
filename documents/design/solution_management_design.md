@@ -12,9 +12,11 @@
 
 ## 2. 设计约束
 
-- 后端仅提供通用对象存储 RESTful API（`/api/objects/...`）和制品管理 API（`/api/artifacts/...`），不提供业务专用的解决方案/机器人服务。
-- 解决方案和机器人的业务逻辑（数据结构、校验、模拟数据生成等）全部由前端实现。
-- 前端通过通用对象存储 API 直接读写数据，存储内容由前端决定。
+- 后端提供专用的解决方案 RESTful API（`/api/solutions/...`）和机器人 RESTful API（`/api/solutions/:solutionId/robots/...`），业务逻辑由后端 `SolutionService` 和 `RobotService` 实现。
+- 后端 `SolutionService` 和 `RobotService` 内部调用对象存储服务（`ObjectStore`）进行数据持久化，不通过 Hono 路由转发。
+- 后端在内存中维护所有用户打开过的解决方案列表及每个解决方案对应的机器人列表缓存。
+- 前端通过专用的解决方案和机器人 API 访问数据，不再直接调用通用对象存储 API 操作解决方案和机器人数据。
+- 通用对象存储 RESTful API（`/api/objects/...`）和制品管理 API（`/api/artifacts/...`）继续保留，供其他功能模块使用。
 - 模块内部使用 TypeScript + ES6 模块语法。
 - 所有接口定义仅为设计阶段草案，实现时可根据实际情况调整参数和返回值。
 
@@ -22,9 +24,9 @@
 
 ## 3. 内部接口设计
 
-### 3.1 解决方案 API 客户端（solutionApi）
+### 3.1 解决方案服务接口（SolutionService）
 
-前端通过通用对象存储 API 实现解决方案的生命周期管理。
+后端提供专用的 `SolutionService`，内部调用 `ObjectStore` 进行数据持久化，并在内存中维护已打开的解决方案列表。
 
 ```typescript
 interface SolutionMeta {
@@ -51,19 +53,91 @@ interface SolutionListResult {
   corruptedIds: string[]; // IDs with missing or unreadable meta
 }
 
-interface SolutionApiClient {
+interface OpenedSolutionEntry {
+  id: string;
+  name: string;
+  openedAt: string; // ISO 8601 date-time
+}
+
+interface SolutionService {
   create(input: CreateSolutionInput): Promise<SolutionMeta>;
   list(): Promise<SolutionListResult>;
-  get(id: string): Promise<SolutionMeta | null>;
-  // Mutable fields: name, description, tags, metadata
-  // Auto-updates updatedAt and bumps patch version
+  get(id: string): Promise<SolutionMeta>;
   update(id: string, patch: Partial<Omit<SolutionMeta, "id" | "createdAt" | "version">>): Promise<SolutionMeta>;
   remove(id: string): Promise<void>;
   clone(sourceId: string, newName: string): Promise<SolutionMeta>;
   exportSolution(id: string, destinationPath?: string): Promise<{ filePath: string }>;
   importSolution(zipPath: string, targetPath: string): Promise<{ ok: boolean }>;
+  open(id: string): Promise<SolutionMeta>;
+  closeSolution(id: string): boolean;
+  getOpenedSolutions(): OpenedSolutionEntry[];
+  isOpened(id: string): boolean;
 }
 ```
+
+### 3.2 解决方案 HTTP API
+
+后端提供专用的解决方案 RESTful API，前端使用此 API 管理解决方案生命周期。
+
+**HTTP Endpoints**:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/solutions` | Create a solution |
+| GET | `/api/solutions` | List all solutions |
+| GET | `/api/solutions/opened` | List opened solutions in memory |
+| GET | `/api/solutions/:id` | Get solution by ID |
+| PUT | `/api/solutions/:id` | Update solution |
+| DELETE | `/api/solutions/:id` | Delete solution |
+| POST | `/api/solutions/:id/open` | Open solution (track in memory) |
+| POST | `/api/solutions/:id/close` | Close solution (release from memory) |
+| POST | `/api/solutions/:id/clone` | Clone solution |
+| POST | `/api/solutions/:id/export` | Export solution to ZIP |
+| POST | `/api/solutions/import` | Import solution from ZIP |
+
+### 3.3 机器人服务接口（RobotService）
+
+后端提供专用的 `RobotService`，内部调用 `ObjectStore` 进行数据持久化，并在内存中缓存每个解决方案的机器人列表。
+
+```typescript
+interface StoredRobotData {
+  id: string;
+  address: string;
+  addressType: "ip" | "mdns";
+  alias: string;
+  port: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CreateRobotInput {
+  address: string;
+  alias?: string;
+}
+
+interface RobotService {
+  list(solutionId: string): Promise<StoredRobotData[]>;
+  get(solutionId: string, robotId: string): Promise<StoredRobotData>;
+  create(solutionId: string, input: CreateRobotInput): Promise<StoredRobotData>;
+  update(solutionId: string, robotId: string, patch: Partial<Pick<StoredRobotData, "alias" | "address" | "port">>): Promise<StoredRobotData>;
+  remove(solutionId: string, robotId: string): Promise<void>;
+  removeSolutionCache(solutionId: string): void;
+}
+```
+
+### 3.4 机器人 HTTP API
+
+后端提供专用的机器人 RESTful API，嵌套在解决方案路由下。
+
+**HTTP Endpoints**:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/solutions/:solutionId/robots` | List robots in solution |
+| GET | `/api/solutions/:solutionId/robots/:robotId` | Get robot by ID |
+| POST | `/api/solutions/:solutionId/robots` | Create robot |
+| PUT | `/api/solutions/:solutionId/robots/:robotId` | Update robot |
+| DELETE | `/api/solutions/:solutionId/robots/:robotId` | Delete robot |
 
 ### 3.2 当前激活解决方案管理器（ActiveSolutionManager）
 
@@ -861,11 +935,14 @@ function bumpPatchVersion(version: string): string {
 | Design Item | Decision | Notes |
 |--------|------|------|
 | 1. ZIP streaming | `archiver` | Backend object store routes use Node.js streaming ZIP library to pipe object store read streams directly to local disk write streams. |
-| 2. Object Store HTTP API | Generic RESTful API at `/api/objects/` | Backend provides only generic CRUD (GET/PUT/DELETE/LIST) plus specialized clone/export/import routes. Business logic lives in frontend. |
-| 3. Clone atomicity | Simple implementation (cleanup on failure) | Delete target directory on failure; no temporary directory + rename mechanism. |
-| 4. Local settings persistence | `localStorage` | Active solution ID, recent solutions list, and UI preferences are persisted in browser `localStorage`. |
-| 5. Artifact ref count atomicity | Simple implementation (optimistic lock) | ETag-based read-modify-write with up to 5 retries; no distributed locks or transactions. Managed by backend ArtifactService. |
-| 6. Checksum algorithm | SHA-256 | Used for artifact deduplication and integrity verification. |
-| 7. Robot info generation | Frontend-generated (current stage: mock) | Robot dynamic info (model, SN, versions, etc.) is generated by frontend `generateMockRobotInfo()`. Only `StoredRobotData` is persisted. Future: replace with real protocol calls. |
-| 8. Robot editability | Only `alias`, `address` and `port` | Only alias, address (host part) and port are user-editable and persisted. Users input address in `<host>:<port>` format; the system parses and stores host and port separately. All other fields are dynamically generated and read-only. |
-| 9. Solution/Robot business logic | Frontend-only | No specialized backend services for solutions or robots. All business logic (validation, data transformation, mock generation) runs in the frontend via generic object store API. |
+| 2. Object Store HTTP API | Generic RESTful API at `/api/objects/` | Backend provides generic CRUD (GET/PUT/DELETE/LIST) plus specialized clone/export/import routes for backward compatibility. |
+| 3. Solution/Robot Backend Services | Dedicated `SolutionService` and `RobotService` | Backend provides specialized services that internally call `ObjectStore` for persistence. Business logic (ID generation, validation, address parsing, dedup) runs on the backend. |
+| 4. Solution/Robot HTTP API | Dedicated RESTful APIs at `/api/solutions/...` and `/api/solutions/:solutionId/robots/...` | Frontend uses these dedicated APIs instead of the generic object store API for solution and robot operations. |
+| 5. In-memory state management | `SolutionService.openedSolutions` Map + `RobotService.solutionRobots` Map | Backend maintains opened solutions and per-solution robot caches in memory. First access loads from object store; subsequent reads hit cache. Create/update/delete operations sync cache. |
+| 6. Clone atomicity | Simple implementation (cleanup on failure) | Delete target directory on failure; no temporary directory + rename mechanism. |
+| 7. Local settings persistence | `localStorage` | Active solution ID, recent solutions list, and UI preferences are persisted in browser `localStorage`. |
+| 8. Artifact ref count atomicity | Simple implementation (optimistic lock) | ETag-based read-modify-write with up to 5 retries; no distributed locks or transactions. Managed by backend ArtifactService. |
+| 9. Checksum algorithm | SHA-256 | Used for artifact deduplication and integrity verification. |
+| 10. Robot info generation | Frontend-generated (current stage: mock) | Robot dynamic info (model, SN, versions, etc.) is generated by frontend `generateMockRobotInfo()`. Only `StoredRobotData` is persisted. Future: replace with real protocol calls. |
+| 11. Robot editability | Only `alias`, `address` and `port` | Only alias, address (host part) and port are user-editable and persisted. Users input address in `<host>:<port>` format; the system parses and stores host and port separately. All other fields are dynamically generated and read-only. |
+| 12. Solution/Robot business logic | Backend services | Business logic (validation, ID generation, address parsing, dedup, version bumping) runs in backend `SolutionService` and `RobotService`. Frontend API clients are thin wrappers. |
