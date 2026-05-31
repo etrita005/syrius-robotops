@@ -15,7 +15,7 @@ import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
-import { SshCommandTask, GetRobotBasicInfoTask } from "./tasks/index.js";
+import { SshCommandTask, GetRobotBasicInfoTask, UpdateRobotBasicInfoTask, setRobotInfoUpdateCallback } from "./tasks/index.js";
 
 function parseArgs(): { dataDir: string; port: number } {
   const args = process.argv.slice(2);
@@ -61,9 +61,15 @@ const sseManager = new SseManager();
 const resolverRegistry = new ResolverRegistry();
 resolverRegistry.register("SshCommandTask", SshCommandTask);
 resolverRegistry.register("GetRobotBasicInfoTask", GetRobotBasicInfoTask);
+resolverRegistry.register("UpdateRobotBasicInfoTask", UpdateRobotBasicInfoTask);
 
 const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
 await taskFlowEngine.loadPersistedFlows();
+
+robotService.setTaskFlowEngine(taskFlowEngine);
+setRobotInfoUpdateCallback(robotService.updateRobotInfoCache.bind(robotService));
+robotService.startPeriodicRefresh();
+robotService.startLruCleanup();
 
 app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine, sseManager));
 

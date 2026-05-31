@@ -11,8 +11,40 @@ import {
   InvalidRobotAddressError,
   RobotAddressExistsError,
 } from "../errors/appErrors.js";
+import type { RobotBasicInfo } from "../tasks/getRobotBasicInfoTask.js";
+import type { TaskFlowEngine } from "./taskFlowEngine/taskFlowEngine.js";
+import type { FlowSpec, ValueMap } from "flowed";
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
+const DEFAULT_SSH_USERNAME = "root";
+const DEFAULT_SSH_PASSWORD = "";
+const REFRESH_INTERVAL_MS = 10_000;
+const LRU_CLEANUP_INTERVAL_MS = 30_000;
+const LRU_TTL_MS = 3 * 60 * 1000;
+
+class AsyncMutex {
+  private queue: Array<() => void> = [];
+  private locked = false;
+
+  async lock(): Promise<void> {
+    if (!this.locked) {
+      this.locked = true;
+      return;
+    }
+    return new Promise<void>((resolve) => {
+      this.queue.push(resolve);
+    });
+  }
+
+  unlock(): void {
+    const next = this.queue.shift();
+    if (next) {
+      next();
+    } else {
+      this.locked = false;
+    }
+  }
+}
 
 function generateRobotId(): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -55,12 +87,254 @@ function validateRobotId(id: string): void {
   }
 }
 
+export interface RobotWithBasicInfo extends StoredRobotData {
+  basicInfo: RobotBasicInfo | null;
+  basicInfoFetchedAt: string | null;
+}
+
+interface RobotInfoCacheEntry {
+  info: RobotBasicInfo;
+  fetchedAt: string;
+}
+
+interface SolutionRobotInfoEntry {
+  robotInfoMap: Map<string, RobotInfoCacheEntry>;
+  lastAccessedAt: number;
+  refreshing: boolean;
+}
+
+export interface RobotServiceOptions {
+  sshUsername?: string;
+  sshPassword?: string;
+}
+
 export class RobotService {
   private obs: ObjectStore;
   private solutionRobots: Map<string, Map<string, StoredRobotData>> = new Map();
+  private solutionRobotInfoMap: Map<string, SolutionRobotInfoEntry> = new Map();
+  private solutionMutexes: Map<string, AsyncMutex> = new Map();
+  private taskFlowEngine: TaskFlowEngine | null = null;
+  private sshUsername: string;
+  private sshPassword: string;
+  private refreshTimer?: ReturnType<typeof setInterval>;
+  private lruCleanupTimer?: ReturnType<typeof setInterval>;
 
-  constructor(obs: ObjectStore) {
+  constructor(obs: ObjectStore, options?: RobotServiceOptions) {
     this.obs = obs;
+    this.sshUsername = options?.sshUsername ?? DEFAULT_SSH_USERNAME;
+    this.sshPassword = options?.sshPassword ?? DEFAULT_SSH_PASSWORD;
+  }
+
+  setTaskFlowEngine(engine: TaskFlowEngine): void {
+    this.taskFlowEngine = engine;
+  }
+
+  startPeriodicRefresh(): void {
+    if (this.refreshTimer) return;
+    this.refreshTimer = setInterval(() => {
+      this.refreshAllSolutions();
+    }, REFRESH_INTERVAL_MS);
+  }
+
+  startLruCleanup(): void {
+    if (this.lruCleanupTimer) return;
+    this.lruCleanupTimer = setInterval(() => {
+      this.cleanupLruEntries();
+    }, LRU_CLEANUP_INTERVAL_MS);
+  }
+
+  destroy(): void {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = undefined;
+    }
+    if (this.lruCleanupTimer) {
+      clearInterval(this.lruCleanupTimer);
+      this.lruCleanupTimer = undefined;
+    }
+  }
+
+  private getMutex(solutionId: string): AsyncMutex {
+    let mutex = this.solutionMutexes.get(solutionId);
+    if (!mutex) {
+      mutex = new AsyncMutex();
+      this.solutionMutexes.set(solutionId, mutex);
+    }
+    return mutex;
+  }
+
+  async getRobotInfoList(solutionId: string): Promise<RobotWithBasicInfo[]> {
+    const solutionExists = await this.obs.exists(`v1/solutions/${solutionId}/meta`);
+    if (!solutionExists) {
+      throw new SolutionNotFoundError(solutionId);
+    }
+
+    let needsRefresh = false;
+
+    const mutex = this.getMutex(solutionId);
+    await mutex.lock();
+    try {
+      let entry = this.solutionRobotInfoMap.get(solutionId);
+      if (!entry) {
+        entry = {
+          robotInfoMap: new Map(),
+          lastAccessedAt: Date.now(),
+          refreshing: false,
+        };
+        this.solutionRobotInfoMap.set(solutionId, entry);
+        needsRefresh = true;
+      } else {
+        entry.lastAccessedAt = Date.now();
+      }
+    } finally {
+      mutex.unlock();
+    }
+
+    if (needsRefresh) {
+      this.refreshSolutionRobotInfo(solutionId).catch(() => {});
+    }
+
+    const robots = await this.list(solutionId);
+
+    const mutex2 = this.getMutex(solutionId);
+    await mutex2.lock();
+    try {
+      const entry = this.solutionRobotInfoMap.get(solutionId);
+      if (!entry) {
+        return robots.map((robot) => ({
+          ...robot,
+          basicInfo: null,
+          basicInfoFetchedAt: null,
+        }));
+      }
+      return robots.map((robot) => {
+        const cached = entry.robotInfoMap.get(robot.id);
+        return {
+          ...robot,
+          basicInfo: cached?.info ?? null,
+          basicInfoFetchedAt: cached?.fetchedAt ?? null,
+        };
+      });
+    } finally {
+      mutex2.unlock();
+    }
+  }
+
+  async updateRobotInfoCache(solutionId: string, robotId: string, info: RobotBasicInfo): Promise<void> {
+    const mutex = this.getMutex(solutionId);
+    await mutex.lock();
+    try {
+      const entry = this.solutionRobotInfoMap.get(solutionId);
+      if (!entry) return;
+      entry.robotInfoMap.set(robotId, {
+        info,
+        fetchedAt: new Date().toISOString(),
+      });
+    } finally {
+      mutex.unlock();
+    }
+  }
+
+  private async refreshSolutionRobotInfo(solutionId: string): Promise<void> {
+    const mutex = this.getMutex(solutionId);
+    await mutex.lock();
+    try {
+      const entry = this.solutionRobotInfoMap.get(solutionId);
+      if (!entry || entry.refreshing) return;
+      entry.refreshing = true;
+    } finally {
+      mutex.unlock();
+    }
+
+    try {
+      if (!this.taskFlowEngine) return;
+      const robots = await this.list(solutionId);
+      if (robots.length === 0) return;
+
+      await Promise.allSettled(
+        robots.map((robot) => this.createRobotInfoFlow(solutionId, robot))
+      );
+    } finally {
+      const mutex2 = this.getMutex(solutionId);
+      await mutex2.lock();
+      try {
+        const entry = this.solutionRobotInfoMap.get(solutionId);
+        if (entry) entry.refreshing = false;
+      } finally {
+        mutex2.unlock();
+      }
+    }
+  }
+
+  private async createRobotInfoFlow(solutionId: string, robot: StoredRobotData): Promise<void> {
+    if (!this.taskFlowEngine) return;
+
+    const dag: FlowSpec = {
+      tasks: {
+        getBasicInfo: {
+          requires: ["robotIp", "robotPort", "sshUsername", "sshPassword"],
+          provides: ["robotInfo"],
+          resolver: {
+            name: "GetRobotBasicInfoTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+              sshUsername: "sshUsername",
+              sshPassword: "sshPassword",
+            },
+            results: {
+              robotInfo: "robotInfo",
+            },
+          },
+        },
+        updateBasicInfo: {
+          requires: ["robotInfo", "solutionId", "robotId"],
+          provides: ["updated"],
+          resolver: {
+            name: "UpdateRobotBasicInfoTask",
+            params: {
+              robotInfo: "robotInfo",
+              solutionId: "solutionId",
+              robotId: "robotId",
+            },
+            results: {
+              updated: "updated",
+            },
+          },
+        },
+      },
+    };
+
+    const input: ValueMap = {
+      robotIp: robot.address,
+      robotPort: robot.port,
+      sshUsername: this.sshUsername,
+      sshPassword: this.sshPassword,
+      solutionId,
+      robotId: robot.id,
+    };
+
+    await this.taskFlowEngine.createFlow("internal", dag, input, ["updated"]);
+  }
+
+  private refreshAllSolutions(): void {
+    for (const [solutionId] of this.solutionRobotInfoMap) {
+      this.refreshSolutionRobotInfo(solutionId).catch(() => {});
+    }
+  }
+
+  private cleanupLruEntries(): void {
+    const now = Date.now();
+    const expiredIds: string[] = [];
+    for (const [solutionId, entry] of this.solutionRobotInfoMap) {
+      if (now - entry.lastAccessedAt > LRU_TTL_MS) {
+        expiredIds.push(solutionId);
+      }
+    }
+    for (const id of expiredIds) {
+      this.solutionRobotInfoMap.delete(id);
+      this.solutionMutexes.delete(id);
+    }
   }
 
   async list(solutionId: string): Promise<StoredRobotData[]> {
@@ -223,6 +497,14 @@ export class RobotService {
     await this.obs.deletePath(`v1/solutions/${solutionId}/robots/${robotId}`);
 
     this.solutionRobots.get(solutionId)?.delete(robotId);
+
+    const mutex = this.getMutex(solutionId);
+    await mutex.lock();
+    try {
+      this.solutionRobotInfoMap.get(solutionId)?.robotInfoMap.delete(robotId);
+    } finally {
+      mutex.unlock();
+    }
   }
 
   removeSolutionCache(solutionId: string): void {

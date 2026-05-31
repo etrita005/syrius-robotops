@@ -2,10 +2,15 @@ import { get, post, put, del } from "./client.js";
 import {
   StoredRobotData,
   CreateRobotInput,
+  RobotWithBasicInfoResponse,
 } from "../types/robot.js";
 
 export async function listRobots(solutionId: string): Promise<StoredRobotData[]> {
   return get<StoredRobotData[]>(`/solutions/${solutionId}/robots`);
+}
+
+export async function fetchRobotsInfo(solutionId: string): Promise<RobotWithBasicInfoResponse[]> {
+  return get<RobotWithBasicInfoResponse[]>(`/solutions/${solutionId}/robots/info`);
 }
 
 export async function getRobot(solutionId: string, robotId: string): Promise<StoredRobotData> {

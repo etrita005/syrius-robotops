@@ -45,6 +45,22 @@ export interface CreateRobotInput {
   alias?: string;
 }
 
+export interface RobotBasicInfoResponse {
+  model: string;
+  robotSn: string;
+  thingsId: string;
+  vendorId: string;
+  productId: string;
+  mainBoardSn: string;
+  mainBoardId: string;
+  mainSomSn: string;
+}
+
+export interface RobotWithBasicInfoResponse extends StoredRobotData {
+  basicInfo: RobotBasicInfoResponse | null;
+  basicInfoFetchedAt: string | null;
+}
+
 export interface ParsedAddress {
   host: string;
   port: number;
@@ -192,6 +208,32 @@ export function generateMockRobotInfo(address: string, alias: string): Omit<Robo
 export function enrichRobot(stored: StoredRobotData): RobotDefinition {
   const mockInfo = generateMockRobotInfo(stored.address, stored.alias);
   return { ...stored, ...mockInfo };
+}
+
+export function enrichRobotFromBackend(robot: RobotWithBasicInfoResponse): RobotDefinition {
+  const mockInfo = generateMockRobotInfo(robot.address, robot.alias);
+  return {
+    ...robot,
+    model: robot.basicInfo?.model ?? mockInfo.model,
+    robotSN: robot.basicInfo?.robotSn ?? mockInfo.robotSN,
+    thingsId: robot.basicInfo?.thingsId ?? mockInfo.thingsId,
+    vendorId: robot.basicInfo?.vendorId ?? mockInfo.vendorId,
+    productId: robot.basicInfo?.productId ?? mockInfo.productId,
+    mainboardSN: robot.basicInfo?.mainBoardSn ?? mockInfo.mainboardSN,
+    mainboardId: robot.basicInfo?.mainBoardId ?? mockInfo.mainboardId,
+    mainSOMSN: robot.basicInfo?.mainSomSn ?? mockInfo.mainSOMSN,
+    megaCosmOSVersion: mockInfo.megaCosmOSVersion,
+    movebaseVersion: mockInfo.movebaseVersion,
+    ggrVersion: mockInfo.ggrVersion,
+    mcuFirmwareVersions: mockInfo.mcuFirmwareVersions,
+    actuatorFirmwareVersions: mockInfo.actuatorFirmwareVersions,
+    sensorFirmwareVersions: mockInfo.sensorFirmwareVersions,
+    mainControlHardwareVersion: mockInfo.mainControlHardwareVersion,
+    mcuHardwareVersions: mockInfo.mcuHardwareVersions,
+    actuatorHardwareVersions: mockInfo.actuatorHardwareVersions,
+    sensorHardwareVersions: mockInfo.sensorHardwareVersions,
+    hardwareDeviceTree: mockInfo.hardwareDeviceTree,
+  };
 }
 
 export function createStoredRobotData(input: CreateRobotInput, id: string): StoredRobotData {

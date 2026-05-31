@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  listRobots,
+  fetchRobotsInfo,
   createRobot,
   updateRobot,
   deleteRobot,
@@ -9,38 +9,62 @@ import {
   StoredRobotData,
   RobotDefinition,
   CreateRobotInput,
+  enrichRobotFromBackend,
   enrichRobot,
 } from "../types/robot.js";
+
+const POLL_INTERVAL_MS = 10_000;
 
 export function useRobots(solutionId: string | null) {
   const [robots, setRobots] = useState<RobotDefinition[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(
-    async () => {
-      if (!solutionId) return;
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await listRobots(solutionId);
-        setRobots(data.map(enrichRobot));
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [solutionId]
-  );
+  const initialLoadDone = useRef(false);
 
   useEffect(() => {
-    if (solutionId) {
-      load();
-    } else {
+    if (!solutionId) {
       setRobots([]);
+      setLoading(false);
+      setError(null);
+      initialLoadDone.current = false;
+      return;
     }
-  }, [solutionId, load]);
+
+    let cancelled = false;
+    let isFirstPoll = true;
+
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const data = await fetchRobotsInfo(solutionId);
+        if (!cancelled) {
+          setRobots(data.map(enrichRobotFromBackend));
+          if (isFirstPoll) {
+            setLoading(false);
+            isFirstPoll = false;
+            initialLoadDone.current = true;
+          }
+        }
+      } catch (err) {
+        if (!cancelled && isFirstPoll) {
+          setError((err as Error).message);
+          setLoading(false);
+          isFirstPoll = false;
+          initialLoadDone.current = true;
+        }
+      }
+    };
+
+    setLoading(true);
+    setError(null);
+    poll();
+    const interval = setInterval(poll, POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [solutionId]);
 
   const addRobot = useCallback(
     async (input: CreateRobotInput) => {
@@ -100,7 +124,6 @@ export function useRobots(solutionId: string | null) {
     robots,
     loading,
     error,
-    load,
     addRobot,
     editRobot,
     removeRobot,

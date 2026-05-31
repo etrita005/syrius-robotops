@@ -5,6 +5,19 @@ import { AppError } from "../errors/appErrors.js";
 export function createRobotRoutes(robotService: RobotService): Hono {
   const router = new Hono();
 
+  router.get("/info", async (c) => {
+    const solutionId = c.req.param("solutionId")!;
+    try {
+      const robots = await robotService.getRobotInfoList(solutionId);
+      return c.json(robots);
+    } catch (err) {
+      if (err instanceof AppError) {
+        return c.json({ error: err.code, message: err.message }, err.statusCode);
+      }
+      throw err;
+    }
+  });
+
   router.get("/", async (c) => {
     const solutionId = c.req.param("solutionId")!;
     try {
