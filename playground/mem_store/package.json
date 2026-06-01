@@ -1,0 +1,20 @@
+{
+  "name": "mem_store_playground",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.11.0",
+    "hono": "^4.4.0",
+    "lru-cache": "^10.2.0",
+    "toad-scheduler": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "playwright": "^1.60.0",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.0"
+  }
+}

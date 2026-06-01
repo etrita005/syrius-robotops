@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MemStore Playground Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
+    .section { background: #fff; border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 6px; }
+    h2 { margin-top: 0; color: #333; }
+    .row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+    input, button, select { padding: 6px 10px; font-size: 14px; }
+    button { cursor: pointer; background: #007bff; color: #fff; border: none; border-radius: 4px; }
+    button:hover { background: #0056b3; }
+    button.secondary { background: #6c757d; }
+    pre { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; max-height: 200px; }
+    .pass { color: #28a745; font-weight: bold; }
+    .fail { color: #dc3545; font-weight: bold; }
+    #sse-log { height: 150px; overflow-y: auto; }
+    .status { font-size: 12px; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>MemStore Playground Test</h1>
+
+  <div class="section">
+    <h2>Connection & Logs</h2>
+    <div class="row">
+      <span class="status">API Endpoint: <code>http://localhost:3000</code></span>
+    </div>
+    <div class="row">
+      <button onclick="runAutoTests()">Run Auto Tests</button>
+      <button class="secondary" onclick="clearLogs()">Clear Logs</button>
+    </div>
+    <h3>Auto Test Results</h3>
+    <div id="test-results"></div>
+    <h3>Operation Logs</h3>
+    <pre id="log"></pre>
+  </div>
+
+  <div class="section">
+    <h2>SSE Subscription</h2>
+    <div class="row">
+      <input id="sse-key" placeholder="Key to subscribe" value="test-key">
+      <button onclick="subscribeSSE()">Subscribe</button>
+      <button class="secondary" onclick="closeSSE()">Close</button>
+      <span id="sse-status" class="status">Disconnected</span>
+    </div>
+    <pre id="sse-log"></pre>
+  </div>
+
+  <div class="section">
+    <h2>Create / Update Cache</h2>
+    <div class="row">
+      <input id="c-key" placeholder="Key" value="test-key">
+      <input id="c-ttl" type="number" placeholder="TTL (ms)" value="10000">
+      <input id="c-cron" placeholder="Cron (e.g. */5 * * * * *)" value="">
+      <input id="c-warn" type="number" placeholder="Pre-expire warning (ms)" value="">
+    </div>
+    <div class="row">
+      <input id="c-value" placeholder="Initial value (JSON)" value='{"hello":"world"}'>
+      <button onclick="createCache()">Create / Overwrite</button>
+    </div>
+    <div class="row">
+      <label>DAG Type:</label>
+      <select id="c-dag-type">
+        <option value="mock">mock</option>
+      </select>
+      <input id="c-dag-delay" type="number" placeholder="Delay ms" value="500">
+      <input id="c-dag-ret" placeholder="DAG return value (JSON)" value='{"refreshed":true}'>
+      <button onclick="createCacheWithDag()">Create with DAG (no initial value)</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Read / Delete / Refresh</h2>
+    <div class="row">
+      <input id="r-key" placeholder="Key" value="test-key">
+      <button onclick="getCache()">GET</button>
+      <button onclick="deleteCache()">DELETE</button>
+      <button onclick="refreshCache()">Force Refresh</button>
+      <button onclick="getMeta()">Get Meta</button>
+    </div>
+    <pre id="read-result"></pre>
+  </div>
+
+  <div class="section">
+    <h2>Update Config</h2>
+    <div class="row">
+      <input id="u-key" placeholder="Key" value="test-key">
+      <input id="u-ttl" type="number" placeholder="New TTL (ms)">
+      <input id="u-cron" placeholder="New Cron">
+      <input id="u-warn" type="number" placeholder="New Pre-expire warning (ms)">
+      <button onclick="updateConfig()">Update Config</button>
+    </div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:3000';
+    let evtSource = null;
+
+    function log(msg) {
+      const el = document.getElementById('log');
+      el.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function clearLogs() {
+      document.getElementById('log').textContent = '';
+      document.getElementById('test-results').innerHTML = '';
+      document.getElementById('sse-log').textContent = '';
+    }
+
+    async function req(path, method, body) {
+      try {
+        const res = await fetch(`${API}${path}`, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: body ? JSON.stringify(body) : undefined
+        });
+        const data = await res.json().catch(() => ({}));
+        return { status: res.status, data };
+      } catch (e) {
+        return { status: 0, data: { error: e.message } };
+      }
+    }
+
+    async function createCache() {
+      const key = document.getElementById('c-key').value;
+      const body = {
+        key,
+        initialValue: JSON.parse(document.getElementById('c-value').value || 'null'),
+        ttlMs: parseInt(document.getElementById('c-ttl').value, 10),
+        cron: document.getElementById('c-cron').value || undefined,
+        preExpireWarningMs: document.getElementById('c-warn').value ? parseInt(document.getElementById('c-warn').value, 10) : undefined
+      };
+      const r = await req('/api/cache', 'POST', body);
+      log(`CREATE ${key}: ${JSON.stringify(r.data)} (status ${r.status})`);
+    }
+
+    async function createCacheWithDag() {
+      const key = document.getElementById('c-key').value;
+      const body = {
+        key,
+        dag: {
+          type: document.getElementById('c-dag-type').value,
+          delayMs: parseInt(document.getElementById('c-dag-delay').value, 10) || 0,
+          returnValue: JSON.parse(document.getElementById('c-dag-ret').value)
+        },
+        ttlMs: parseInt(document.getElementById('c-ttl').value, 10),
+        cron: document.getElementById('c-cron').value || undefined,
+        preExpireWarningMs: document.getElementById('c-warn').value ? parseInt(document.getElementById('c-warn').value, 10) : undefined
+      };
+      const r = await req('/api/cache', 'POST', body);
+      log(`CREATE DAG ${key}: ${JSON.stringify(r.data)} (status ${r.status})`);
+    }
+
+    async function getCache() {
+      const key = document.getElementById('r-key').value;
+      const r = await req(`/api/cache/${key}`, 'GET');
+      document.getElementById('read-result').textContent = JSON.stringify(r.data, null, 2);
+      log(`GET ${key}: status ${r.status}`);
+    }
+
+    async function deleteCache() {
+      const key = document.getElementById('r-key').value;
+      const r = await req(`/api/cache/${key}`, 'DELETE');
+      log(`DELETE ${key}: ${JSON.stringify(r.data)}`);
+    }
+
+    async function refreshCache() {
+      const key = document.getElementById('r-key').value;
+      const r = await req(`/api/cache/${key}/refresh`, 'POST');
+      log(`REFRESH ${key}: ${JSON.stringify(r.data)}`);
+    }
+
+    async function getMeta() {
+      const key = document.getElementById('r-key').value;
+      const r = await req(`/api/cache/${key}/meta`, 'GET');
+      document.getElementById('read-result').textContent = JSON.stringify(r.data, null, 2);
+      log(`META ${key}: status ${r.status}`);
+    }
+
+    async function updateConfig() {
+      const key = document.getElementById('u-key').value;
+      const body = {};
+      const ttl = document.getElementById('u-ttl').value;
+      if (ttl) body.ttlMs = parseInt(ttl, 10);
+      const cron = document.getElementById('u-cron').value;
+      if (cron) body.cron = cron;
+      const warn = document.getElementById('u-warn').value;
+      if (warn) body.preExpireWarningMs = parseInt(warn, 10);
+      const r = await req(`/api/cache/${key}/config`, 'PUT', body);
+      log(`UPDATE CONFIG ${key}: ${JSON.stringify(r.data)}`);
+    }
+
+    function subscribeSSE() {
+      closeSSE();
+      const key = document.getElementById('sse-key').value;
+      evtSource = new EventSource(`${API}/api/sse/${key}`);
+      document.getElementById('sse-status').textContent = 'Connecting...';
+      evtSource.onopen = () => {
+        document.getElementById('sse-status').textContent = 'Connected';
+      };
+      evtSource.onmessage = (e) => {
+        const el = document.getElementById('sse-log');
+        el.textContent += `[SSE] ${e.data}\n`;
+        el.scrollTop = el.scrollHeight;
+      };
+      evtSource.onerror = () => {
+        document.getElementById('sse-status').textContent = 'Error/Closed';
+      };
+    }
+
+    function closeSSE() {
+      if (evtSource) { evtSource.close(); evtSource = null; }
+      document.getElementById('sse-status').textContent = 'Disconnected';
+    }
+
+    async function runAutoTests() {
+      const resultsEl = document.getElementById('test-results');
+      resultsEl.innerHTML = '<p>Running tests...</p>';
+      const results = [];
+      const TEST_KEY = 'auto-test-key';
+
+      function report(name, pass, detail) {
+        results.push({ name, pass, detail });
+        const div = document.createElement('div');
+        div.innerHTML = `<span class="${pass ? 'pass' : 'fail'}">${pass ? 'PASS' : 'FAIL'}</span> - ${name}${detail ? ': ' + detail : ''}`;
+        resultsEl.appendChild(div);
+      }
+
+      await req(`/api/cache/${TEST_KEY}`, 'DELETE');
+      await new Promise(r => setTimeout(r, 100));
+
+      // Test 1: Create with initial value and GET
+      {
+        const r1 = await req('/api/cache', 'POST', {
+          key: TEST_KEY,
+          initialValue: { test: 1 },
+          ttlMs: 5000
+        });
+        const pass1 = r1.status === 200 && r1.data.success;
+        report('Create cache with initial value', pass1, JSON.stringify(r1.data));
+        
+        const r2 = await req(`/api/cache/${TEST_KEY}`, 'GET');
+        const pass2 = r2.status === 200 && r2.data.value && r2.data.value.test === 1;
+        report('GET returns initial value', pass2, JSON.stringify(r2.data));
+      }
+
+      // Test 2: Update via internal API and GET
+      {
+        const r3 = await req(`/api/internal/cache/${TEST_KEY}`, 'POST', { value: { test: 2 } });
+        const pass3 = r3.status === 200;
+        report('Internal update cache', pass3, JSON.stringify(r3.data));
+
+        const r4 = await req(`/api/cache/${TEST_KEY}`, 'GET');
+        const pass4 = r4.status === 200 && r4.data.value && r4.data.value.test === 2;
+        report('GET returns updated value', pass4, JSON.stringify(r4.data));
+      }
+
+      // Test 3: Delete and verify 404
+      {
+        await req(`/api/cache/${TEST_KEY}`, 'DELETE');
+        const r5 = await req(`/api/cache/${TEST_KEY}`, 'GET');
+        const pass5 = r5.status === 404;
+        report('DELETE then GET returns 404', pass5, JSON.stringify(r5.data));
+      }
+
+      // Test 4: Create with DAG, GET miss triggers refresh, wait for value
+      {
+        const SSE_KEY = 'auto-test-sse';
+        await req(`/api/cache/${SSE_KEY}`, 'DELETE');
+        await new Promise(r => setTimeout(r, 100));
+
+        const r6 = await req('/api/cache', 'POST', {
+          key: SSE_KEY,
+          dag: { type: 'mock', returnValue: { sse: true, refreshed: 1 }, delayMs: 300 },
+          ttlMs: 5000
+        });
+        const pass6 = r6.status === 200;
+        report('Create cache with DAG (no initial value)', pass6, JSON.stringify(r6.data));
+
+        const r7 = await req(`/api/cache/${SSE_KEY}`, 'GET');
+        const pass7 = r7.status === 404;
+        report('GET on empty DAG cache returns 404 (miss)', pass7, JSON.stringify(r7.data));
+
+        let refreshed = false;
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 200));
+          const r = await req(`/api/cache/${SSE_KEY}`, 'GET');
+          if (r.status === 200 && r.data.value && r.data.value.sse === true) {
+            refreshed = true;
+            break;
+          }
+        }
+        report('Async refresh populates cache', refreshed, 'polled 6s');
+      }
+
+      // Test 5: SSE subscription receives update
+      {
+        const SSE_KEY2 = 'auto-test-sse2';
+        await req(`/api/cache/${SSE_KEY2}`, 'DELETE');
+        await new Promise(r => setTimeout(r, 100));
+        await req('/api/cache', 'POST', {
+          key: SSE_KEY2,
+          initialValue: { step: 1 },
+          ttlMs: 10000
+        });
+
+        let sseReceived = null;
+        const es = new EventSource(`${API}/api/sse/${SSE_KEY2}`);
+        es.onmessage = (e) => { sseReceived = JSON.parse(e.data); };
+
+        await new Promise(r => setTimeout(r, 800));
+
+        await req(`/api/internal/cache/${SSE_KEY2}`, 'POST', { value: { step: 2 } });
+
+        for (let i = 0; i < 20; i++) {
+          await new Promise(r => setTimeout(r, 200));
+          if (sseReceived && sseReceived.value && sseReceived.value.step === 2) break;
+        }
+        es.close();
+        const pass = sseReceived && sseReceived.value && sseReceived.value.step === 2;
+        report('SSE receives update on internal refresh', pass, JSON.stringify(sseReceived));
+      }
+
+      // Test 6: Config update and meta query
+      {
+        const META_KEY = 'auto-test-meta';
+        await req(`/api/cache/${META_KEY}`, 'DELETE');
+        await new Promise(r => setTimeout(r, 100));
+        await req('/api/cache', 'POST', { key: META_KEY, initialValue: 1, ttlMs: 5000, cron: '*/2 * * * * *', preExpireWarningMs: 1000 });
+
+        const r = await req(`/api/cache/${META_KEY}/meta`, 'GET');
+        const pass1 = r.status === 200 && r.data.config.ttlMs === 5000;
+        report('Meta query returns config', pass1, JSON.stringify(r.data));
+
+        await req(`/api/cache/${META_KEY}/config`, 'PUT', { ttlMs: 8000 });
+        const r2 = await req(`/api/cache/${META_KEY}/meta`, 'GET');
+        const pass2 = r2.status === 200 && r2.data.config.ttlMs === 8000;
+        report('Config update changes TTL', pass2, JSON.stringify(r2.data));
+      }
+
+      // Test 7: Force refresh
+      {
+        const REF_KEY = 'auto-test-refresh';
+        await req(`/api/cache/${REF_KEY}`, 'DELETE');
+        await new Promise(r => setTimeout(r, 100));
+        await req('/api/cache', 'POST', {
+          key: REF_KEY,
+          dag: { type: 'mock', returnValue: { forced: true }, delayMs: 100 },
+          ttlMs: 5000
+        });
+
+        const r1 = await req(`/api/cache/${REF_KEY}`, 'GET');
+        const pass1 = r1.status === 404;
+        report('Force refresh target initially empty', pass1, JSON.stringify(r1.data));
+
+        const r2 = await req(`/api/cache/${REF_KEY}/refresh`, 'POST');
+        const pass2 = r2.status === 200 && r2.data.value && r2.data.value.forced === true;
+        report('Force refresh returns new value', pass2, JSON.stringify(r2.data));
+      }
+
+      const allPass = results.every(r => r.pass);
+      const summary = document.createElement('div');
+      summary.id = 'auto-test-done';
+      summary.style.marginTop = '10px';
+      summary.style.fontWeight = 'bold';
+      summary.textContent = allPass ? 'All tests passed!' : `${results.filter(r => !r.pass).length} test(s) failed.`;
+      summary.style.color = allPass ? '#28a745' : '#dc3545';
+      resultsEl.appendChild(summary);
+      log(`Auto tests completed. ${allPass ? 'All passed' : 'Some failed'}.`);
+    }
+
+    window.onload = () => {
+      setTimeout(runAutoTests, 500);
+    };
+  </script>
+</body>
+</html>
