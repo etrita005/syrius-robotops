@@ -17,7 +17,7 @@ import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager, setTaskFlowEngine } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
-import { SshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask } from "./tasks/index.js";
+import { SshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask } from "./tasks/index.js";
 import { streamSSE } from "hono/streaming";
 import { memStore } from "./memStore/index.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
@@ -77,6 +77,7 @@ registerTasks(resolverRegistry, mock, [
   { name: "SshCommandTask", real: SshCommandTask },
   { name: "GetRobotBasicInfoTask", real: GetRobotBasicInfoTask, mock: MockGetRobotBasicInfoTask },
   { name: "UpdateRobotBasicInfoTask", real: UpdateRobotBasicInfoTask },
+  { name: "SshFileTransferTask", real: SshFileTransferTask, mock: MockSshFileTransferTask },
 ]);
 
 const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
