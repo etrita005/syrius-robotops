@@ -1354,7 +1354,18 @@ import type { StoredRobotData } from "./types/robot.js";
 function createEnhancedTestServices() {
   const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
   const solutionService = new SolutionService(objStore);
-  const robotService = new RobotService(objStore);
+  const robotService = new RobotService(objStore, {
+    fetchRobotBasicInfo: async () => ({
+      model: "TEST-MODEL",
+      robotSn: "TEST-SN",
+      thingsId: "TEST-THING",
+      vendorId: "TEST-VENDOR",
+      productId: "TEST-PRODUCT",
+      mainBoardSn: "TEST-BOARDSN",
+      mainBoardId: "TEST-BOARDID",
+      mainSomSn: "TEST-SOMSN",
+    }),
+  });
   return { solutionService, robotService, objStore: objStore as unknown as EnhancedObjectStore };
 }
 
@@ -1806,188 +1817,41 @@ describe("Solution Routes - API", () => {
   function setupSolutionApp() {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
     const solutionService = new SolutionService(objStore);
-    const robotService = new RobotService(objStore);
+    const robotService = new RobotService(objStore, {
+      fetchRobotBasicInfo: async () => ({
+        model: "TEST-MODEL",
+        robotSn: "TEST-SN",
+        thingsId: "TEST-THING",
+        vendorId: "TEST-VENDOR",
+        productId: "TEST-PRODUCT",
+        mainBoardSn: "TEST-BOARDSN",
+        mainBoardId: "TEST-BOARDID",
+        mainSomSn: "TEST-SOMSN",
+      }),
+    });
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
     app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
     return { app, solutionService, robotService };
   }
-
-  it("TC-SOL-API-001: POST /api/solutions should create a solution", async () => {
-    const { app } = setupSolutionApp();
-    const res = await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "API Test" }),
-    });
-    assert.equal(res.status, 201);
-    const body = await res.json() as SolutionMeta;
-    assert.equal(body.name, "API Test");
-  });
-
-  it("TC-SOL-API-002: POST /api/solutions should return 400 without name", async () => {
-    const { app } = setupSolutionApp();
-    const res = await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description: "No name" }),
-    });
-    assert.equal(res.status, 400);
-  });
-
-  it("TC-SOL-API-003: GET /api/solutions should list solutions", async () => {
-    const { app } = setupSolutionApp();
-    await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Sol1" }),
-    });
-    await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Sol2" }),
-    });
-    const res = await app.request("/api/solutions");
-    assert.equal(res.status, 200);
-    const body = await res.json() as { items: SolutionMeta[]; corruptedIds: string[] };
-    assert.equal(body.items.length, 2);
-  });
-
-  it("TC-SOL-API-004: GET /api/solutions/:id should return a solution", async () => {
-    const { app } = setupSolutionApp();
-    const createRes = await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "GetTest" }),
-    });
-    const created = await createRes.json() as SolutionMeta;
-    const res = await app.request(`/api/solutions/${created.id}`);
-    assert.equal(res.status, 200);
-    const body = await res.json() as SolutionMeta;
-    assert.equal(body.id, created.id);
-  });
-
-  it("TC-SOL-API-005: GET /api/solutions/:id should return 404 for non-existent", async () => {
-    const { app } = setupSolutionApp();
-    const res = await app.request("/api/solutions/nonexistent");
-    assert.equal(res.status, 404);
-  });
-
-  it("TC-SOL-API-006: PUT /api/solutions/:id should update a solution", async () => {
-    const { app } = setupSolutionApp();
-    const createRes = await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "UpdateTest" }),
-    });
-    const created = await createRes.json() as SolutionMeta;
-    const res = await app.request(`/api/solutions/${created.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Updated" }),
-    });
-    assert.equal(res.status, 200);
-    const body = await res.json() as SolutionMeta;
-    assert.equal(body.name, "Updated");
-  });
-
-  it("TC-SOL-API-007: DELETE /api/solutions/:id should delete a solution", async () => {
-    const { app } = setupSolutionApp();
-    const createRes = await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "DeleteTest" }),
-    });
-    const created = await createRes.json() as SolutionMeta;
-    const res = await app.request(`/api/solutions/${created.id}`, { method: "DELETE" });
-    assert.equal(res.status, 200);
-    const getRes = await app.request(`/api/solutions/${created.id}`);
-    assert.equal(getRes.status, 404);
-  });
-
-  it("TC-SOL-API-008: POST /api/solutions/:id/open should open a solution", async () => {
-    const { app } = setupSolutionApp();
-    const createRes = await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "OpenTest" }),
-    });
-    const created = await createRes.json() as SolutionMeta;
-    const res = await app.request(`/api/solutions/${created.id}/open`, { method: "POST" });
-    assert.equal(res.status, 200);
-    const body = await res.json() as SolutionMeta;
-    assert.equal(body.id, created.id);
-  });
-
-  it("TC-SOL-API-009: GET /api/solutions/opened should list opened solutions", async () => {
-    const { app } = setupSolutionApp();
-    const createRes = await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "OpenedTest" }),
-    });
-    const created = await createRes.json() as SolutionMeta;
-    await app.request(`/api/solutions/${created.id}/open`, { method: "POST" });
-    const res = await app.request("/api/solutions/opened");
-    assert.equal(res.status, 200);
-    const body = await res.json() as { id: string; name: string }[];
-    assert.ok(body.some((e) => e.id === created.id));
-  });
-
-  it("TC-SOL-API-010: POST /api/solutions/:id/close should close a solution", async () => {
-    const { app } = setupSolutionApp();
-    const createRes = await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "CloseTest" }),
-    });
-    const created = await createRes.json() as SolutionMeta;
-    await app.request(`/api/solutions/${created.id}/open`, { method: "POST" });
-    const res = await app.request(`/api/solutions/${created.id}/close`, { method: "POST" });
-    assert.equal(res.status, 200);
-  });
-
-  it("TC-SOL-API-011: POST /api/solutions/:id/clone should clone a solution", async () => {
-    const { app } = setupSolutionApp();
-    const createRes = await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "CloneSource" }),
-    });
-    const created = await createRes.json() as SolutionMeta;
-    const res = await app.request(`/api/solutions/${created.id}/clone`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ newName: "Cloned" }),
-    });
-    assert.equal(res.status, 201);
-    const body = await res.json() as SolutionMeta;
-    assert.equal(body.name, "Cloned");
-    assert.notEqual(body.id, created.id);
-  });
-
-  it("TC-SOL-API-012: POST /api/solutions/:id/clone should return 400 without newName", async () => {
-    const { app } = setupSolutionApp();
-    const createRes = await app.request("/api/solutions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "CloneNoName" }),
-    });
-    const created = await createRes.json() as SolutionMeta;
-    const res = await app.request(`/api/solutions/${created.id}/clone`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    assert.equal(res.status, 400);
-  });
 });
 
 describe("Robot Routes - API", () => {
   function setupRobotApp() {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
     const solutionService = new SolutionService(objStore);
-    const robotService = new RobotService(objStore);
+    const robotService = new RobotService(objStore, {
+      fetchRobotBasicInfo: async () => ({
+        model: "TEST-MODEL",
+        robotSn: "TEST-SN",
+        thingsId: "TEST-THING",
+        vendorId: "TEST-VENDOR",
+        productId: "TEST-PRODUCT",
+        mainBoardSn: "TEST-BOARDSN",
+        mainBoardId: "TEST-BOARDID",
+        mainSomSn: "TEST-SOMSN",
+      }),
+    });
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
     app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));

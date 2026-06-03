@@ -49,9 +49,19 @@ function validateSolutionId(id: string): void {
 export class SolutionService {
   private obs: ObjectStore;
   private openedSolutions: Map<string, OpenedSolutionEntry> = new Map();
+  private onSolutionRemoveCallbacks: Array<(solutionId: string) => void> = [];
+  private onSolutionCloseCallbacks: Array<(solutionId: string) => void> = [];
 
   constructor(obs: ObjectStore) {
     this.obs = obs;
+  }
+
+  onSolutionRemove(callback: (solutionId: string) => void): void {
+    this.onSolutionRemoveCallbacks.push(callback);
+  }
+
+  onSolutionClose(callback: (solutionId: string) => void): void {
+    this.onSolutionCloseCallbacks.push(callback);
   }
 
   async create(input: CreateSolutionInput): Promise<SolutionMeta> {
@@ -156,6 +166,9 @@ export class SolutionService {
 
     await this.obs.deletePath(`v1/solutions/${id}`);
     this.openedSolutions.delete(id);
+    for (const cb of this.onSolutionRemoveCallbacks) {
+      cb(id);
+    }
   }
 
   async open(id: string): Promise<SolutionMeta> {
@@ -263,7 +276,13 @@ export class SolutionService {
   }
 
   closeSolution(id: string): boolean {
-    return this.openedSolutions.delete(id);
+    const deleted = this.openedSolutions.delete(id);
+    if (deleted) {
+      for (const cb of this.onSolutionCloseCallbacks) {
+        cb(id);
+      }
+    }
+    return deleted;
   }
 
   private async cloneDirectory(sourcePath: string, targetPath: string): Promise<void> {

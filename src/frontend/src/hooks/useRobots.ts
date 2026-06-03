@@ -4,6 +4,8 @@ import {
   createRobot,
   updateRobot,
   deleteRobot,
+  subscribeMemStoreKey,
+  buildRobotMemStoreKey,
 } from "../api/robotApi.js";
 import {
   StoredRobotData,
@@ -11,15 +13,17 @@ import {
   CreateRobotInput,
   enrichRobotFromBackend,
   enrichRobot,
+  RobotWithBasicInfoResponse,
 } from "../types/robot.js";
 
-const POLL_INTERVAL_MS = 10_000;
+const INITIAL_LOAD_TIMEOUT_MS = 30_000;
 
 export function useRobots(solutionId: string | null) {
   const [robots, setRobots] = useState<RobotDefinition[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
+  const sseUnsubscribers = useRef<Array<() => void>>([]);
 
   useEffect(() => {
     if (!solutionId) {
@@ -27,42 +31,92 @@ export function useRobots(solutionId: string | null) {
       setLoading(false);
       setError(null);
       initialLoadDone.current = false;
+      sseUnsubscribers.current.forEach((unsub) => unsub());
+      sseUnsubscribers.current = [];
       return;
     }
 
     let cancelled = false;
-    let isFirstPoll = true;
 
-    const poll = async () => {
-      if (cancelled) return;
+    const loadInitialData = async () => {
       try {
         const data = await fetchRobotsInfo(solutionId);
         if (!cancelled) {
-          setRobots(data.map(enrichRobotFromBackend));
-          if (isFirstPoll) {
-            setLoading(false);
-            isFirstPoll = false;
-            initialLoadDone.current = true;
-          }
+          const enriched = data.map(enrichRobotFromBackend);
+          setRobots(enriched);
+          setLoading(false);
+          initialLoadDone.current = true;
+
+          subscribeToRobotUpdates(solutionId, enriched);
         }
       } catch (err) {
-        if (!cancelled && isFirstPoll) {
+        if (!cancelled) {
           setError((err as Error).message);
           setLoading(false);
-          isFirstPoll = false;
           initialLoadDone.current = true;
         }
       }
     };
 
+    const subscribeToRobotUpdates = (solId: string, currentRobots: RobotDefinition[]) => {
+      sseUnsubscribers.current.forEach((unsub) => unsub());
+      sseUnsubscribers.current = [];
+
+      for (const robot of currentRobots) {
+        const key = buildRobotMemStoreKey(solId, robot.id);
+        const unsub = subscribeMemStoreKey(key, (data) => {
+          if (cancelled) return;
+          if (data.type === "update" && data.value) {
+            const cacheValue = data.value as { info: unknown; fetchedAt: string } | null;
+            if (cacheValue?.info) {
+              setRobots((prev) =>
+                prev.map((r) => {
+                  if (r.id !== robot.id) return r;
+                  const updatedBasicInfo = cacheValue.info as RobotWithBasicInfoResponse["basicInfo"];
+                  const mockInfo = enrichRobot(r);
+                  return {
+                    ...r,
+                    model: updatedBasicInfo?.model ?? mockInfo.model,
+                    robotSN: updatedBasicInfo?.robotSn ?? mockInfo.robotSN,
+                    thingsId: updatedBasicInfo?.thingsId ?? mockInfo.thingsId,
+                    vendorId: updatedBasicInfo?.vendorId ?? mockInfo.vendorId,
+                    productId: updatedBasicInfo?.productId ?? mockInfo.productId,
+                    mainboardSN: updatedBasicInfo?.mainBoardSn ?? mockInfo.mainboardSN,
+                    mainboardId: updatedBasicInfo?.mainBoardId ?? mockInfo.mainboardId,
+                    mainSOMSN: updatedBasicInfo?.mainSomSn ?? mockInfo.mainSOMSN,
+                  };
+                })
+              );
+            }
+          } else if (data.type === "deleted") {
+            setRobots((prev) => prev.filter((r) => r.id !== robot.id));
+          }
+        });
+        sseUnsubscribers.current.push(unsub);
+      }
+    };
+
     setLoading(true);
     setError(null);
-    poll();
-    const interval = setInterval(poll, POLL_INTERVAL_MS);
+    loadInitialData();
+
+    const refreshInterval = setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const data = await fetchRobotsInfo(solutionId);
+        if (!cancelled) {
+          setRobots(data.map(enrichRobotFromBackend));
+        }
+      } catch {
+        // silent refresh failure
+      }
+    }, INITIAL_LOAD_TIMEOUT_MS);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearInterval(refreshInterval);
+      sseUnsubscribers.current.forEach((unsub) => unsub());
+      sseUnsubscribers.current = [];
     };
   }, [solutionId]);
 

@@ -11,11 +11,14 @@ import { createObjectStoreRoutes } from "./routes/objectStoreRoutes.js";
 import { createArtifactRoutes } from "./routes/artifactRoutes.js";
 import { createSolutionRoutes } from "./routes/solutionRoutes.js";
 import { createRobotRoutes } from "./routes/robotRoutes.js";
+import { createMemStoreRoutes } from "./routes/memStoreRoutes.js";
 import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
-import { SshCommandTask, GetRobotBasicInfoTask, UpdateRobotBasicInfoTask, setRobotInfoUpdateCallback } from "./tasks/index.js";
+import { SshCommandTask, GetRobotBasicInfoTask } from "./tasks/index.js";
+import { streamSSE } from "hono/streaming";
+import { memStore } from "./memStore/index.js";
 
 function parseArgs(): { dataDir: string; port: number } {
   const args = process.argv.slice(2);
@@ -44,7 +47,33 @@ const objectStore = new ObjectStore();
 const checksumService = new ChecksumService();
 const artifactService = new ArtifactService(objectStore, checksumService);
 const solutionService = new SolutionService(objectStore);
-const robotService = new RobotService(objectStore);
+
+async function fetchRobotBasicInfoViaSsh(
+  ip: string,
+  port: number,
+  username: string,
+  password: string
+): Promise<import("./tasks/getRobotBasicInfoTask.js").RobotBasicInfo> {
+  const task = new GetRobotBasicInfoTask();
+  const result = await task.exec({
+    robotIp: ip,
+    robotPort: port,
+    sshUsername: username,
+    sshPassword: password,
+  });
+  return result.robotInfo as import("./tasks/getRobotBasicInfoTask.js").RobotBasicInfo;
+}
+
+const robotService = new RobotService(objectStore, {
+  fetchRobotBasicInfo: fetchRobotBasicInfoViaSsh,
+});
+
+solutionService.onSolutionRemove((solutionId: string) => {
+  robotService.removeSolutionCache(solutionId);
+});
+solutionService.onSolutionClose((solutionId: string) => {
+  robotService.removeSolutionCache(solutionId);
+});
 
 const app = new Hono();
 
@@ -56,20 +85,37 @@ app.route("/api/objects", createObjectStoreRoutes(objectStore, dataDir));
 app.route("/api/artifacts", createArtifactRoutes(artifactService));
 app.route("/api/solutions", createSolutionRoutes(solutionService));
 app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
+app.route("/api/memstore", createMemStoreRoutes());
+
+app.get("/api/sse", (c) => {
+  const key = c.req.query("key");
+  if (!key) {
+    return c.json({ error: "Missing key query parameter" }, 400);
+  }
+  return streamSSE(c, async (stream) => {
+    const unsubscribe = memStore.subscribe(key, (data) => {
+      stream.writeSSE({ data }).catch(() => unsubscribe());
+    });
+
+    while (!stream.aborted) {
+      await stream.sleep(5000);
+      try {
+        await stream.writeSSE({ data: JSON.stringify({ type: "ping" }), event: "ping" });
+      } catch {
+        break;
+      }
+    }
+    unsubscribe();
+  });
+});
 
 const sseManager = new SseManager();
 const resolverRegistry = new ResolverRegistry();
 resolverRegistry.register("SshCommandTask", SshCommandTask);
 resolverRegistry.register("GetRobotBasicInfoTask", GetRobotBasicInfoTask);
-resolverRegistry.register("UpdateRobotBasicInfoTask", UpdateRobotBasicInfoTask);
 
 const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
 await taskFlowEngine.loadPersistedFlows();
-
-robotService.setTaskFlowEngine(taskFlowEngine);
-setRobotInfoUpdateCallback(robotService.updateRobotInfoCache.bind(robotService));
-robotService.startPeriodicRefresh();
-robotService.startLruCleanup();
 
 app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine, sseManager));
 

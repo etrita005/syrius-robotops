@@ -1,9 +1,15 @@
-import { get, post, put, del } from "./client.js";
+import { get, post, del } from "./client.js";
 import {
   StoredRobotData,
   CreateRobotInput,
   RobotWithBasicInfoResponse,
 } from "../types/robot.js";
+
+const ROBOT_MEMSTORE_KEY_PREFIX = "robot:";
+
+export function buildRobotMemStoreKey(solutionId: string, robotId: string): string {
+  return `${ROBOT_MEMSTORE_KEY_PREFIX}${solutionId}/${robotId}`;
+}
 
 export async function listRobots(solutionId: string): Promise<StoredRobotData[]> {
   return get<StoredRobotData[]>(`/solutions/${solutionId}/robots`);
@@ -11,6 +17,10 @@ export async function listRobots(solutionId: string): Promise<StoredRobotData[]>
 
 export async function fetchRobotsInfo(solutionId: string): Promise<RobotWithBasicInfoResponse[]> {
   return get<RobotWithBasicInfoResponse[]>(`/solutions/${solutionId}/robots/info`);
+}
+
+export async function fetchRobotInfo(solutionId: string, robotId: string): Promise<RobotWithBasicInfoResponse> {
+  return get<RobotWithBasicInfoResponse>(`/solutions/${solutionId}/robots/info/${robotId}`);
 }
 
 export async function getRobot(solutionId: string, robotId: string): Promise<StoredRobotData> {
@@ -26,9 +36,53 @@ export async function updateRobot(
   robotId: string,
   patch: Partial<Pick<StoredRobotData, "alias" | "address" | "port">>
 ): Promise<StoredRobotData> {
+  const { put } = await import("./client.js");
   return put<StoredRobotData>(`/solutions/${solutionId}/robots/${robotId}`, patch);
 }
 
 export async function deleteRobot(solutionId: string, robotId: string): Promise<void> {
   await del<{ ok: boolean }>(`/solutions/${solutionId}/robots/${robotId}`);
+}
+
+export async function getMemStoreValue(key: string): Promise<unknown | null> {
+  try {
+    const result = await get<{ key: string; value: unknown }>(`/memstore/cache?key=${encodeURIComponent(key)}`);
+    return result.value;
+  } catch {
+    return null;
+  }
+}
+
+export async function refreshMemStoreKey(key: string): Promise<unknown | null> {
+  try {
+    const result = await post<{ success: boolean; key: string; value: unknown }>(`/memstore/cache/refresh?key=${encodeURIComponent(key)}`);
+    return result.value;
+  } catch {
+    return null;
+  }
+}
+
+export function subscribeMemStoreKey(
+  key: string,
+  onData: (data: { key: string; value: unknown; type: string }) => void
+): () => void {
+  const eventSource = new EventSource(`/api/sse?key=${encodeURIComponent(key)}`);
+
+  const handleMessage = (event: MessageEvent) => {
+    try {
+      const parsed = JSON.parse(event.data);
+      if (parsed.type !== "ping") {
+        onData(parsed);
+      }
+    } catch {
+      // ignore parse errors
+    }
+  };
+
+  eventSource.addEventListener("message", handleMessage);
+
+  return () => {
+    eventSource.removeEventListener("message", handleMessage);
+    eventSource.close();
+  };
 }

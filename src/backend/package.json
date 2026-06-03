@@ -14,8 +14,10 @@
     "archiver": "^7.0.0",
     "flowed": "^1.15.0",
     "hono": "^4.7.0",
+    "lru-cache": "^11.5.1",
     "nanoid": "^5.0.0",
-    "ssh2": "^1.17.0"
+    "ssh2": "^1.17.0",
+    "toad-scheduler": "^4.0.1"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.5",

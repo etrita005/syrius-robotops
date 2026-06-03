@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { RobotService } from "../services/robotService.js";
+import { RobotService, buildRobotInfoKey } from "../services/robotService.js";
 import { AppError } from "../errors/appErrors.js";
 
 export function createRobotRoutes(robotService: RobotService): Hono {
@@ -16,6 +16,26 @@ export function createRobotRoutes(robotService: RobotService): Hono {
       }
       throw err;
     }
+  });
+
+  router.get("/info/:robotId", async (c) => {
+    const solutionId = c.req.param("solutionId")!;
+    const robotId = c.req.param("robotId")!;
+    try {
+      const robot = await robotService.getRobotInfo(solutionId, robotId);
+      return c.json(robot);
+    } catch (err) {
+      if (err instanceof AppError) {
+        return c.json({ error: err.code, message: err.message }, err.statusCode);
+      }
+      throw err;
+    }
+  });
+
+  router.get("/memstore-key/:robotId", (c) => {
+    const solutionId = c.req.param("solutionId")!;
+    const robotId = c.req.param("robotId")!;
+    return c.json({ key: buildRobotInfoKey(solutionId, robotId) });
   });
 
   router.get("/", async (c) => {
