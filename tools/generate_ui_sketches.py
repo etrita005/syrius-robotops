@@ -13,9 +13,11 @@ from PIL import Image, ImageDraw, ImageFont
 BASE_DIR = os.path.join(os.path.dirname(__file__), "..", "documents", "ui-ux")
 SOL_DIR = os.path.join(BASE_DIR, "solution-management")
 ROBOTS_DIR = os.path.join(SOL_DIR, "robots")
+TASKS_DIR = os.path.join(SOL_DIR, "tasks")
 ARTIFACT_DIR = os.path.join(BASE_DIR, "artifact-management")
 os.makedirs(SOL_DIR, exist_ok=True)
 os.makedirs(ROBOTS_DIR, exist_ok=True)
+os.makedirs(TASKS_DIR, exist_ok=True)
 os.makedirs(ARTIFACT_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
@@ -494,6 +496,313 @@ def page_delete_artifact_modal():
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
+# Helpers for Tasks
+# ---------------------------------------------------------------------------
+
+def draw_state_tag(draw, bbox, state):
+    colors = {
+        "RUNNING": ("#0f62fe", "white"),
+        "PAUSED": ("#f1c21b", "#161616"),
+        "COMPLETED": ("#24a148", "white"),
+        "FAILED": ("#fa4d56", "white"),
+        "STOPPED": ("#8d8d8d", "white"),
+        "PENDING": ("#e0e0e0", "#525252"),
+    }
+    bg, fg = colors.get(state, ("#e0e0e0", "#161616"))
+    x1, y1, x2, y2 = bbox
+    draw.rounded_rectangle(bbox, radius=4, fill=bg)
+    tw = len(state) * 7 + 4
+    draw.text(((x1 + x2 - tw) // 2, (y1 + y2 - 14) // 2), state, fill=fg, font=FONT_SM)
+
+def draw_step_indicator(draw, mx, my, steps, current_step):
+    total_w = len(steps) * 120
+    start_x = mx + (600 - total_w) // 2
+    for i, step in enumerate(steps):
+        x = start_x + i * 120
+        color = "#0f62fe" if i + 1 <= current_step else "#c6c6c6"
+        draw.ellipse([x, my, x + 24, my + 24], fill=color)
+        draw.text((x + 8, my + 5), str(i + 1), fill="white", font=FONT_SM)
+        draw.text((x + 30, my + 5), step, fill="#161616" if i + 1 <= current_step else "#8d8d8d", font=FONT_SM)
+        if i < len(steps) - 1:
+            draw.line([(x + 100, my + 12), (x + 120, my + 12)], fill="#c6c6c6", width=2)
+
+# ---------------------------------------------------------------------------
+# Tasks: 01 — Task List
+# ---------------------------------------------------------------------------
+def page_tasks_list():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+
+    draw_common_header(draw, W)
+    draw_active_solution_bar(draw, W)
+    draw_sidebar(draw, H, active_index=1)
+
+    draw.text((260, 116), "<  Solutions", fill="#0f62fe", font=FONT_MD)
+    draw.text((260, 140), "Tasks", fill="#161616", font=FONT_LG)
+
+    draw_input(draw, (260, 180, 520, 214), placeholder="Search by robot alias or task name...")
+    draw_button(draw, (540, 180, 680, 214), "Create Task", bg="#0f62fe", fg="white")
+    draw_button(draw, (W - 280, 180, W - 180, 214), "< Prev")
+    draw.text((W - 170, 188), "Page 1 of 3", fill="#161616", font=FONT_MD)
+    draw_button(draw, (W - 120, 180, W - 40, 214), "Next >")
+
+    # Batch action toolbar (shown when rows are selected)
+    draw.rectangle([260, 224, W - 40, 260], fill="#e8e8e8", outline="#c6c6c6", width=1)
+    draw.text((270, 232), "2 selected", fill="#161616", font=FONT_MD)
+    draw_button(draw, (380, 228, 460, 256), "Batch Pause")
+    draw_button(draw, (470, 228, 560, 256), "Batch Resume")
+    draw_button(draw, (570, 228, 650, 256), "Batch Stop")
+    draw_button(draw, (660, 228, 750, 256), "Batch Delete", bg="#fa4d56", fg="white")
+
+    y = 270
+    draw.rectangle([260, y, W - 40, y + 36], fill="#e0e0e0")
+    cols = [
+        ("", 270),
+        ("Robot Aliases", 320),
+        ("Task Name", 500),
+        ("State", 640),
+        ("Result", 740),
+        ("Elapsed", 840),
+        ("Actions", 940),
+    ]
+    for text, cx in cols:
+        draw.text((cx, y + 8), text, fill="#161616", font=FONT_MD)
+
+    rows = [
+        (True, "AGV-01, AGV-02", "Upgrade BUP", "RUNNING", "In progress", "00:05:32"),
+        (True, "AGV-03", "Upgrade Movebase", "PAUSED", "Paused", "00:12:45"),
+        (False, "AGV-04", "Upgrade BUP", "COMPLETED", "Success", "00:08:10"),
+        (False, "AGV-05", "Upgrade Movebase", "FAILED", "Failed", "00:03:22"),
+        (False, "AGV-01", "Upgrade BUP", "STOPPED", "Stopped", "00:01:05"),
+    ]
+    for i, (checked, aliases, name, state, result, elapsed) in enumerate(rows):
+        y = 310 + i * 44
+        fill = "white" if i % 2 == 0 else "#fafafa"
+        draw.rectangle([260, y, W - 40, y + 40], fill=fill, outline="#e0e0e0", width=1)
+        cb_x, cb_y = 270, y + 10
+        draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], outline="#555", width=1)
+        if checked:
+            draw.line([(cb_x + 3, cb_y + 8), (cb_x + 7, cb_y + 12), (cb_x + 13, cb_y + 4)], fill="#0f62fe", width=2)
+        draw.text((320, y + 10), aliases, fill="#161616", font=FONT_SM)
+        draw.text((500, y + 10), name, fill="#161616", font=FONT_SM)
+        draw_state_tag(draw, (640, y + 8, 640 + 80, y + 32), state)
+        draw.text((740, y + 10), result, fill="#525252", font=FONT_SM)
+        draw.text((840, y + 10), elapsed, fill="#525252", font=FONT_SM)
+
+        if state == "RUNNING":
+            draw_button(draw, (940, y + 6, 1000, y + 34), "Pause")
+            draw_button(draw, (1010, y + 6, 1060, y + 34), "Stop")
+            draw_button(draw, (1070, y + 6, 1140, y + 34), "Delete", bg="#fa4d56", fg="white")
+        elif state == "PAUSED":
+            draw_button(draw, (940, y + 6, 1000, y + 34), "Resume")
+            draw_button(draw, (1010, y + 6, 1060, y + 34), "Stop")
+            draw_button(draw, (1070, y + 6, 1140, y + 34), "Delete", bg="#fa4d56", fg="white")
+        else:
+            draw_button(draw, (940, y + 6, 1000, y + 34), "Delete", bg="#fa4d56", fg="white")
+
+    path = os.path.join(TASKS_DIR, "01_task_list.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Tasks: 02 — Create Task Step 1: Select Robots
+# ---------------------------------------------------------------------------
+def page_create_task_step1():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Robots", "Type", "Params", "Confirm"], 1)
+
+    draw.text((mx + 24, my + 110), "Step 1: Select Robots", fill="#161616", font=FONT_MD)
+    draw_input(draw, (mx + 24, my + 150, mx + mw - 24, my + 184), placeholder="Search robots...")
+
+    y = my + 200
+    draw.rectangle([mx + 24, y, mx + mw - 24, y + 36], fill="#e0e0e0")
+    for text, cx in [("", mx + 40), ("Alias", mx + 80), ("Address", mx + 220), ("Model", mx + 380)]:
+        draw.text((cx, y + 8), text, fill="#161616", font=FONT_MD)
+    # Select All checkbox in header
+    cb_x, cb_y = mx + 40, y + 8
+    draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], outline="#555", width=1)
+    draw.line([(cb_x + 3, cb_y + 8), (cb_x + 7, cb_y + 12), (cb_x + 13, cb_y + 4)], fill="#0f62fe", width=2)
+    draw.text((cb_x + 20, cb_y - 2), "Select All", fill="#161616", font=FONT_SM)
+
+    robots = [
+        (True, "AGV-01", "192.168.1.101:22", "X100"),
+        (False, "AGV-02", "192.168.1.102:22", "X100"),
+        (True, "AGV-03", "robot-03.local:22", "X200"),
+        (False, "AGV-04", "192.168.1.104:22", "X100"),
+    ]
+    for i, (checked, alias, address, model) in enumerate(robots):
+        y = my + 240 + i * 44
+        fill = "white" if i % 2 == 0 else "#fafafa"
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 40], fill=fill, outline="#e0e0e0", width=1)
+        cb_x, cb_y = mx + 40, y + 10
+        draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], outline="#555", width=1)
+        if checked:
+            draw.line([(cb_x + 3, cb_y + 8), (cb_x + 7, cb_y + 12), (cb_x + 13, cb_y + 4)], fill="#0f62fe", width=2)
+        draw.text((mx + 80, y + 10), alias, fill="#161616", font=FONT_SM)
+        draw.text((mx + 220, y + 10), address, fill="#525252", font=FONT_SM)
+        draw.text((mx + 380, y + 10), model, fill="#525252", font=FONT_SM)
+
+    draw.text((mx + 24, my + mh - 80), "2 robots selected", fill="#525252", font=FONT_SM)
+    draw_button(draw, (mx + mw - 220, my + mh - 60, mx + mw - 120, my + mh - 28), "Cancel")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+
+    path = os.path.join(TASKS_DIR, "02_create_task_step1.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Tasks: 03 — Create Task Step 2: Select Task Type
+# ---------------------------------------------------------------------------
+def page_create_task_step2():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Robots", "Type", "Params", "Confirm"], 2)
+
+    draw.text((mx + 24, my + 110), "Step 2: Select Task Type", fill="#161616", font=FONT_MD)
+    draw_input(draw, (mx + 24, my + 140, mx + mw - 24, my + 174), placeholder="Search task types...")
+
+    types = [
+        ("Upgrade BUP", "Upgrade the BUP firmware on selected robots."),
+        ("Upgrade Movebase", "Upgrade the Movebase software on selected robots."),
+    ]
+    for i, (name, desc) in enumerate(types):
+        y = my + 190 + i * 100
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 80], fill="white", outline="#c6c6c6", width=2 if i == 0 else 1)
+        if i == 0:
+            draw.ellipse([mx + 40, y + 28, mx + 56, y + 44], fill="#0f62fe")
+        else:
+            draw.ellipse([mx + 40, y + 28, mx + 56, y + 44], outline="#8d8d8d", width=1)
+        draw.text((mx + 70, y + 16), name, fill="#161616", font=FONT_MD)
+        draw.text((mx + 70, y + 44), desc, fill="#525252", font=FONT_SM)
+
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+
+    path = os.path.join(TASKS_DIR, "03_create_task_step2.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Tasks: 04 — Create Task Step 3: Configure Parameters
+# ---------------------------------------------------------------------------
+def page_create_task_step3():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Robots", "Type", "Params", "Confirm"], 3)
+
+    draw.text((mx + 24, my + 110), "Step 3: Configure Parameters", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 135), "Task: Upgrade BUP", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 152), "Parameters are rendered dynamically based on task type.", fill="#8d8d8d", font=FONT_SM)
+    draw.text((mx + 24, my + 180), "Select an artifact file:", fill="#161616", font=FONT_MD)
+
+    y = my + 210
+    draw.rectangle([mx + 24, y, mx + mw - 24, y + 36], fill="#e0e0e0")
+    for text, cx in [("Name", mx + 40), ("Type", mx + 240), ("Size", mx + 380), ("Created", mx + 480)]:
+        draw.text((cx, y + 8), text, fill="#161616", font=FONT_MD)
+
+    artifacts = [
+        (True, "bup_v2.3.1.bin", "Firmware", "12.5 MB", "2026-05-27"),
+        (False, "bup_v2.4.0.bin", "Firmware", "13.1 MB", "2026-05-28"),
+        (False, "map_floor_2.zip", "Map", "45.2 MB", "2026-05-26"),
+    ]
+    for i, (checked, name, typ, size, created) in enumerate(artifacts):
+        y = my + 250 + i * 44
+        fill = "white" if i % 2 == 0 else "#fafafa"
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 40], fill=fill, outline="#e0e0e0", width=1)
+        cb_x, cb_y = mx + 40, y + 10
+        draw.ellipse([cb_x, cb_y, cb_x + 16, cb_y + 16], fill="#0f62fe" if checked else "white", outline="#555", width=1)
+        if checked:
+            draw.ellipse([cb_x + 4, cb_y + 4, cb_x + 12, cb_y + 12], fill="white")
+        draw.text((mx + 70, y + 10), name, fill="#161616", font=FONT_SM)
+        draw.text((mx + 240, y + 10), typ, fill="#525252", font=FONT_SM)
+        draw.text((mx + 380, y + 10), size, fill="#525252", font=FONT_SM)
+        draw.text((mx + 480, y + 10), created, fill="#525252", font=FONT_SM)
+
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+
+    path = os.path.join(TASKS_DIR, "04_create_task_step3.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Tasks: 05 — Create Task Step 4: Confirm and Create
+# ---------------------------------------------------------------------------
+def page_create_task_step4():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Robots", "Type", "Params", "Confirm"], 4)
+
+    draw.text((mx + 24, my + 110), "Step 4: Confirm", fill="#161616", font=FONT_MD)
+
+    fields = [
+        ("Target Robots", "AGV-01, AGV-03"),
+        ("Task Type", "Upgrade BUP"),
+        ("Artifact", "bup_v2.3.1.bin (12.5 MB)"),
+    ]
+    fy = my + 160
+    for label, value in fields:
+        draw.text((mx + 24, fy), label + ":", fill="#525252", font=FONT_MD)
+        draw.text((mx + 220, fy), value, fill="#161616", font=FONT_MD)
+        fy += 40
+
+    draw.text((mx + 24, fy + 10), "Are you sure you want to create this task?", fill="#161616", font=FONT_MD)
+
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Create", bg="#0f62fe", fg="white")
+
+    path = os.path.join(TASKS_DIR, "05_create_task_step4.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Tasks: 06 — Delete Task Confirm Modal
+# ---------------------------------------------------------------------------
+def page_delete_task_confirm():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 350, 250, 500, 220
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Delete Task", fill="#161616", font=FONT_LG)
+    draw.text((mx + 24, my + 70), "This action cannot be undone.", fill="#525252", font=FONT_MD)
+    draw.text((mx + 24, my + 100), "The task record will be permanently removed.", fill="#525252", font=FONT_MD)
+    draw_button(draw, (mx + mw - 220, my + mh - 60, mx + mw - 120, my + mh - 28), "Cancel")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Delete", bg="#fa4d56", fg="white")
+
+    path = os.path.join(TASKS_DIR, "06_delete_task_confirm.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
@@ -508,6 +817,14 @@ if __name__ == "__main__":
     page_robots_list_view()
     page_add_robot_modal()
     page_robot_detail_modal()
+
+    # Tasks (sub-module of Solution Management)
+    page_tasks_list()
+    page_create_task_step1()
+    page_create_task_step2()
+    page_create_task_step3()
+    page_create_task_step4()
+    page_delete_task_confirm()
 
     # Artifact Management
     page_artifact_manager()

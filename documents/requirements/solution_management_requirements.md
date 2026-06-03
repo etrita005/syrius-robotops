@@ -123,7 +123,46 @@ v1/
 }
 ```
 
-### 5.2 机器人存储数据 Schema
+### 5.2 Task 存储数据 Schema（TaskFlowEngine 持久化）
+
+TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["id", "type", "dag", "state", "taskStates", "createdAt"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "type": { "type": "string", "enum": ["internal", "user"] },
+    "solutionId": { "type": "string", "description": "关联的解决方案 ID" },
+    "robotIds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "关联的机器人 ID 列表"
+    },
+    "taskName": { "type": "string", "description": "任务显示名称，例如 Upgrade BUP、Upgrade Movebase" },
+    "input": { "type": "object", "description": "任务输入参数，不同任务类型参数结构不同" },
+    "expectedResults": { "type": "array", "items": { "type": "string" } },
+    "dag": { "type": "object", "description": "Flowed DAG 规范" },
+    "state": { "type": "string", "enum": ["PENDING", "RUNNING", "PAUSED", "COMPLETED", "FAILED", "STOPPED"] },
+    "taskStates": { "type": "object", "additionalProperties": { "type": "string", "enum": ["PENDING", "RUNNING", "COMPLETED", "FAILED", "SKIPPED"] } },
+    "taskResults": { "type": "object" },
+    "results": { "type": "object" },
+    "serializedRunStatus": { "type": "object", "description": "Flowed 运行时序列化状态，用于恢复" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "startedAt": { "type": "string", "format": "date-time", "description": "任务开始执行时间" },
+    "finishedAt": { "type": "string", "format": "date-time" }
+  }
+}
+```
+
+**任务输入参数示例**：
+
+- **升级 BUP**：`{ "artifactId": "artifact-bup-001" }`
+- **升级 Movebase**：`{ "artifactId": "artifact-movebase-001" }`
+
+### 5.3 机器人存储数据 Schema
 
 对象存储中仅持久化以下字段：
 
@@ -144,7 +183,7 @@ v1/
 }
 ```
 
-### 5.2.1 机器人动态信息
+### 5.3.1 机器人动态信息
 
 以下字段不在对象存储中持久化，而是由前端动态生成（当前阶段使用基于地址的确定性随机模拟，后续替换为真实通信协议）：
 
@@ -155,11 +194,11 @@ v1/
 - `mainControlHardwareVersion`、`mcuHardwareVersions`、`actuatorHardwareVersions`、`sensorHardwareVersions`
 - `hardwareDeviceTree`
 
-### 5.2.2 机器人完整定义 Schema（前端展示用）
+### 5.3.2 机器人完整定义 Schema（前端展示用）
 
 前端将存储数据与动态信息合并后，展示为完整的 `RobotDefinition` 对象，包含上述所有字段。
 
-### 5.3 示例
+### 5.4 示例
 
 **解决方案元数据示例**：
 
@@ -333,7 +372,78 @@ v1/
 - 导入过程中，若发现引用指向不存在的 `artifactId`，系统应提示用户：引用失效，需重新上传对应制品或重新选择。
 - 对有效的引用，递增对应制品的 `refCount`。
 
-### 6.11 机器人管理（Robots 子界面）
+### 6.11 任务管理（Tasks 子界面）
+
+> 任务管理为解决方案的子功能，所有操作必须在当前激活解决方案的上下文中执行。后端通过 `TaskFlowEngine` 提供任务生命周期管理（创建、列举、暂停、继续、停止、删除）。任务数据通过对象存储服务进行持久化，支持服务端意外重启后的任务恢复。
+
+**FR-SOL-028**：系统应支持在当前激活解决方案下创建任务。
+
+- 任务类型为 `user`，仅显示 `user` 类型任务，不显示 `internal` 类型任务。
+- 创建任务时，用户选择目标机器人（单个或多个，必须属于当前解决方案已添加的机器人）。
+- 创建任务时，用户选择任务类型：当前支持 **Upgrade BUP** 和 **Upgrade Movebase**。
+- 不同任务类型需要不同的输入参数：
+  - **Upgrade BUP**：用户需选择一个已在 Artifacts Manage 模块中添加的资源文件（`artifactId`）。
+  - **Upgrade Movebase**：用户需选择一个已在 Artifacts Manage 模块中添加的资源文件（`artifactId`）。
+- 系统通过 `POST /api/solutions/{solutionId}/tasks` 创建任务，后端调用 `TaskFlowEngine.createFlow("user", dag, input)`。
+- 创建任务时，`solutionId`、`robotIds`、`taskName` 必须作为元数据写入 Flow 记录。
+- 创建成功后，任务出现在当前解决方案的 Tasks 列表中。
+
+**FR-SOL-029**：系统应展示当前解决方案下正在执行的 tasks 列表。
+
+- 系统通过 `GET /api/solutions/{solutionId}/tasks` 获取任务列表，后端调用 `TaskFlowEngine.listFlows("user")` 并按 `solutionId` 过滤。
+- 列表仅展示 `type = "user"` 且 `solutionId` 匹配当前解决方案的任务。
+- 列表展示字段（核心信息）：
+  - `robotAliases`：关联机器人的别名列表（从当前解决方案机器人缓存中解析）。
+  - `taskName`：任务显示名称（如 Upgrade BUP、Upgrade Movebase）。
+  - `state`：任务执行状态（PENDING / RUNNING / PAUSED / COMPLETED / FAILED / STOPPED）。
+  - `resultSummary`：任务执行结果汇总（成功/失败/部分成功，基于 `taskStates` 和 `taskResults` 计算）。
+  - `elapsedTime`：任务已执行时长（从 `startedAt` 到当前时间或 `finishedAt` 的差值）。
+- 列表支持搜索：按 `robotAliases`、`taskName` 子串匹配过滤。
+- 列表支持排序：按 `createdAt`、`state`、`taskName`、`elapsedTime` 排序。
+- 列表支持分页显示，默认每页 10 条，可选 10/25/50。
+- 空状态时提示用户创建任务。
+
+**FR-SOL-030**：系统应支持对任务进行暂停、继续、停止和删除操作。
+
+> **设计说明**：Stop（停止）与 Delete（删除）是独立操作。Stop 仅终止任务执行并将状态置为 `STOPPED`，任务记录仍保留在列表中供审计和故障排查；Delete 才从内存和对象存储中永久移除任务记录。
+
+- 单条任务行操作按钮：
+  - Pause：调用 `TaskFlowEngine.pauseFlow(id)`，将任务状态变为 `PAUSED`。
+  - Resume：调用 `TaskFlowEngine.resumeFlow(id)`，将任务状态从 `PAUSED` 恢复为 `RUNNING`。
+  - Stop：调用 `TaskFlowEngine.stopFlow(id)`，将任务状态变为 `STOPPED`，记录保留。
+  - Delete：调用 `TaskFlowEngine.deleteFlow(id)`，从内存和对象存储中移除任务。删除前需弹窗确认。
+- 批量操作：表格头部提供复选框，支持多选任务；选中后工具栏显示批量操作按钮（Batch Pause / Batch Resume / Batch Stop / Batch Delete）。
+  - 仅对当前选中且状态允许执行对应操作的任务生效（例如 Batch Pause 仅作用于 RUNNING 状态的任务）。
+  - Batch Delete 需弹窗确认，展示待删除任务数量。
+- 状态与可用操作映射：
+  - `RUNNING`：Pause、Stop、Delete。
+  - `PAUSED`：Resume、Stop、Delete。
+  - `PENDING`：Stop、Delete。
+  - `COMPLETED` / `FAILED` / `STOPPED`：仅 Delete。
+- 操作成功后，前端通过 SSE 接收 `task-flow-engine/flow-updated` 事件刷新列表。
+
+**FR-SOL-031**：系统应支持任务持久化存储和服务端重启恢复。
+
+- `user` 类型任务在创建、状态变更、完成时自动持久化到对象存储 `flows/{flowId}`。
+- 服务端启动时调用 `TaskFlowEngine.loadPersistedFlows()` 恢复所有 `user` 类型任务。
+- 恢复时，对于状态为 `RUNNING` 或 `PAUSED` 的任务，必须恢复其执行状态：
+  - `RUNNING`：重新启动 Flow 执行。
+  - `PAUSED`：恢复 Flow 实例和内存状态，保持 `PAUSED` 状态，等待用户手动 Resume。
+- 恢复后，任务的 `solutionId` 和 `robotIds` 必须完整保留，以便正确关联到对应解决方案。
+
+**FR-SOL-032**：TaskFlowEngine 接口增强需求。
+
+- `FlowRecord` 和 `FlowSummary` 必须扩展以下字段：
+  - `solutionId: string`：任务所属解决方案 ID。
+  - `robotIds: string[]`：任务关联的机器人 ID 列表。
+  - `taskName: string`：任务显示名称。
+  - `startedAt?: string`：任务开始执行时间（ISO 8601）。
+- `listFlows` 方法必须支持按 `solutionId` 过滤：
+  - 签名更新为 `listFlows(filter?: { type?: FlowType; solutionId?: string }): FlowSummary[]`。
+- `createFlow` 方法必须接受并保存 `solutionId`、`robotIds`、`taskName` 元数据。
+- `loadPersistedFlows` 方法必须恢复 `PAUSED` 状态的任务。
+
+### 6.12 机器人管理（Robots 子界面）
 
 > 机器人管理为解决方案的子功能，所有操作必须在当前激活解决方案的上下文中执行。后端提供专用的机器人 API（`/api/solutions/:solutionId/robots/...`），内部调用对象存储服务进行数据持久化，并在内存中缓存每个解决方案的机器人列表。机器人动态信息通过 mem_store 缓存层管理，支持 TTL 自动淘汰、定时刷新和 SSE 实时推送。
 
@@ -434,6 +544,7 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
 | 功能 | 命名空间 | 存储格式 | 归属 |
 |------|---------|---------|------|
 | 机器人管理 | `robots` | `application/json` | 解决方案 |
+| 任务流 | `flows` | `application/json`（TaskFlowEngine 持久化） | **全局**（按 `solutionId` 逻辑归属） |
 | BSP / OS 升级包 | `upgrade-packages` | `application/json`（引用文件，指向全局制品） | 解决方案 |
 | 地图下发 | `maps` | `application/json`（引用文件，指向全局制品） | 解决方案 |
 | 程序配置 | `configs` | `application/json` | 解决方案 |
@@ -482,6 +593,14 @@ graph LR
         UC14[查看机器人详情]
     end
 
+    %% Tasks 子功能用例
+    subgraph Tasks 子功能
+        UC15[创建任务]
+        UC15a[暂停/继续/停止任务]
+        UC15b[删除任务]
+        UC15c[查看任务列表]
+    end
+
     %% 其他子功能用例
     subgraph 其他子功能模块
         UC16[执行升级]
@@ -504,9 +623,14 @@ graph LR
     FAE --> UC12
     FAE --> UC13
     FAE --> UC14
+    FAE --> UC15
+    FAE --> UC15a
+    FAE --> UC15b
+    FAE --> UC15c
 
     %% include 关系
     UC6 -.->|<<include>>| UC10
+    UC6 -.->|<<include>>| UC15
     UC6 -.->|<<include>>| UC16
     UC6 -.->|<<include>>| UC17
     UC6 -.->|<<include>>| UC18
@@ -530,12 +654,16 @@ graph LR
 | UC-ROB-03 | 查看机器人列表 | FAE | 当前存在激活解决方案 | 展示当前解决方案下所有机器人的核心基础信息 | 1. FAE 打开 Robots 子界面；2. 前端从对象存储读取所有机器人存储数据；3. 前端生成动态信息并合并展示 |
 | UC-ROB-04 | 编辑机器人别名和地址 | FAE | 机器人已存在 | 机器人别名和/或地址已更新 | 1. FAE 编辑别名或地址；2. 前端保存并更新对象存储 |
 | UC-ROB-05 | 查看机器人详情 | FAE | 机器人已存在 | 展示完整信息 | 1. FAE 点击某机器人行；2. 系统弹出详情对话框；3. 系统分标签页展示基础信息、其他信息、软件版本、硬件版本 |
+| UC-TASK-01 | 创建任务 | FAE | 当前存在激活解决方案，且已添加机器人 | 新任务出现在 Tasks 列表中并开始执行 | 1. FAE 进入 Tasks 子界面；2. 点击 Create Task；3. 选择目标机器人（单个或多个）；4. 选择任务类型（Upgrade BUP / Upgrade Movebase）；5. 选择对应的 Artifact 资源文件；6. 系统创建任务并启动执行 |
+| UC-TASK-02 | 暂停/继续/停止任务 | FAE | 任务正在执行或已暂停 | 任务状态变更 | 1. FAE 在 Tasks 列表中找到目标任务；2. 点击 Pause / Resume / Stop 按钮；3. 系统调用 TaskFlowEngine 对应接口；4. 列表状态实时更新 |
+| UC-TASK-03 | 删除任务 | FAE | 任务已存在 | 任务从列表和存储中移除 | 1. FAE 选择要删除的任务；2. 系统展示确认对话框；3. FAE 确认删除；4. 系统调用 TaskFlowEngine.deleteFlow；5. 列表刷新 |
+| UC-TASK-04 | 查看任务列表 | FAE | 当前存在激活解决方案 | 展示当前解决方案下所有 user 类型任务 | 1. FAE 打开 Tasks 子界面；2. 系统加载任务列表（按 solutionId 过滤）；3. 前端展示任务关键信息并支持搜索、排序、分页 |
 
 ### 8.3 参与者说明
 
 | 参与者 | 描述 | 关联用例 |
 |--------|------|---------|
-| FAE（现场应用工程师） | 主要用户，负责在现场连接机器人、确认状态、升级与配置 | UC-SOL-01 ~ UC-SOL-09, UC-ROB-01 ~ UC-ROB-06 |
+| FAE（现场应用工程师） | 主要用户，负责在现场连接机器人、确认状态、升级与配置 | UC-SOL-01 ~ UC-SOL-09, UC-ROB-01 ~ UC-ROB-06, UC-TASK-01 ~ UC-TASK-04 |
 
 ---
 
@@ -555,6 +683,10 @@ graph LR
 | 机器人地址 | 非空字符串，格式为 `<host>:<port>` 或 `<host>`（port 可选，默认 22），host 部分最大 256 个字符 | 拒绝并返回 `INVALID_ROBOT_ADDRESS` |
 | 机器人端口 | 从 address 中解析，1–65535 整数，默认 22 | 拒绝并返回 `INVALID_ROBOT_PORT` |
 | 机器人别名 | 最大 128 个字符 | 截断或拒绝 |
+| 任务类型 | 必须为当前系统支持的任务类型（Upgrade BUP / Upgrade Movebase） | 拒绝并返回 `INVALID_TASK_TYPE` |
+| 任务目标机器人 | 必须全部属于当前解决方案已添加的机器人 | 拒绝并返回 `ROBOT_NOT_IN_SOLUTION` |
+| 任务 Artifact | 引用的 `artifactId` 必须在 Artifacts Manage 模块中存在 | 拒绝并返回 `ARTIFACT_NOT_FOUND` |
+| 每页任务数 | 可选 10 / 25 / 50，默认 10 | 非法值时回退到默认值 |
 
 ---
 
@@ -581,6 +713,10 @@ graph LR
 | `OBJECT_NOT_FOUND` | 对不存在的路径执行 GET/PUT/DELETE | "Object '{path}' not found."（通用对象存储错误） |
 | `MEMSTORE_KEY_NOT_FOUND` | 读取 mem_store 中不存在的 key 或已过期的缓存条目 | 返回 404；前端应视为缓存未就绪，使用 mock 兜底数据。 |
 | `MEMSTORE_REFRESH_FAILED` | mem_store DAG 刷新失败（SSH 连接超时、命令执行失败等） | 后端记录错误日志，缓存保持旧值或为空；前端继续使用 mock 兜底数据。 |
+| `TASK_NOT_FOUND` | 对不存在的 taskId 执行读取/暂停/继续/停止/删除 | "Task '{taskId}' does not exist." |
+| `INVALID_TASK_TYPE` | 创建任务时指定了不支持的任务类型 | "Unsupported task type '{taskType}'." |
+| `ROBOT_NOT_IN_SOLUTION` | 创建任务时选择的机器人不属于当前解决方案 | "One or more selected robots are not in the current solution." |
+| `TASK_FLOW_ENGINE_ERROR` | TaskFlowEngine 内部错误（DAG 解析失败、Resolver 未注册等） | 后端记录错误日志，前端提示任务创建或执行失败。 |
 
 ---
 
@@ -620,6 +756,39 @@ graph LR
 
 **UI-ROB-009**：空状态时展示提示插图和 "Add your first robot" 按钮。
 
+**UI-TASK-001**：打开解决方案后，左侧导航栏的 "Tasks" 入口点击进入 Tasks 子界面。
+
+**UI-TASK-002**：Tasks 子界面以数据表格形式展示任务列表，列包括：复选框（批量选择）、`robotAliases`（关联机器人别名，多个时以逗号分隔或折叠显示）、`taskName`（任务名称）、`state`（状态标签，带颜色区分）、`resultSummary`（结果汇总）、`elapsedTime`（已执行时长，格式为 `HH:MM:SS`）、操作按钮（Pause / Resume / Stop / Delete）。
+
+**UI-TASK-003**：表格上方应提供搜索框（按 robotAliases / taskName 过滤）、"Create Task" 按钮、分页控制器（每页 10/25/50 条）。当用户通过行首复选框选中一个或多个任务后，表格上方显示批量操作工具栏，提供 Batch Pause、Batch Resume、Batch Stop、Batch Delete 按钮，并展示已选任务数量。
+
+**UI-TASK-003a**：Tasks 子界面应包含面包屑导航，显示 "Solutions > {Solution Name} > Tasks"。
+
+**UI-TASK-004**：状态列使用颜色标签区分：RUNNING（蓝色）、PAUSED（黄色）、COMPLETED（绿色）、FAILED（红色）、STOPPED（灰色）、PENDING（浅灰）。
+
+**UI-TASK-005**：Create Task 流程使用分步模态框（Step Modal）：
+- Step 1 — 选择机器人：展示当前解决方案下的机器人列表（带复选框），支持搜索，至少选择一个机器人；列表头部提供 "Select All" 复选框，可一键全选/取消全选当前过滤后的所有机器人。
+- Step 2 — 选择任务类型：展示可选任务类型列表（Upgrade BUP、Upgrade Movebase 等），单选；列表上方提供搜索框，支持按任务类型名称子串过滤。
+- Step 3 — 配置参数：根据所选任务类型**动态渲染**对应的参数输入界面。参数表单不可硬编码，必须由任务类型定义驱动。当前两种任务示例：
+  - Upgrade BUP：提供 Artifact 选择器（调用 Artifacts Manage 模块接口列出可用资源文件，用户单选确认）。
+  - Upgrade Movebase：提供 Artifact 选择器（同上）。
+  - 未来新增任务类型时，Step 3 应自动渲染该类型对应的参数表单，无需修改前端代码。
+- Step 4 — 确认并创建：展示摘要（目标机器人、任务类型、参数），提供 "Create" 和 "Back" 按钮。
+
+**UI-TASK-006**：Artifact 选择器以内嵌列表或弹窗形式展示，列包括：文件名、类型、大小、创建时间，支持搜索和单选。
+
+**UI-TASK-007**：单条任务操作按钮根据状态动态显示：
+- RUNNING：Pause、Stop、Delete。
+- PAUSED：Resume、Stop、Delete。
+- PENDING：Stop、Delete。
+- COMPLETED / FAILED / STOPPED：仅 Delete。
+
+**UI-TASK-008**：删除任务需要弹窗确认，确认后执行删除。
+
+**UI-TASK-009**：空状态时展示提示插图和 "Create your first task" 按钮。
+
+**UI-TASK-010**：任务列表支持 SSE 实时更新，状态变化时无需手动刷新页面。
+
 ---
 
 ## 12. 非功能需求
@@ -643,6 +812,18 @@ graph LR
 **NF-ROB-005**：mem_store SSE 事件从后端缓存更新到前端接收的延迟应小于 500 毫秒。
 
 **NF-ROB-006**：mem_store LRU 容量上限 1000 个条目。超出时按 LRU 策略淘汰最久未访问的条目，淘汰后首次访问自动回填。
+
+**NF-TASK-001**：任务列表加载应在 1 秒内完成（假设单个解决方案下任务数量不超过 500 条）。
+
+**NF-TASK-002**：任务创建应在 2 秒内完成（包含 DAG 验证和对象存储写入）。
+
+**NF-TASK-003**：暂停、继续、停止操作应在 500 毫秒内完成并反馈到 UI。
+
+**NF-TASK-004**：SSE 事件从后端状态变更到前端列表更新的延迟应小于 500 毫秒。
+
+**NF-TASK-005**：服务端重启后，`user` 类型任务的恢复应在启动后 10 秒内完成，恢复期间前端应显示加载状态。
+
+**NF-TASK-006**：任务持久化写入对象存储不得阻塞任务执行流程，必须异步完成。
 
 ---
 
