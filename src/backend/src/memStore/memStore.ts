@@ -185,6 +185,9 @@ export function triggerRefresh(key: string): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getTaskFlowEngine()
     .createFlow("internal", meta.spec as any)
+    .catch((err: unknown) => {
+      console.error(`[MemStore] Failed to create refresh flow for key ${key}:`, err instanceof Error ? err.message : String(err));
+    })
     .finally(() => refreshing.delete(key));
 }
 

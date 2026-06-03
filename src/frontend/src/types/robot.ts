@@ -67,24 +67,11 @@ export interface ParsedAddress {
   addressType: "ip" | "mdns";
 }
 
-function seededRandom(seed: string): () => number {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    const char = seed.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash |= 0;
-  }
-  return () => {
-    hash = (hash * 16807 + 0) % 2147483647;
-    return (hash & 0x7fffffff) / 2147483647;
-  };
-}
+const DEFAULT_PORT = 22;
 
 function isMdns(host: string): boolean {
   return !/^(\d{1,3}\.){3}\d{1,3}$/.test(host);
 }
-
-const DEFAULT_PORT = 22;
 
 export function parseAddressInput(input: string): ParsedAddress | null {
   const trimmed = input.trim();
@@ -110,129 +97,65 @@ export function formatAddressDisplay(host: string, port: number): string {
   return `${host}:${port}`;
 }
 
-export function generateMockRobotInfo(address: string, alias: string): Omit<RobotDefinition, keyof StoredRobotData> {
-  const rand = seededRandom(address);
-  const randInt = (min: number, max: number) => Math.floor(rand() * (max - min + 1)) + min;
-  const randVersion = () => `${randInt(1, 5)}.${randInt(0, 9)}.${randInt(0, 9)}`;
-  const randSN = (prefix: string) => `${prefix}-${randInt(100000, 999999)}`;
+const PLACEHOLDER = "...";
 
-  const models = ["X100", "X200", "X300", "T500", "M1000"];
-  const model = models[randInt(0, models.length - 1)];
-
-  const mcuNames = ["mcu1", "mcu2", "mcu3"];
-  const actuatorNames = ["motor1", "motor2", "motor3", "motor4"];
-  const sensorNames = ["lidar", "camera", "imu", "encoder", "battery"];
-
-  const mcuFirmwareVersions: Record<string, string> = {};
-  const mcuHardwareVersions: Record<string, string> = {};
-  for (const name of mcuNames) {
-    mcuFirmwareVersions[name] = randVersion();
-    mcuHardwareVersions[name] = `Rev.${String.fromCharCode(65 + randInt(0, 4))}`;
+export function formatInfoValue(value: string | undefined | null): string {
+  if (value === undefined || value === null || value === "") {
+    return PLACEHOLDER;
   }
+  return value;
+}
 
-  const actuatorFirmwareVersions: Record<string, string> = {};
-  const actuatorHardwareVersions: Record<string, string> = {};
-  for (const name of actuatorNames) {
-    actuatorFirmwareVersions[name] = randVersion();
-    actuatorHardwareVersions[name] = `Rev.${String.fromCharCode(65 + randInt(0, 4))}`;
-  }
+const EMPTY_DEVICE_TREE: HardwareDeviceNode[] = [];
+const EMPTY_VERSION_MAP: Record<string, string> = {};
 
-  const sensorFirmwareVersions: Record<string, string> = {};
-  const sensorHardwareVersions: Record<string, string> = {};
-  for (const name of sensorNames) {
-    sensorFirmwareVersions[name] = randVersion();
-    sensorHardwareVersions[name] = `Rev.${String.fromCharCode(65 + randInt(0, 4))}`;
-  }
-
-  const hardwareDeviceTree: HardwareDeviceNode[] = [
-    {
-      name: "MainController",
-      firmwareVersion: randVersion(),
-      hardwareVersion: `Rev.${String.fromCharCode(65 + randInt(0, 4))}`,
-      serialNumber: randSN("MB"),
-      hardwareId: randSN("MB-ID"),
-      online: true,
-    },
-    ...mcuNames.map((name) => ({
-      name,
-      firmwareVersion: mcuFirmwareVersions[name],
-      hardwareVersion: mcuHardwareVersions[name],
-      serialNumber: randSN(name.toUpperCase()),
-      hardwareId: randSN(`${name.toUpperCase()}-ID`),
-      parentName: "MainController",
-      online: rand() > 0.1,
-    })),
-    ...actuatorNames.map((name) => ({
-      name,
-      firmwareVersion: actuatorFirmwareVersions[name],
-      hardwareVersion: actuatorHardwareVersions[name],
-      serialNumber: randSN(name.toUpperCase()),
-      hardwareId: randSN(`${name.toUpperCase()}-ID`),
-      parentName: mcuNames[randInt(0, mcuNames.length - 1)],
-      online: rand() > 0.1,
-    })),
-    ...sensorNames.map((name) => ({
-      name,
-      firmwareVersion: sensorFirmwareVersions[name],
-      hardwareVersion: sensorHardwareVersions[name],
-      serialNumber: randSN(name.toUpperCase()),
-      hardwareId: randSN(`${name.toUpperCase()}-ID`),
-      parentName: mcuNames[randInt(0, mcuNames.length - 1)],
-      online: rand() > 0.1,
-    })),
-  ];
-
+export function enrichRobot(stored: StoredRobotData): RobotDefinition {
   return {
-    model,
-    robotSN: randSN("SN"),
-    thingsId: randSN("THING"),
-    vendorId: "SYRIUS",
-    productId: `${model}-STD`,
-    mainboardSN: randSN("MB-SN"),
-    mainboardId: randSN("MB-ID"),
-    mainSOMSN: randSN("SOM-SN"),
-    megaCosmOSVersion: randVersion(),
-    movebaseVersion: randVersion(),
-    ggrVersion: randVersion(),
-    mcuFirmwareVersions,
-    actuatorFirmwareVersions,
-    sensorFirmwareVersions,
-    mainControlHardwareVersion: `Rev.${String.fromCharCode(65 + randInt(0, 4))}`,
-    mcuHardwareVersions,
-    actuatorHardwareVersions,
-    sensorHardwareVersions,
-    hardwareDeviceTree,
+    ...stored,
+    model: PLACEHOLDER,
+    robotSN: PLACEHOLDER,
+    thingsId: PLACEHOLDER,
+    vendorId: PLACEHOLDER,
+    productId: PLACEHOLDER,
+    mainboardSN: PLACEHOLDER,
+    mainboardId: PLACEHOLDER,
+    mainSOMSN: PLACEHOLDER,
+    megaCosmOSVersion: PLACEHOLDER,
+    movebaseVersion: PLACEHOLDER,
+    ggrVersion: PLACEHOLDER,
+    mcuFirmwareVersions: EMPTY_VERSION_MAP,
+    actuatorFirmwareVersions: EMPTY_VERSION_MAP,
+    sensorFirmwareVersions: EMPTY_VERSION_MAP,
+    mainControlHardwareVersion: PLACEHOLDER,
+    mcuHardwareVersions: EMPTY_VERSION_MAP,
+    actuatorHardwareVersions: EMPTY_VERSION_MAP,
+    sensorHardwareVersions: EMPTY_VERSION_MAP,
+    hardwareDeviceTree: EMPTY_DEVICE_TREE,
   };
 }
 
-export function enrichRobot(stored: StoredRobotData): RobotDefinition {
-  const mockInfo = generateMockRobotInfo(stored.address, stored.alias);
-  return { ...stored, ...mockInfo };
-}
-
 export function enrichRobotFromBackend(robot: RobotWithBasicInfoResponse): RobotDefinition {
-  const mockInfo = generateMockRobotInfo(robot.address, robot.alias);
   return {
     ...robot,
-    model: robot.basicInfo?.model ?? mockInfo.model,
-    robotSN: robot.basicInfo?.robotSn ?? mockInfo.robotSN,
-    thingsId: robot.basicInfo?.thingsId ?? mockInfo.thingsId,
-    vendorId: robot.basicInfo?.vendorId ?? mockInfo.vendorId,
-    productId: robot.basicInfo?.productId ?? mockInfo.productId,
-    mainboardSN: robot.basicInfo?.mainBoardSn ?? mockInfo.mainboardSN,
-    mainboardId: robot.basicInfo?.mainBoardId ?? mockInfo.mainboardId,
-    mainSOMSN: robot.basicInfo?.mainSomSn ?? mockInfo.mainSOMSN,
-    megaCosmOSVersion: mockInfo.megaCosmOSVersion,
-    movebaseVersion: mockInfo.movebaseVersion,
-    ggrVersion: mockInfo.ggrVersion,
-    mcuFirmwareVersions: mockInfo.mcuFirmwareVersions,
-    actuatorFirmwareVersions: mockInfo.actuatorFirmwareVersions,
-    sensorFirmwareVersions: mockInfo.sensorFirmwareVersions,
-    mainControlHardwareVersion: mockInfo.mainControlHardwareVersion,
-    mcuHardwareVersions: mockInfo.mcuHardwareVersions,
-    actuatorHardwareVersions: mockInfo.actuatorHardwareVersions,
-    sensorHardwareVersions: mockInfo.sensorHardwareVersions,
-    hardwareDeviceTree: mockInfo.hardwareDeviceTree,
+    model: robot.basicInfo?.model ?? PLACEHOLDER,
+    robotSN: robot.basicInfo?.robotSn ?? PLACEHOLDER,
+    thingsId: robot.basicInfo?.thingsId ?? PLACEHOLDER,
+    vendorId: robot.basicInfo?.vendorId ?? PLACEHOLDER,
+    productId: robot.basicInfo?.productId ?? PLACEHOLDER,
+    mainboardSN: robot.basicInfo?.mainBoardSn ?? PLACEHOLDER,
+    mainboardId: robot.basicInfo?.mainBoardId ?? PLACEHOLDER,
+    mainSOMSN: robot.basicInfo?.mainSomSn ?? PLACEHOLDER,
+    megaCosmOSVersion: PLACEHOLDER,
+    movebaseVersion: PLACEHOLDER,
+    ggrVersion: PLACEHOLDER,
+    mcuFirmwareVersions: EMPTY_VERSION_MAP,
+    actuatorFirmwareVersions: EMPTY_VERSION_MAP,
+    sensorFirmwareVersions: EMPTY_VERSION_MAP,
+    mainControlHardwareVersion: PLACEHOLDER,
+    mcuHardwareVersions: EMPTY_VERSION_MAP,
+    actuatorHardwareVersions: EMPTY_VERSION_MAP,
+    sensorHardwareVersions: EMPTY_VERSION_MAP,
+    hardwareDeviceTree: EMPTY_DEVICE_TREE,
   };
 }
 

@@ -226,7 +226,8 @@ export class TaskFlowEngine {
         }
         this.finalizeFlow(id);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        console.error(`[TaskFlowEngine] Flow ${id} failed:`, err instanceof Error ? err.message : String(err));
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "FAILED";
         }
@@ -394,7 +395,8 @@ export class TaskFlowEngine {
         }
         this.finalizeFlow(id);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        console.error(`[TaskFlowEngine] Flow ${id} failed on resume:`, err instanceof Error ? err.message : String(err));
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "FAILED";
         }

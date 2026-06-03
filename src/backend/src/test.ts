@@ -2,13 +2,19 @@ import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
-import type { FlowSpec, ValueMap, ITaskResolver } from "flowed";
+import type { FlowSpec, ValueMap, ITaskResolver, TaskResolverClass } from "flowed";
 import { TaskFlowEngine } from "./services/taskFlowEngine/taskFlowEngine.js";
 import type { FlowRecord, FlowSummary, FlowType, TaskState } from "./services/taskFlowEngine/taskFlowEngine.js";
 import { ResolverRegistry } from "./services/taskFlowEngine/resolverRegistry.js";
 import { SseManager } from "./services/taskFlowEngine/sseManager.js";
 import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import type { ObjectStoreResource } from "./services/objectStore.js";
+import { setTaskFlowEngine } from "./services/taskFlowEngine/index.js";
+import { memStore } from "./memStore/index.js";
+import { buildRobotInfoKey } from "./services/robotService.js";
+import { MockGetRobotBasicInfoTask } from "./tasks/mockGetRobotBasicInfoTask.js";
+import { UpdateRobotBasicInfoTask } from "./tasks/updateRobotBasicInfoTask.js";
+import type { RobotBasicInfo } from "./tasks/getRobotBasicInfoTask.js";
 
 class InMemoryObjectStore {
   private store = new Map<string, unknown>();
@@ -1812,6 +1818,275 @@ describe("Solution Routes - API", () => {
     app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
     return { app, solutionService, robotService };
   }
+});
+
+describe("RobotService - MemStore & TaskFlow Integration", () => {
+  function createIntegrationServices() {
+    const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const solutionService = new SolutionService(objStore);
+    const robotService = new RobotService(objStore);
+
+    const sse = new SpySseManager() as unknown as SseManager;
+    const registry = new ResolverRegistry();
+    registry.register("GetRobotBasicInfoTask", MockGetRobotBasicInfoTask);
+    registry.register("UpdateRobotBasicInfoTask", UpdateRobotBasicInfoTask as unknown as import("flowed").TaskResolverClass);
+
+    const engine = new TaskFlowEngine(
+      objStore as unknown as import("./services/objectStore.js").ObjectStore,
+      sse,
+      registry
+    );
+    setTaskFlowEngine(engine);
+
+    return { objStore: objStore as unknown as EnhancedObjectStore, solutionService, robotService, sse: sse as unknown as SpySseManager, engine };
+  }
+
+  async function waitForInternalFlow(engine: TaskFlowEngine, timeoutMs = 5000): Promise<FlowSummary> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const flows = engine.listFlows("internal");
+      if (flows.length > 0) return flows[0];
+      await sleep(50);
+    }
+    throw new Error("No internal flow appeared within timeout");
+  }
+
+  function waitForFlowComplete(engine: TaskFlowEngine, id: string, timeoutMs = 15000): Promise<FlowSummary> {
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      const timer = setInterval(() => {
+        const summary = engine.getFlow(id);
+        if (!summary) { clearInterval(timer); reject(new Error("Flow not found")); return; }
+        if (summary.state === "COMPLETED" || summary.state === "FAILED" || summary.state === "STOPPED") {
+          clearInterval(timer);
+          resolve(summary);
+        } else if (Date.now() - start > timeoutMs) {
+          clearInterval(timer);
+          reject(new Error("Flow did not complete within timeout"));
+        }
+      }, 100);
+    });
+  }
+
+  function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  it("TC-INT-001: robotService.create should create memStore cache entry for robot basic info", { timeout: 5000 }, async () => {
+    const { solutionService, robotService, engine } = createIntegrationServices();
+    const solution = await solutionService.create({ name: "Integration Test" });
+
+    const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
+    const key = buildRobotInfoKey(solution.id, robot.id);
+
+    const meta = memStore.getCacheMeta(key);
+    assert.ok(meta, "memStore cache meta should exist after robot creation");
+    assert.ok(meta.spec, "memStore cache spec should be defined");
+    assert.equal(meta.config.ttlMs, 5 * 60 * 1000, "TTL should be 5 minutes");
+    assert.equal(meta.config.cron, "*/180", "Cron should be every 180 seconds");
+
+    const hasValue = memStore.hasCache(key);
+    assert.equal(hasValue, false, "Cache should have no value immediately after creation (no initialValue)");
+
+    engine.destroy();
+  });
+
+  it("TC-INT-002: getRobotInfoList should trigger task flow and return basicInfo=null on first call", { timeout: 10000 }, async () => {
+    const { solutionService, robotService, engine } = createIntegrationServices();
+    const solution = await solutionService.create({ name: "Integration Test" });
+
+    const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
+
+    const infoList = await robotService.getRobotInfoList(solution.id);
+    assert.equal(infoList.length, 1);
+    assert.equal(infoList[0].id, robot.id);
+    assert.equal(infoList[0].basicInfo, null, "basicInfo should be null on first call before task flow completes");
+
+    const flow = await waitForInternalFlow(engine);
+    assert.ok(flow, "At least one internal flow should have been triggered");
+
+    engine.destroy();
+  });
+
+  it("TC-INT-003: mock task flow should complete and update memStore cache with robot basic info", { timeout: 20000 }, async () => {
+    const { solutionService, robotService, engine } = createIntegrationServices();
+    const solution = await solutionService.create({ name: "Integration Test" });
+
+    const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
+    const key = buildRobotInfoKey(solution.id, robot.id);
+
+    robotService.getRobotInfoList(solution.id);
+
+    const flow = await waitForInternalFlow(engine);
+    const completed = await waitForFlowComplete(engine, flow.id, 15000);
+    assert.equal(completed.state, "COMPLETED", `Task flow should complete successfully, got: ${completed.state}`);
+    assert.ok(completed.taskResults, "Task results should be present");
+    assert.equal(completed.taskStates["fetchInfo"], "COMPLETED", "fetchInfo task should complete");
+    assert.equal(completed.taskStates["updateInfo"], "COMPLETED", "updateInfo task should complete");
+
+    await sleep(500);
+
+    const cached = memStore.getCache(key) as RobotBasicInfo | undefined;
+    assert.ok(cached, "memStore cache should have robot basic info after task flow completes");
+    assert.equal(cached.model, "MLLBA0201");
+    assert.equal(cached.robotSn, "SQADO420250306");
+    assert.equal(cached.thingsId, "M263DG67HJ");
+    assert.equal(cached.vendorId, "0x000036a1");
+    assert.equal(cached.productId, "0x00002410");
+    assert.equal(cached.mainBoardSn, "SyriusRobotics");
+    assert.equal(cached.mainBoardId, "WWVU0100406JCB06");
+    assert.equal(cached.mainSomSn, "1420124249761");
+
+    engine.destroy();
+  });
+
+  it("TC-INT-004: getRobotInfoList should return cached basicInfo after task flow completes", { timeout: 20000 }, async () => {
+    const { solutionService, robotService, engine } = createIntegrationServices();
+    const solution = await solutionService.create({ name: "Integration Test" });
+
+    const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
+
+    robotService.getRobotInfoList(solution.id);
+
+    const flow = await waitForInternalFlow(engine);
+    await waitForFlowComplete(engine, flow.id, 15000);
+    await sleep(500);
+
+    const infoList = await robotService.getRobotInfoList(solution.id);
+    assert.equal(infoList.length, 1);
+    assert.ok(infoList[0].basicInfo, "basicInfo should be populated from cache");
+    assert.equal(infoList[0].basicInfo!.model, "MLLBA0201");
+    assert.equal(infoList[0].basicInfo!.robotSn, "SQADO420250306");
+
+    engine.destroy();
+  });
+
+  it("TC-INT-005: getRobotInfo (single) should return cached basicInfo after task flow completes", { timeout: 20000 }, async () => {
+    const { solutionService, robotService, engine } = createIntegrationServices();
+    const solution = await solutionService.create({ name: "Integration Test" });
+
+    const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
+
+    robotService.getRobotInfo(solution.id, robot.id);
+
+    const flow = await waitForInternalFlow(engine);
+    await waitForFlowComplete(engine, flow.id, 15000);
+    await sleep(500);
+
+    const info = await robotService.getRobotInfo(solution.id, robot.id);
+    assert.ok(info.basicInfo, "basicInfo should be populated from cache");
+    assert.equal(info.basicInfo!.model, "MLLBA0201");
+
+    engine.destroy();
+  });
+
+  it("TC-INT-006: robotService.remove should delete memStore cache for the robot", { timeout: 5000 }, async () => {
+    const { solutionService, robotService, engine } = createIntegrationServices();
+    const solution = await solutionService.create({ name: "Integration Test" });
+
+    const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
+    const key = buildRobotInfoKey(solution.id, robot.id);
+
+    assert.ok(memStore.getCacheMeta(key), "Cache should exist before removal");
+
+    await robotService.remove(solution.id, robot.id);
+
+    const metaAfter = memStore.getCacheMeta(key);
+    assert.equal(metaAfter, undefined, "Cache should be deleted after robot removal");
+
+    engine.destroy();
+  });
+
+  it("TC-INT-007: removeSolutionCache should delete all robot info caches for a solution", { timeout: 5000 }, async () => {
+    const { solutionService, robotService, engine } = createIntegrationServices();
+    const solution = await solutionService.create({ name: "Integration Test" });
+
+    const r1 = await robotService.create(solution.id, { address: "10.0.0.1:22" });
+    const r2 = await robotService.create(solution.id, { address: "10.0.0.2:22" });
+
+    const key1 = buildRobotInfoKey(solution.id, r1.id);
+    const key2 = buildRobotInfoKey(solution.id, r2.id);
+
+    assert.ok(memStore.getCacheMeta(key1), "Cache for robot 1 should exist");
+    assert.ok(memStore.getCacheMeta(key2), "Cache for robot 2 should exist");
+
+    robotService.removeSolutionCache(solution.id);
+
+    assert.equal(memStore.getCacheMeta(key1), undefined, "Cache for robot 1 should be deleted");
+    assert.equal(memStore.getCacheMeta(key2), undefined, "Cache for robot 2 should be deleted");
+
+    engine.destroy();
+  });
+
+  it("TC-INT-008: updating robot address should recreate memStore cache with new key", { timeout: 20000 }, async () => {
+    const { solutionService, robotService, engine } = createIntegrationServices();
+    const solution = await solutionService.create({ name: "Integration Test" });
+
+    const robot = await robotService.create(solution.id, { address: "10.0.0.1:22" });
+    const key = buildRobotInfoKey(solution.id, robot.id);
+
+    robotService.getRobotInfoList(solution.id);
+    const flow = await waitForInternalFlow(engine);
+    await waitForFlowComplete(engine, flow.id, 15000);
+    await sleep(500);
+
+    assert.ok(memStore.hasCache(key), "Cache should have value before address update");
+
+    await robotService.update(solution.id, robot.id, { address: "10.0.0.2:22" });
+
+    assert.equal(memStore.hasCache(key), false, "Cache value should be cleared after address update (new cache created without value)");
+
+    const meta = memStore.getCacheMeta(key);
+    assert.ok(meta, "Cache meta should still exist after address update (recreated with same key)");
+
+    engine.destroy();
+  });
+
+  it("TC-INT-009: SSE broadcast should fire when memStore cache is updated by task flow", { timeout: 20000 }, async () => {
+    const { solutionService, robotService, engine, sse } = createIntegrationServices();
+    const solution = await solutionService.create({ name: "Integration Test" });
+
+    const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
+
+    sse.clear();
+    robotService.getRobotInfoList(solution.id);
+
+    const flow = await waitForInternalFlow(engine);
+    await waitForFlowComplete(engine, flow.id, 15000);
+    await sleep(500);
+
+    assert.ok(sse.hasEvent("task-flow-engine/task-updated"), "SSE should broadcast task-updated event");
+    assert.ok(sse.hasEvent("task-flow-engine/flow-completed"), "SSE should broadcast flow-completed event");
+
+    engine.destroy();
+  });
+
+  it("TC-INT-010: memStore subscribe should receive update when cache is populated", { timeout: 20000 }, async () => {
+    const { solutionService, robotService, engine } = createIntegrationServices();
+    const solution = await solutionService.create({ name: "Integration Test" });
+
+    const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
+    const key = buildRobotInfoKey(solution.id, robot.id);
+
+    const received: unknown[] = [];
+    const unsubscribe = memStore.subscribe(key, (data: string) => {
+      received.push(JSON.parse(data));
+    });
+
+    robotService.getRobotInfoList(solution.id);
+
+    const flow = await waitForInternalFlow(engine);
+    await waitForFlowComplete(engine, flow.id, 15000);
+    await sleep(500);
+
+    const updateEvent = received.find((e: any) => e.type === "update");
+    assert.ok(updateEvent, "Subscriber should receive an 'update' event");
+    assert.equal((updateEvent as any).key, key);
+    assert.ok((updateEvent as any).value, "Update event should contain robot basic info value");
+
+    unsubscribe();
+    engine.destroy();
+  });
 });
 
 describe("Robot Routes - API", () => {

@@ -17,7 +17,7 @@ import {
 } from "@carbon/react";
 import { Grid, List } from "@carbon/react/icons";
 import { useRobots } from "../../hooks/useRobots.js";
-import { RobotDefinition, formatAddressDisplay } from "../../types/robot.js";
+import { RobotDefinition, formatAddressDisplay, formatInfoValue } from "../../types/robot.js";
 import AddRobotModal from "./AddRobotModal.js";
 import RobotDetailModal from "./RobotDetailModal.js";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
@@ -65,7 +65,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [addOpen, setAddOpen] = useState(false);
-  const [detailRobot, setDetailRobot] = useState<RobotDefinition | null>(null);
+  const [detailRobotId, setDetailRobotId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RobotDefinition | null>(null);
@@ -116,10 +116,15 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
     else setSelectedIds(new Set());
   };
 
+  const detailRobot = useMemo(
+    () => (detailRobotId ? robots.find((r) => r.id === detailRobotId) ?? null : null),
+    [robots, detailRobotId]
+  );
+
   const allSelected = filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id));
 
   const openDetail = (robot: RobotDefinition) => {
-    setDetailRobot(robot);
+    setDetailRobotId(robot.id);
     setDetailOpen(true);
   };
 
@@ -263,13 +268,13 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
               {robot.alias}
             </div>
             <div style={{ fontSize: "0.8125rem", color: "#525252", marginBottom: "0.25rem" }}>
-              {formatAddressDisplay(robot.address, robot.port)} | {robot.model}
+              {formatAddressDisplay(robot.address, robot.port)} | {formatInfoValue(robot.model)}
             </div>
             <div style={{ fontSize: "0.8125rem", color: "#525252", marginBottom: "0.25rem" }}>
-              SN: {robot.robotSN}
+              SN: {formatInfoValue(robot.robotSN)}
             </div>
             <div style={{ fontSize: "0.8125rem", color: "#525252" }}>
-              megacosmOS: {robot.megaCosmOSVersion}
+              megacosmOS: {formatInfoValue(robot.megaCosmOSVersion)}
             </div>
           </div>
         ))}
@@ -324,10 +329,10 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
           </span>
         ),
       address: formatAddressDisplay(r.address, r.port),
-      model: r.model,
-      robotSN: r.robotSN,
-      thingsId: r.thingsId,
-      megaCosmOSVersion: r.megaCosmOSVersion,
+      model: formatInfoValue(r.model),
+      robotSN: formatInfoValue(r.robotSN),
+      thingsId: formatInfoValue(r.thingsId),
+      megaCosmOSVersion: formatInfoValue(r.megaCosmOSVersion),
       actions: (
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <Button kind="ghost" size="sm" onClick={() => openDetail(r)}>
@@ -552,7 +557,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
         robot={detailRobot}
         onClose={() => {
           setDetailOpen(false);
-          setDetailRobot(null);
+          setDetailRobotId(null);
         }}
         onSave={async (patch) => {
           if (!detailRobot) return;

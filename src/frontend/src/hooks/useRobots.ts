@@ -67,27 +67,23 @@ export function useRobots(solutionId: string | null) {
         const unsub = subscribeMemStoreKey(key, (data) => {
           if (cancelled) return;
           if (data.type === "update" && data.value) {
-            const cacheValue = data.value as { info: unknown; fetchedAt: string } | null;
-            if (cacheValue?.info) {
-              setRobots((prev) =>
-                prev.map((r) => {
-                  if (r.id !== robot.id) return r;
-                  const updatedBasicInfo = cacheValue.info as RobotWithBasicInfoResponse["basicInfo"];
-                  const mockInfo = enrichRobot(r);
-                  return {
-                    ...r,
-                    model: updatedBasicInfo?.model ?? mockInfo.model,
-                    robotSN: updatedBasicInfo?.robotSn ?? mockInfo.robotSN,
-                    thingsId: updatedBasicInfo?.thingsId ?? mockInfo.thingsId,
-                    vendorId: updatedBasicInfo?.vendorId ?? mockInfo.vendorId,
-                    productId: updatedBasicInfo?.productId ?? mockInfo.productId,
-                    mainboardSN: updatedBasicInfo?.mainBoardSn ?? mockInfo.mainboardSN,
-                    mainboardId: updatedBasicInfo?.mainBoardId ?? mockInfo.mainboardId,
-                    mainSOMSN: updatedBasicInfo?.mainSomSn ?? mockInfo.mainSOMSN,
-                  };
-                })
-              );
-            }
+            const updatedBasicInfo = data.value as RobotWithBasicInfoResponse["basicInfo"];
+            setRobots((prev) =>
+              prev.map((r) => {
+                if (r.id !== robot.id) return r;
+                return {
+                  ...r,
+                  model: updatedBasicInfo?.model ?? r.model,
+                  robotSN: updatedBasicInfo?.robotSn ?? r.robotSN,
+                  thingsId: updatedBasicInfo?.thingsId ?? r.thingsId,
+                  vendorId: updatedBasicInfo?.vendorId ?? r.vendorId,
+                  productId: updatedBasicInfo?.productId ?? r.productId,
+                  mainboardSN: updatedBasicInfo?.mainBoardSn ?? r.mainboardSN,
+                  mainboardId: updatedBasicInfo?.mainBoardId ?? r.mainboardId,
+                  mainSOMSN: updatedBasicInfo?.mainSomSn ?? r.mainSOMSN,
+                };
+              })
+            );
           } else if (data.type === "deleted") {
             setRobots((prev) => prev.filter((r) => r.id !== robot.id));
           }

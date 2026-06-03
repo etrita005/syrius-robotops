@@ -104,6 +104,8 @@ export class SshCommandTask implements ITaskResolver {
     const timeout = sshParams.timeout!;
     const command = sshParams.sshCommand;
 
+    console.log(`[SSH] Connecting to ${sshParams.sshUsername}@${host}:${port}`);
+
     let lastError: Error | undefined;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -123,6 +125,7 @@ export class SshCommandTask implements ITaskResolver {
           );
         }
 
+        console.log(`[SSH] Command succeeded on ${host}:${port}`);
         return {
           success: true,
           stdout: result.stdout,
@@ -131,6 +134,7 @@ export class SshCommandTask implements ITaskResolver {
         };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
+        console.error(`[SSH] Attempt ${attempt}/${maxRetries} to ${host}:${port} failed: ${lastError.message}`);
         if (attempt < maxRetries) {
           await sleep(1000 * attempt);
         }

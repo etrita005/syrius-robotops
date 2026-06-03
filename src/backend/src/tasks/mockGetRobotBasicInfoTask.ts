@@ -3,13 +3,13 @@ import { GetRobotBasicInfoTask, type RobotBasicInfo } from "./getRobotBasicInfoT
 
 const MOCK_ROBOT_INFO: RobotBasicInfo = {
   model: "MLLBA0201",
-  robotSn: "SQADO420250306",
-  thingsId: "M263DG67HJ",
+  robotSn: "SQA000000000",
+  thingsId: "M000000000000",
   vendorId: "0x000036a1",
   productId: "0x00002410",
   mainBoardSn: "SyriusRobotics",
   mainBoardId: "WWVU0100406JCB06",
-  mainSomSn: "1420124249761",
+  mainSomSn: "1420124249000",
 };
 
 function sleep(ms: number): Promise<void> {

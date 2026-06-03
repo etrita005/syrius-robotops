@@ -16,7 +16,7 @@ import {
   TableCell,
   Tag,
 } from "@carbon/react";
-import { RobotDefinition, formatAddressDisplay, parseAddressInput } from "../../types/robot.js";
+import { RobotDefinition, formatAddressDisplay, parseAddressInput, formatInfoValue } from "../../types/robot.js";
 
 interface RobotDetailModalProps {
   open: boolean;
@@ -165,14 +165,14 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
                   }
                 }}
               />
-              <TextInput id="rd-model" labelText="Model" value={robot.model} readOnly />
-              <TextInput id="rd-robotsn" labelText="Robot SN" value={robot.robotSN} readOnly />
-              <TextInput id="rd-thingsid" labelText="Things ID" value={robot.thingsId} readOnly />
-              <TextInput id="rd-vendorid" labelText="Vendor ID" value={robot.vendorId} readOnly />
-              <TextInput id="rd-productid" labelText="Product ID" value={robot.productId} readOnly />
-              <TextInput id="rd-mainboardsn" labelText="Mainboard SN" value={robot.mainboardSN} readOnly />
-              <TextInput id="rd-mainboardid" labelText="Mainboard ID" value={robot.mainboardId} readOnly />
-              <TextInput id="rd-mainsomsn" labelText="Main SOM SN" value={robot.mainSOMSN} readOnly />
+              <TextInput id="rd-model" labelText="Model" value={formatInfoValue(robot.model)} readOnly />
+              <TextInput id="rd-robotsn" labelText="Robot SN" value={formatInfoValue(robot.robotSN)} readOnly />
+              <TextInput id="rd-thingsid" labelText="Things ID" value={formatInfoValue(robot.thingsId)} readOnly />
+              <TextInput id="rd-vendorid" labelText="Vendor ID" value={formatInfoValue(robot.vendorId)} readOnly />
+              <TextInput id="rd-productid" labelText="Product ID" value={formatInfoValue(robot.productId)} readOnly />
+              <TextInput id="rd-mainboardsn" labelText="Mainboard SN" value={formatInfoValue(robot.mainboardSN)} readOnly />
+              <TextInput id="rd-mainboardid" labelText="Mainboard ID" value={formatInfoValue(robot.mainboardId)} readOnly />
+              <TextInput id="rd-mainsomsn" labelText="Main SOM SN" value={formatInfoValue(robot.mainSOMSN)} readOnly />
             </div>
           </TabPanel>
            <TabPanel>
@@ -211,12 +211,12 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
            </TabPanel>
            <TabPanel>
              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1rem" }}>
-               <section>
-                 <h5 style={{ marginBottom: "0.5rem" }}>OS Versions</h5>
-                 <TextInput id="sw-megacosmos" labelText="megacosmOS" value={robot.megaCosmOSVersion} readOnly />
-                 <TextInput id="sw-movebase" labelText="Movebase" value={robot.movebaseVersion} readOnly />
-                 <TextInput id="sw-ggr" labelText="GGR" value={robot.ggrVersion} readOnly />
-               </section>
+                <section>
+                  <h5 style={{ marginBottom: "0.5rem" }}>OS Versions</h5>
+                  <TextInput id="sw-megacosmos" labelText="megacosmOS" value={formatInfoValue(robot.megaCosmOSVersion)} readOnly />
+                  <TextInput id="sw-movebase" labelText="Movebase" value={formatInfoValue(robot.movebaseVersion)} readOnly />
+                  <TextInput id="sw-ggr" labelText="GGR" value={formatInfoValue(robot.ggrVersion)} readOnly />
+                </section>
                <section>
                  <h5 style={{ marginBottom: "0.5rem" }}>MCU Firmware</h5>
                  {renderKeyValueList(robot.mcuFirmwareVersions)}
@@ -233,10 +233,10 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
            </TabPanel>
            <TabPanel>
              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1rem" }}>
-               <section>
-                 <h5 style={{ marginBottom: "0.5rem" }}>Main Control</h5>
-                 <TextInput id="hw-maincontrol" labelText="Main Control Hardware Version" value={robot.mainControlHardwareVersion} readOnly />
-               </section>
+                <section>
+                  <h5 style={{ marginBottom: "0.5rem" }}>Main Control</h5>
+                  <TextInput id="hw-maincontrol" labelText="Main Control Hardware Version" value={formatInfoValue(robot.mainControlHardwareVersion)} readOnly />
+                </section>
                <section>
                  <h5 style={{ marginBottom: "0.5rem" }}>MCU Hardware</h5>
                  {renderKeyValueList(robot.mcuHardwareVersions)}

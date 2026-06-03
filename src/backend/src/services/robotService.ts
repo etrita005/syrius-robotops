@@ -149,12 +149,15 @@ export class RobotService {
     const spec: TaskFlowSpec = {
       tasks: {
         fetchInfo: {
-          resolver: { name: "GetRobotBasicInfoTask" },
-          params: {
-            robotIp: robot.address,
-            robotPort: robot.port,
-            sshUsername: this.sshUsername,
-            sshPassword: this.sshPassword,
+          resolver: {
+            name: "GetRobotBasicInfoTask",
+            results: { robotInfo: "robotInfo" },
+            params: {
+              robotIp: { value: robot.address },
+              robotPort: { value: robot.port },
+              sshUsername: { value: this.sshUsername },
+              sshPassword: { value: this.sshPassword },
+            },
           },
           provides: ["robotInfo"],
         },
@@ -163,7 +166,8 @@ export class RobotService {
           resolver: {
             name: "UpdateRobotBasicInfoTask",
             params: {
-              cacheKey: key,
+              cacheKey: { value: key },
+              robotInfo: "robotInfo",
             },
           },
         },

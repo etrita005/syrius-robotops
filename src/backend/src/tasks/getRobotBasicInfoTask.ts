@@ -37,7 +37,14 @@ export class GetRobotBasicInfoTask extends SshCommandTask {
     const result = await super.exec(params);
 
     const stdout = (result.stdout as string) ?? "";
+    const stderr = (result.stderr as string) ?? "";
+    if (stderr) {
+      console.log(`[GetRobotBasicInfo] stderr: ${stderr.trim()}`);
+    }
+
     const robotInfo = this.parseRobotInfo(stdout);
+
+    console.log(`[GetRobotBasicInfo] Parsed model=${robotInfo.model}, sn=${robotInfo.robotSn}`);
 
     return {
       success: true,

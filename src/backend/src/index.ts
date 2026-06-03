@@ -20,6 +20,7 @@ import type { TaskResolverClass } from "flowed";
 import { SshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask } from "./tasks/index.js";
 import { streamSSE } from "hono/streaming";
 import { memStore } from "./memStore/index.js";
+import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
 
 function parseArgs(): { dataDir: string; port: number; mock: boolean } {
   const args = process.argv.slice(2);
@@ -81,7 +82,10 @@ registerTasks(resolverRegistry, mock, [
 const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
 setTaskFlowEngine(taskFlowEngine);
 
-const robotService = new RobotService(objectStore);
+const robotService = new RobotService(objectStore, {
+  sshUsername: SSH_USERNAME,
+  sshPassword: SSH_PASSWORD,
+});
 
 solutionService.onSolutionRemove((solutionId: string) => {
   robotService.removeSolutionCache(solutionId);
@@ -138,7 +142,8 @@ app.onError((err, _c) => {
 
 console.log(`RobotOps Backend API running at http://localhost:${port}`);
 console.log(`Data directory: ${dataDir}`);
+console.log(`SSH credentials: ${SSH_USERNAME} / ${SSH_PASSWORD ? "***" : "(none)"}`);
 if (mock) {
-  console.log("Mock mode enabled: SSH tasks will return mock data");
+  console.log("Mock mode enabled");
 }
 serve({ fetch: app.fetch, port });
