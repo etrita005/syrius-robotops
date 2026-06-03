@@ -97,6 +97,15 @@ Options:
 npm start -- --port 30001 --data-dir ./data
 ```
 
+**Mock mode** (skip SSH, return mock data):
+
+```bash
+npm start -- --mock
+# → Mock mode enabled: SSH tasks will return mock data
+```
+
+In mock mode, `GetRobotBasicInfoTask` sleeps 3 seconds and returns a hardcoded `RobotBasicInfo` object instead of connecting to a real robot via SSH. Useful for frontend development and integration testing without physical robots.
+
 ### 3. Start the Frontend (Dev Mode)
 
 ```bash

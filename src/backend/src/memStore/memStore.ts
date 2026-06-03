@@ -1,7 +1,7 @@
 import { LRUCache } from 'lru-cache';
-import type { CacheValuePayload, CacheConfig, Dag } from './types.js';
-import { executeDag } from './taskEngine.js';
+import type { CacheValuePayload, CacheConfig, TaskFlowSpec } from './types.js';
 import { scheduleCron, scheduleWarning, clearJobsForKey } from './scheduler.js';
+import { getTaskFlowEngine } from '../services/taskFlowEngine/index.js';
 
 interface Subscriber {
   onData: (data: string) => void;
@@ -24,9 +24,9 @@ const cache = new LRUCache<string, CacheValuePayload>({
   },
 });
 
-const metaStore = new Map<string, { dag: Dag; config: CacheConfig }>();
+const metaStore = new Map<string, { spec: TaskFlowSpec; config: CacheConfig }>();
 const subscribers = new Map<string, Set<Subscriber>>();
-const refreshing = new Map<string, Promise<unknown>>();
+const refreshing = new Set<string>();
 
 function getSubs(key: string): Set<Subscriber> {
   if (!subscribers.has(key)) subscribers.set(key, new Set());
@@ -72,7 +72,7 @@ export function getCache(key: string): unknown | undefined {
   }
   const meta = metaStore.get(key);
   if (meta) {
-    triggerRefresh(key).catch((err: Error) => console.error(`[MemStore] MissRefresh ${key}:`, err.message));
+    triggerRefresh(key);
   }
   return undefined;
 }
@@ -82,7 +82,7 @@ export function hasCache(key: string): boolean {
   return payload !== undefined && payload.hasValue;
 }
 
-export function getCacheMeta(key: string): { dag: Dag; config: CacheConfig; payload?: CacheValuePayload } | undefined {
+export function getCacheMeta(key: string): { spec: TaskFlowSpec; config: CacheConfig; payload?: CacheValuePayload } | undefined {
   const meta = metaStore.get(key);
   if (!meta) return undefined;
   return { ...meta, payload: cache.get(key) };
@@ -90,7 +90,7 @@ export function getCacheMeta(key: string): { dag: Dag; config: CacheConfig; payl
 
 export function createCache(
   key: string,
-  dag: Dag,
+  spec: TaskFlowSpec,
   config: CacheConfig,
   initialValue?: unknown
 ): void {
@@ -102,7 +102,7 @@ export function createCache(
     updatedAt: now,
     expireAt: now + config.ttlMs,
   };
-  metaStore.set(key, { dag, config });
+  metaStore.set(key, { spec, config });
   cache.set(key, payload, { ttl: Math.max(1, config.ttlMs) });
   setupSchedule(key, config, payload.expireAt);
 }
@@ -171,33 +171,21 @@ export function updateConfig(key: string, partial: Partial<CacheConfig>): void {
   setupSchedule(key, meta.config, newExpireAt);
 }
 
-export async function triggerRefresh(key: string): Promise<unknown> {
+export function triggerRefresh(key: string): void {
   const meta = metaStore.get(key);
   if (!meta) {
     return;
   }
 
   if (refreshing.has(key)) {
-    return refreshing.get(key);
+    return;
   }
 
-  const promise = (async () => {
-    try {
-      console.log(`[MemStore] Starting refresh for key: ${key}`);
-      const result = await executeDag(meta.dag);
-      updateCache(key, result);
-      console.log(`[MemStore] Completed refresh for key: ${key}`);
-      return result;
-    } catch (err) {
-      console.error(`[MemStore] Failed refresh for key ${key}:`, err);
-      throw err;
-    } finally {
-      refreshing.delete(key);
-    }
-  })();
-
-  refreshing.set(key, promise);
-  return promise;
+  refreshing.add(key);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getTaskFlowEngine()
+    .createFlow("internal", meta.spec as any)
+    .finally(() => refreshing.delete(key));
 }
 
 function setupSchedule(key: string, config: CacheConfig, expireAt: number) {
@@ -205,13 +193,13 @@ function setupSchedule(key: string, config: CacheConfig, expireAt: number) {
     const warningDelay = expireAt - Date.now() - config.preExpireWarningMs;
     scheduleWarning(key, warningDelay, async () => {
       console.log(`[MemStore] Pre-expire warning for key: ${key}`);
-      await triggerRefresh(key);
+      triggerRefresh(key);
     });
   }
   if (config.cron) {
     scheduleCron(key, config.cron, async () => {
       console.log(`[MemStore] Periodic refresh for key: ${key}`);
-      await triggerRefresh(key);
+      triggerRefresh(key);
     });
   }
 }

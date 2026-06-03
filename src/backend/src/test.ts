@@ -1354,18 +1354,7 @@ import type { StoredRobotData } from "./types/robot.js";
 function createEnhancedTestServices() {
   const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
   const solutionService = new SolutionService(objStore);
-  const robotService = new RobotService(objStore, {
-    fetchRobotBasicInfo: async () => ({
-      model: "TEST-MODEL",
-      robotSn: "TEST-SN",
-      thingsId: "TEST-THING",
-      vendorId: "TEST-VENDOR",
-      productId: "TEST-PRODUCT",
-      mainBoardSn: "TEST-BOARDSN",
-      mainBoardId: "TEST-BOARDID",
-      mainSomSn: "TEST-SOMSN",
-    }),
-  });
+  const robotService = new RobotService(objStore);
   return { solutionService, robotService, objStore: objStore as unknown as EnhancedObjectStore };
 }
 
@@ -1817,18 +1806,7 @@ describe("Solution Routes - API", () => {
   function setupSolutionApp() {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
     const solutionService = new SolutionService(objStore);
-    const robotService = new RobotService(objStore, {
-      fetchRobotBasicInfo: async () => ({
-        model: "TEST-MODEL",
-        robotSn: "TEST-SN",
-        thingsId: "TEST-THING",
-        vendorId: "TEST-VENDOR",
-        productId: "TEST-PRODUCT",
-        mainBoardSn: "TEST-BOARDSN",
-        mainBoardId: "TEST-BOARDID",
-        mainSomSn: "TEST-SOMSN",
-      }),
-    });
+    const robotService = new RobotService(objStore);
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
     app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
@@ -1840,18 +1818,7 @@ describe("Robot Routes - API", () => {
   function setupRobotApp() {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
     const solutionService = new SolutionService(objStore);
-    const robotService = new RobotService(objStore, {
-      fetchRobotBasicInfo: async () => ({
-        model: "TEST-MODEL",
-        robotSn: "TEST-SN",
-        thingsId: "TEST-THING",
-        vendorId: "TEST-VENDOR",
-        productId: "TEST-PRODUCT",
-        mainBoardSn: "TEST-BOARDSN",
-        mainBoardId: "TEST-BOARDID",
-        mainSomSn: "TEST-SOMSN",
-      }),
-    });
+    const robotService = new RobotService(objStore);
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
     app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));

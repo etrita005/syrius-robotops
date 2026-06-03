@@ -15,15 +15,17 @@ import { createMemStoreRoutes } from "./routes/memStoreRoutes.js";
 import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
-import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
-import { SshCommandTask, GetRobotBasicInfoTask } from "./tasks/index.js";
+import { TaskFlowEngine, ResolverRegistry, SseManager, setTaskFlowEngine } from "./services/taskFlowEngine/index.js";
+import type { TaskResolverClass } from "flowed";
+import { SshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask } from "./tasks/index.js";
 import { streamSSE } from "hono/streaming";
 import { memStore } from "./memStore/index.js";
 
-function parseArgs(): { dataDir: string; port: number } {
+function parseArgs(): { dataDir: string; port: number; mock: boolean } {
   const args = process.argv.slice(2);
   let dataDir = join(process.cwd(), "data");
   let port = 30001;
+  let mock = false;
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === "--port" || args[i] === "-p") && i + 1 < args.length) {
@@ -33,13 +35,15 @@ function parseArgs(): { dataDir: string; port: number } {
       }
     } else if ((args[i] === "--data-dir" || args[i] === "-d") && i + 1 < args.length) {
       dataDir = args[++i];
+    } else if (args[i] === "--mock" || args[i] === "-m") {
+      mock = true;
     }
   }
 
-  return { dataDir, port };
+  return { dataDir, port, mock };
 }
 
-const { dataDir, port } = parseArgs();
+const { dataDir, port, mock } = parseArgs();
 
 store.configure(dataDir);
 
@@ -48,25 +52,36 @@ const checksumService = new ChecksumService();
 const artifactService = new ArtifactService(objectStore, checksumService);
 const solutionService = new SolutionService(objectStore);
 
-async function fetchRobotBasicInfoViaSsh(
-  ip: string,
-  port: number,
-  username: string,
-  password: string
-): Promise<import("./tasks/getRobotBasicInfoTask.js").RobotBasicInfo> {
-  const task = new GetRobotBasicInfoTask();
-  const result = await task.exec({
-    robotIp: ip,
-    robotPort: port,
-    sshUsername: username,
-    sshPassword: password,
-  });
-  return result.robotInfo as import("./tasks/getRobotBasicInfoTask.js").RobotBasicInfo;
+const sseManager = new SseManager();
+const resolverRegistry = new ResolverRegistry();
+
+type TaskRegEntry = {
+  name: string;
+  real: TaskResolverClass;
+  mock?: TaskResolverClass;
+};
+
+function registerTasks(
+  registry: ResolverRegistry,
+  mockMode: boolean,
+  entries: TaskRegEntry[]
+): void {
+  for (const entry of entries) {
+    const cls = mockMode && entry.mock ? entry.mock : entry.real;
+    registry.register(entry.name, cls);
+  }
 }
 
-const robotService = new RobotService(objectStore, {
-  fetchRobotBasicInfo: fetchRobotBasicInfoViaSsh,
-});
+registerTasks(resolverRegistry, mock, [
+  { name: "SshCommandTask", real: SshCommandTask },
+  { name: "GetRobotBasicInfoTask", real: GetRobotBasicInfoTask, mock: MockGetRobotBasicInfoTask },
+  { name: "UpdateRobotBasicInfoTask", real: UpdateRobotBasicInfoTask },
+]);
+
+const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
+setTaskFlowEngine(taskFlowEngine);
+
+const robotService = new RobotService(objectStore);
 
 solutionService.onSolutionRemove((solutionId: string) => {
   robotService.removeSolutionCache(solutionId);
@@ -109,12 +124,6 @@ app.get("/api/sse", (c) => {
   });
 });
 
-const sseManager = new SseManager();
-const resolverRegistry = new ResolverRegistry();
-resolverRegistry.register("SshCommandTask", SshCommandTask);
-resolverRegistry.register("GetRobotBasicInfoTask", GetRobotBasicInfoTask);
-
-const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
 await taskFlowEngine.loadPersistedFlows();
 
 app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine, sseManager));
@@ -129,4 +138,7 @@ app.onError((err, _c) => {
 
 console.log(`RobotOps Backend API running at http://localhost:${port}`);
 console.log(`Data directory: ${dataDir}`);
+if (mock) {
+  console.log("Mock mode enabled: SSH tasks will return mock data");
+}
 serve({ fetch: app.fetch, port });

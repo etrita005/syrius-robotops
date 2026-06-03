@@ -8,29 +8,26 @@ MemStore 是为 RobotOps Studio 提供的单机内存 KV 缓存服务，面向�
 
 ```
 +-------------------+        +-------------------+
-|   Pure HTML Test  |<------>|   Hono HTTP API   |
-|   (Frontend)      |  HTTP  |   (server.ts)     |
+|   Frontend        |<------>|   Hono HTTP API   |
+|   (React App)     |  HTTP  |   (index.ts)      |
 +-------------------+        +---------+---------+
                                        |
-          +----------------------------+--------------------+
-          |                            |                    |
-+---------v---------+      +-----------v-----------+  +----v---------------+
-|  Cache Core       |      |   SSE Push Manager    |  |  Scheduler         |
-|  (memStore.ts)    |      |   (server.ts /       |  |  (scheduler.ts)    |
-|  LRU + Metadata   |      |    memStore.ts)       |  |  toad-scheduler    |
-+---------+---------+      +-----------+-----------+  +----+---------------+
+          +----------------------------+-----------------------------+
+          |                            |                             |
++---------v---------+      +-----------v-----------+   +-------------v--------+
+|  Cache Core       |      |   SSE Push Manager    |   |  Scheduler           |
+|  (memStore.ts)    |      |   (memStore.ts)       |   |  (scheduler.ts)      |
+|  LRU + Metadata   |      |                       |   |  toad-scheduler      |
++---------+---------+      +-----------+-----------+   +----+----------------+
           |                            |                    |
           |  miss / warning / cron     |  update callback   |  cron / timeout
+          |                            |                    |
 +---------v---------+                  |                    |
-|  Task Engine      |                  |                    |
-|  Adapter          |                  |                    |
-|  (taskEngine.ts)  |                  |                    |
-+-------------------+                  |                    |
-                                       |                    |
-+-------------------+                  |                    |
-|  Self-Developed   |<-----------------+                    |
-|  Task Flow Engine |<--------------------------------------+
-+-------------------+
+|  TaskFlowEngine   |<-----------------+                    |
+|  (global singleton)|<-------------------------------------+
+|  createFlow(       |
+|   "internal", spec)|
++--------------------+
 ```
 
 ## 3. 模块设计
@@ -70,12 +67,23 @@ MemStore 是为 RobotOps Studio 提供的单机内存 KV 缓存服务，面向�
 - 订阅建立时，若当前 Key 已有有效值，立即推送 `type: 'current'` 事件，保证前端首屏数据一致性。
 - 连接存活期间每 5 秒发送 `ping` 事件，便于前端检测断线并重连。
 
-### 3.5 Task Engine Adapter
+### 3.5 任务流引擎集成
 
-封装在 `taskEngine.ts`，当前为 Mock 实现：
-- 接收前端传入的 DAG（JSON 描述）。
-- Playground 中仅支持 `type: 'mock'`，可按 `delayMs` 模拟执行耗时，返回固定 `returnValue`。
-- 生产环境中，此模块应替换为向自研任务流引擎提交 DAG 并监听回调的适配层。
+MemStore 自身不包含任务执行引擎。所有数据刷新操作统一通过全局单例 `TaskFlowEngine` 执行：
+
+```typescript
+// MemStore 触发刷新时，直接调用 taskFlowEngine.createFlow("internal", spec)
+// spec 为 FlowSpec 格式的 JSON，包含单个 Task（如 GetRobotBasicInfoTask）
+// Task 执行完成后，通过 UpdateRobotBasicInfoTask 将结果写入 memStore 缓存
+```
+
+MemStore 仅负责：
+- 缓存管理（LRU 读写、TTL 过期）
+- 定时调度（Cron 周期、预到期预警）
+- SSE 推送（数据更新广播）
+- 调用 `taskFlowEngine.createFlow("internal", spec)` 启动异步流程
+
+任务的实际执行（SSH 连接、数据计算）全权交由 `TaskFlowEngine` 及其内部的 `ResolverRegistry` 管理。
 
 ## 4. 数据模型
 
@@ -97,13 +105,11 @@ MemStore 是为 RobotOps Studio 提供的单机内存 KV 缓存服务，面向�
 | cron | string? | 周期刷新规则（秒级简化 Cron） |
 | preExpireWarningMs | number? | 提前预警时长（毫秒） |
 
-### 4.3 Dag（Meta 存储）
+### 4.3 TaskFlowSpec（Meta 存储）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| type | string | DAG 类型标识 |
-| returnValue | unknown | Mock 模式下的返回值 |
-| delayMs | number? | Mock 执行延迟 |
+| tasks | Record\<string, TaskNode\> | 任务流定义，包含至少一个 Task。每个 Task 的 `resolver.name` 指定 `ResolverRegistry` 中注册的 Task 类名，如 `GetRobotBasicInfoTask` |
 
 ## 5. 接口定义
 
@@ -207,6 +213,6 @@ npx tsx e2e-test.ts # 自动化端到端测试（Playwright 驱动纯 HTML 页�
 
 1. **单机架构**：当前为单进程内存实现，不支持多实例共享缓存。
 2. **Cron 简化**：Playground 中 Cron 仅支持 `*/n * * * * *` 秒级简写，生产环境可扩展为完整 Cron 解析器。
-3. **任务引擎 Mock**：`taskEngine.ts` 为本地模拟，生产环境需替换为真实的自研任务流引擎 RPC/HTTP 适配层。
+3. **任务流引擎**：MemStore 自身不包含任务执行逻辑，所有数据刷新通过全局单例 `TaskFlowEngine.createFlow("internal", spec)` 异步启动，任务完成后由 `UpdateRobotBasicInfoTask` 等 Task 回写缓存。
 4. **容量淘汰与内存**：`metaStore` 在容量淘汰时保留，若 Key 数量极大可能带来轻量级元数据内存增长，生产环境可引入上限控制或外部持久化。
 5. **SSE 断线重连**：前端测试示例包含基础 SSE 连接管理，生产环境建议增加指数退避重连与连接池心跳超时清理。

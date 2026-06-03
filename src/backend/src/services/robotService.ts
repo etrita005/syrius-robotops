@@ -12,8 +12,8 @@ import {
   RobotAddressExistsError,
 } from "../errors/appErrors.js";
 import type { RobotBasicInfo } from "../tasks/getRobotBasicInfoTask.js";
-import { memStore, registerDagExecutor } from "../memStore/index.js";
-import type { Dag } from "../memStore/index.js";
+import { memStore } from "../memStore/index.js";
+import type { TaskFlowSpec } from "../memStore/index.js";
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
 const DEFAULT_SSH_USERNAME = "root";
@@ -75,7 +75,6 @@ export interface RobotWithBasicInfo extends StoredRobotData {
 export interface RobotServiceOptions {
   sshUsername?: string;
   sshPassword?: string;
-  fetchRobotBasicInfo: (ip: string, port: number, username: string, password: string) => Promise<RobotBasicInfo>;
 }
 
 export class RobotService {
@@ -83,20 +82,11 @@ export class RobotService {
   private solutionRobots: Map<string, Map<string, StoredRobotData>> = new Map();
   private sshUsername: string;
   private sshPassword: string;
-  private fetchRobotBasicInfo: (ip: string, port: number, username: string, password: string) => Promise<RobotBasicInfo>;
 
-  constructor(obs: ObjectStore, options: RobotServiceOptions) {
+  constructor(obs: ObjectStore, options?: RobotServiceOptions) {
     this.obs = obs;
     this.sshUsername = options?.sshUsername ?? DEFAULT_SSH_USERNAME;
     this.sshPassword = options?.sshPassword ?? DEFAULT_SSH_PASSWORD;
-    this.fetchRobotBasicInfo = options.fetchRobotBasicInfo;
-
-    registerDagExecutor("fetch-robot-info", async (dag: Dag) => {
-      const robotIp = dag.robotIp as string;
-      const robotPort = dag.robotPort as number;
-      const info = await this.fetchRobotBasicInfo(robotIp, robotPort, this.sshUsername, this.sshPassword);
-      return { info, fetchedAt: new Date().toISOString() };
-    });
   }
 
   async getRobotInfoList(solutionId: string): Promise<RobotWithBasicInfo[]> {
@@ -109,17 +99,17 @@ export class RobotService {
 
     return robots.map((robot) => {
       const key = buildRobotInfoKey(solutionId, robot.id);
-      const cached = memStore.getCache(key) as { info: RobotBasicInfo; fetchedAt: string } | undefined;
+      const cached = memStore.getCache(key) as RobotBasicInfo | undefined;
 
       if (cached) {
         return {
           ...robot,
-          basicInfo: cached.info,
-          basicInfoFetchedAt: cached.fetchedAt,
+          basicInfo: cached,
+          basicInfoFetchedAt: null,
         };
       }
 
-      memStore.triggerRefresh(key).catch(() => {});
+      memStore.triggerRefresh(key);
 
       return {
         ...robot,
@@ -132,17 +122,17 @@ export class RobotService {
   async getRobotInfo(solutionId: string, robotId: string): Promise<RobotWithBasicInfo> {
     const robot = await this.get(solutionId, robotId);
     const key = buildRobotInfoKey(solutionId, robotId);
-    const cached = memStore.getCache(key) as { info: RobotBasicInfo; fetchedAt: string } | undefined;
+    const cached = memStore.getCache(key) as RobotBasicInfo | undefined;
 
     if (cached) {
       return {
         ...robot,
-        basicInfo: cached.info,
-        basicInfoFetchedAt: cached.fetchedAt,
+        basicInfo: cached,
+        basicInfoFetchedAt: null,
       };
     }
 
-    memStore.triggerRefresh(key).catch(() => {});
+    memStore.triggerRefresh(key);
 
     return {
       ...robot,
@@ -156,13 +146,31 @@ export class RobotService {
 
     if (memStore.hasCache(key)) return;
 
-    const dag: Dag = {
-      type: "fetch-robot-info",
-      robotIp: robot.address,
-      robotPort: robot.port,
+    const spec: TaskFlowSpec = {
+      tasks: {
+        fetchInfo: {
+          resolver: { name: "GetRobotBasicInfoTask" },
+          params: {
+            robotIp: robot.address,
+            robotPort: robot.port,
+            sshUsername: this.sshUsername,
+            sshPassword: this.sshPassword,
+          },
+          provides: ["robotInfo"],
+        },
+        updateInfo: {
+          requires: ["robotInfo"],
+          resolver: {
+            name: "UpdateRobotBasicInfoTask",
+            params: {
+              cacheKey: key,
+            },
+          },
+        },
+      },
     };
 
-    memStore.createCache(key, dag, {
+    memStore.createCache(key, spec, {
       ttlMs: ROBOT_INFO_TTL_MS,
       cron: ROBOT_INFO_CRON,
     });

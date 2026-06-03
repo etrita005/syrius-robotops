@@ -1,7 +1,4 @@
-export interface Dag {
-  type: string;
-  [key: string]: unknown;
-}
+export type TaskFlowSpec = Record<string, unknown>;
 
 export interface CacheConfig {
   ttlMs: number;
