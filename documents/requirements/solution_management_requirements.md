@@ -335,7 +335,7 @@ v1/
 
 ### 6.11 机器人管理（Robots 子界面）
 
-> 机器人管理为解决方案的子功能，所有操作必须在当前激活解决方案的上下文中执行。后端提供专用的机器人 API（`/api/solutions/:solutionId/robots/...`），内部调用对象存储服务进行数据持久化，并在内存中缓存每个解决方案的机器人列表。
+> 机器人管理为解决方案的子功能，所有操作必须在当前激活解决方案的上下文中执行。后端提供专用的机器人 API（`/api/solutions/:solutionId/robots/...`），内部调用对象存储服务进行数据持久化，并在内存中缓存每个解决方案的机器人列表。机器人动态信息通过 mem_store 缓存层管理，支持 TTL 自动淘汰、定时刷新和 SSE 实时推送。
 
 **FR-SOL-018**：系统应支持手动添加单台机器人到当前解决方案。
 
@@ -344,18 +344,18 @@ v1/
 - 系统生成唯一 `robotId`，规则为 `robot-{nanoid(6)}`。
 - 系统通过 `POST /api/solutions/{solutionId}/robots` 持久化机器人存储数据，后端内部调用对象存储服务写入 `v1/solutions/{solutionId}/robots/{robotId}`。
 - 系统在内存中更新该解决方案的机器人列表缓存。
-- 添加后，前端生成机器人动态信息（当前阶段使用基于地址的确定性随机值模拟）。
+- 后端在 mem_store 中创建缓存条目（key 为 `robot:{solutionId}/{robotId}`），配置 TTL=5 分钟、cron 刷新间隔=3 分钟，自动通过 DAG（SSH 连接）获取机器人动态信息。
 - 同一解决方案下不允许添加地址（host + port 组合）重复的机器人。
 
 **FR-SOL-019**：系统应支持批量删除当前解决方案中的机器人。
 
 - 删除操作需要用户确认（弹窗对话框）。
 - 批量删除时，系统展示待删除机器人数量并要求确认。
-- 删除通过 `DELETE /api/solutions/{solutionId}/robots/{robotId}` 执行，后端内部调用对象存储服务删除，同时更新内存缓存。
+- 删除通过 `DELETE /api/solutions/{solutionId}/robots/{robotId}` 执行，后端内部调用对象存储服务删除，同时更新内存缓存和删除 mem_store 缓存条目。
 
 **FR-SOL-020**：系统应展示当前解决方案中已添加的机器人基础信息列表。
 
-- 系统通过 `GET /api/solutions/{solutionId}/robots` 获取机器人列表，后端优先返回内存缓存，首次访问时从对象存储加载并缓存。
+- 系统通过 `GET /api/solutions/{solutionId}/robots/info` 获取机器人列表及动态信息（`RobotWithBasicInfo`），后端优先返回内存缓存，首次访问时从对象存储加载并缓存。机器人动态信息从 mem_store 缓存中获取，缓存未就绪时返回 `basicInfo: null`。
 - 列表展示字段（核心信息）：`address`（格式为 `<host>:<port>`，如 `192.168.1.101:22` 或 `robot.local:22`）、`alias`（别名，用户可编辑）、`model`、`robotSN`、`thingsId`、`megaCosmOSVersion`。
 - 列表支持按 `alias`、`address`、`model`、`robotSN` 进行子串搜索过滤。
 - 列表支持按字段排序。
@@ -366,7 +366,7 @@ v1/
 
 - 用户在列表中可直接编辑 `alias` 字段（内联编辑或弹窗编辑）。
 - 用户在详情对话框中可编辑 `alias` 和 `address` 字段（address 格式为 `<host>:<port>`，port 可选，默认 22）。
-- 编辑后通过 `PUT /api/solutions/{solutionId}/robots/{robotId}` 更新，后端内部调用对象存储服务更新存储数据，同时更新内存缓存。
+- 编辑后通过 `PUT /api/solutions/{solutionId}/robots/{robotId}` 更新，后端内部调用对象存储服务更新存储数据，同时更新内存缓存。若地址发生变更，后端删除旧的 mem_store 缓存条目并以新地址创建新条目。
 
 **FR-SOL-023**：系统应支持点击机器人后弹出详情对话框，展示完整机器人信息。
 
@@ -378,20 +378,44 @@ v1/
 - 对话框提供"保存"按钮，保存 `alias` 和 `address` 的修改（address 中包含端口信息）。
 - 对话框提供"关闭"按钮。
 
-**FR-SOL-024**：机器人信息获取策略（当前阶段）。
+**FR-SOL-024**：机器人信息获取策略。
 
 - 对象存储中仅持久化 `id`、`address`、`addressType`、`alias`、`port`、`createdAt`、`updatedAt`。
-- 其他机器人信息（model、SN、版本等）由前端动态生成（当前阶段使用基于地址的确定性随机模拟）。
-- 后续阶段将设计真实的机器人通信协议以获取实际信息，届时仅需替换前端的数据获取逻辑。
+- 机器人动态信息（model、robotSn、thingsId 等）由后端通过 SSH 协议从机器人实时获取，存入 mem_store 缓存层。
+- mem_store 缓存 key 格式为 `robot:{solutionId}/{robotId}`，TTL=5 分钟，cron 自动刷新间隔=3 分钟。
+- 缓存 miss 时（首次访问或 TTL 过期），mem_store 自动触发 DAG（SSH 连接 + 命令执行）刷新缓存。
+- 前端首次通过 `GET /api/solutions/:solutionId/robots/info` 获取全量数据，之后为每个机器人订阅 mem_store SSE（`GET /api/sse?key=robot:{solutionId}/{robotId}`）接收实时更新推送。
+- 当后端 SSH 获取失败或缓存尚未就绪时，前端使用 `generateMockRobotInfo()` 生成兜底数据。`enrichRobotFromBackend` 函数优先使用后端返回的 basicInfo，缺失字段用 mock 数据补充。
+- 服务重启后 mem_store 为空，首次访问自动触发 DAG 回填，无需手动恢复。
 - 模拟数据应具有一致性：同一台机器人（相同地址）始终返回相同的信息。
 
 **FR-SOL-025**：后端内存状态管理。
 
 - 后端 `SolutionService` 在内存中维护所有用户打开过的解决方案列表（`OpenedSolutionEntry`），包含 `id`、`name`、`openedAt`。
 - 后端 `RobotService` 在内存中维护每个已打开解决方案的机器人列表缓存（`solutionRobots`），键为 `solutionId`，值为 `Map<robotId, StoredRobotData>`。
-- 对机器人的增删改操作同步更新内存缓存，确保后续读取操作优先命中缓存。
-- 删除解决方案时自动清除其内存缓存。
-- 关闭解决方案时（`POST /api/solutions/{id}/close`）释放对应的机器人列表缓存。
+- 机器人动态信息通过后端 mem_store 缓存层管理，每个机器人对应一个 mem_store 条目，key 为 `robot:{solutionId}/{robotId}`，配置 TTL=5 分钟、cron 刷新间隔=3 分钟。
+- 对机器人的增删改操作同步更新内存缓存和 mem_store，确保后续读取操作优先命中缓存。
+- 创建机器人时，`RobotService.create()` 在 mem_store 中创建对应的缓存条目并启动 DAG 定时刷新。
+- 删除机器人时，`RobotService.remove()` 同步删除 mem_store 中的缓存条目。
+- 更新机器人地址时，旧的 mem_store 条目被删除，以新地址创建新条目。
+- 删除解决方案时，通过 `SolutionService.onSolutionRemove()` 回调通知 `RobotService.removeSolutionCache()`，使用 `deleteByPrefix("robot:{solutionId}/")` 批量清理该解决方案下所有机器人的缓存条目。
+- 关闭解决方案时（`POST /api/solutions/{id}/close`），通过 `SolutionService.onSolutionClose()` 回调同样清理 mem_store 缓存。
+
+**FR-SOL-026**：MemStore 缓存层。
+
+- 后端内置 mem_store 模块，提供带 TTL 的内存键值缓存、DAG 驱动的自动刷新、SSE 实时推送能力。
+- mem_store 采用 LRU 淘汰策略，最大容量 1000 个条目。
+- 缓存支持按 key 前缀批量删除（`deleteByPrefix`），用于解决方案删除/关闭时的级联清理。
+- 缓存值格式为 `{ info: RobotBasicInfo, fetchedAt: string }`，其中 `fetchedAt` 为 ISO 8601 时间戳。
+- mem_store DAG 执行器通过 `registerDagExecutor` 注册，当前实现为 `fetch-robot-info` 类型，通过 SSH 连接机器人获取 `RobotBasicInfo`。
+- 缓存更新时自动通过 SSE 向订阅该 key 的前端客户端推送 `{ key, value, type: "update" }` 事件。
+
+**FR-SOL-027**：MemStore REST API 与 SSE。
+
+- 后端提供 mem_store 只读 RESTful API（`/api/memstore/...`），前端可通过此 API 读取缓存的机器人动态信息。
+- 后端提供 SSE 订阅端点（`/api/sse?key=...`），前端可订阅指定 key 的实时更新推送。
+- 由于 mem_store key 格式 `robot:{solutionId}/{robotId}` 包含 `/` 字符，所有 mem_store REST API 和 SSE 端点均使用 query parameter 传递 key（如 `?key=robot:my-solution/robot-abc123`）。
+- SSE 连接维护心跳（每 5 秒发送 `ping` 事件），连接断开时自动清理订阅。
 
 ---
 
@@ -555,6 +579,8 @@ graph LR
 | `INVALID_ROBOT_PORT` | 端口不在 1–65535 范围内 | "Robot port must be between 1 and 65535."（前端验证） |
 | `ROBOT_ADDRESS_EXISTS` | 同一解决方案下已存在相同地址（host + port 组合） | "A robot with this address already exists in the current solution."（前端校验） |
 | `OBJECT_NOT_FOUND` | 对不存在的路径执行 GET/PUT/DELETE | "Object '{path}' not found."（通用对象存储错误） |
+| `MEMSTORE_KEY_NOT_FOUND` | 读取 mem_store 中不存在的 key 或已过期的缓存条目 | 返回 404；前端应视为缓存未就绪，使用 mock 兜底数据。 |
+| `MEMSTORE_REFRESH_FAILED` | mem_store DAG 刷新失败（SSH 连接超时、命令执行失败等） | 后端记录错误日志，缓存保持旧值或为空；前端继续使用 mock 兜底数据。 |
 
 ---
 
@@ -606,11 +632,17 @@ graph LR
 
 **NF-SOL-004**：涉及长时间 I/O 的操作（导出、导入、克隆）必须支持取消。
 
-**NF-ROB-001**：机器人列表加载应在 1 秒内完成（假设单个解决方案下机器人数量不超过 500 台）。
+**NF-ROB-001**：机器人列表加载应在 1 秒内完成（假设单个解决方案下机器人数量不超过 500 台）。mem_store 缓存命中时直接返回，未命中时异步触发 DAG 刷新，不阻塞列表加载。
 
 **NF-ROB-002**：别名内联编辑保存应在 300 毫秒内完成。
 
 **NF-ROB-003**：批量添加机器人时，系统应逐条处理并实时反馈进度，避免界面卡顿。
+
+**NF-ROB-004**：机器人动态信息缓存刷新应在 10 秒内完成（单台机器人 SSH 命令执行超时）。刷新失败不阻塞前端，前端继续使用 mock 兜底数据。
+
+**NF-ROB-005**：mem_store SSE 事件从后端缓存更新到前端接收的延迟应小于 500 毫秒。
+
+**NF-ROB-006**：mem_store LRU 容量上限 1000 个条目。超出时按 LRU 策略淘汰最久未访问的条目，淘汰后首次访问自动回填。
 
 ---
 

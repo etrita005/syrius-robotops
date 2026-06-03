@@ -14,7 +14,7 @@
 
 - 后端提供专用的解决方案 RESTful API（`/api/solutions/...`）和机器人 RESTful API（`/api/solutions/:solutionId/robots/...`），业务逻辑由后端 `SolutionService` 和 `RobotService` 实现。
 - 后端 `SolutionService` 和 `RobotService` 内部调用对象存储服务（`ObjectStore`）进行数据持久化，不通过 Hono 路由转发。
-- 后端在内存中维护所有用户打开过的解决方案列表及每个解决方案对应的机器人列表缓存。
+- 后端在内存中维护所有用户打开过的解决方案列表及每个解决方案对应的机器人列表缓存。机器人动态信息（model、SN 等）通过后端 mem_store 缓存层管理，支持 TTL 自动淘汰、定时刷新和 SSE 实时推送。
 - 前端通过专用的解决方案和机器人 API 访问数据，不再直接调用通用对象存储 API 操作解决方案和机器人数据。
 - 通用对象存储 RESTful API（`/api/objects/...`）和制品管理 API（`/api/artifacts/...`）继续保留，供其他功能模块使用。
 - 模块内部使用 TypeScript + ES6 模块语法。
@@ -97,7 +97,7 @@ interface SolutionService {
 
 ### 3.3 机器人服务接口（RobotService）
 
-后端提供专用的 `RobotService`，内部调用 `ObjectStore` 进行数据持久化，并在内存中缓存每个解决方案的机器人列表。
+后端提供专用的 `RobotService`，内部调用 `ObjectStore` 进行数据持久化，在内存中缓存每个解决方案的机器人列表，并通过 mem_store 管理机器人动态信息的缓存与刷新。
 
 ```typescript
 interface StoredRobotData {
@@ -115,6 +115,28 @@ interface CreateRobotInput {
   alias?: string;
 }
 
+interface RobotBasicInfo {
+  model: string;
+  robotSn: string;
+  thingsId: string;
+  vendorId: string;
+  productId: string;
+  mainBoardSn: string;
+  mainBoardId: string;
+  mainSomSn: string;
+}
+
+interface RobotWithBasicInfo extends StoredRobotData {
+  basicInfo: RobotBasicInfo | null;
+  basicInfoFetchedAt: string | null;
+}
+
+interface RobotServiceOptions {
+  sshUsername?: string;
+  sshPassword?: string;
+  fetchRobotBasicInfo: (ip: string, port: number, username: string, password: string) => Promise<RobotBasicInfo>;
+}
+
 interface RobotService {
   list(solutionId: string): Promise<StoredRobotData[]>;
   get(solutionId: string, robotId: string): Promise<StoredRobotData>;
@@ -122,8 +144,14 @@ interface RobotService {
   update(solutionId: string, robotId: string, patch: Partial<Pick<StoredRobotData, "alias" | "address" | "port">>): Promise<StoredRobotData>;
   remove(solutionId: string, robotId: string): Promise<void>;
   removeSolutionCache(solutionId: string): void;
+  getRobotInfoList(solutionId: string): Promise<RobotWithBasicInfo[]>;
+  getRobotInfo(solutionId: string, robotId: string): Promise<RobotWithBasicInfo>;
 }
+
+function buildRobotInfoKey(solutionId: string, robotId: string): string;
 ```
+
+> **Mem_store key 规则**：机器人动态信息在 mem_store 中的 key 格式为 `robot:{solutionId}/{robotId}`。采用命名空间前缀 `robot:` 避免与其他资源类型的 key 冲突，`/` 分隔 solutionId 和 robotId 表达层次关系。前端订阅 SSE 时必须使用与此一致的 key。
 
 ### 3.4 机器人 HTTP API
 
@@ -133,11 +161,67 @@ interface RobotService {
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/solutions/:solutionId/robots` | List robots in solution |
-| GET | `/api/solutions/:solutionId/robots/:robotId` | Get robot by ID |
+| GET | `/api/solutions/:solutionId/robots` | List robots in solution (StoredRobotData) |
+| GET | `/api/solutions/:solutionId/robots/info` | List robots with basic info (RobotWithBasicInfo) |
+| GET | `/api/solutions/:solutionId/robots/info/:robotId` | Get single robot with basic info |
+| GET | `/api/solutions/:solutionId/robots/memstore-key/:robotId` | Get mem_store key for robot |
+| GET | `/api/solutions/:solutionId/robots/:robotId` | Get robot by ID (StoredRobotData) |
 | POST | `/api/solutions/:solutionId/robots` | Create robot |
 | PUT | `/api/solutions/:solutionId/robots/:robotId` | Update robot |
 | DELETE | `/api/solutions/:solutionId/robots/:robotId` | Delete robot |
+
+### 3.5 MemStore 服务接口（MemStore）
+
+后端内置 mem_store 模块，提供带 TTL 的内存键值缓存、定时刷新、SSE 实时推送能力。机器人动态信息通过 mem_store 进行缓存管理。
+
+```typescript
+interface Dag {
+  type: string;
+  [key: string]: unknown;
+}
+
+interface CacheConfig {
+  ttlMs: number;
+  cron?: string;
+  preExpireWarningMs?: number;
+}
+
+interface CacheValuePayload {
+  value: unknown;
+  hasValue: boolean;
+  createdAt: number;
+  updatedAt: number;
+  expireAt: number;
+}
+
+interface MemStore {
+  createCache(key: string, dag: Dag, config: CacheConfig, initialValue?: unknown): void;
+  getCache(key: string): unknown | undefined;
+  hasCache(key: string): boolean;
+  updateCache(key: string, value: unknown): void;
+  deleteCache(key: string): void;
+  deleteByPrefix(prefix: string): string[];
+  triggerRefresh(key: string): Promise<unknown>;
+  subscribe(key: string, onData: (data: string) => void): () => void;
+}
+```
+
+> **机器人信息缓存配置**：每个机器人的 mem_store 条目配置为 TTL=5 分钟（`ttlMs: 300000`）、cron 刷新间隔=3 分钟（`cron: "*/180"`，即每 180 秒刷新一次）。DAG 类型为 `fetch-robot-info`，执行器通过 SSH 连接机器人获取 `RobotBasicInfo`。缓存值格式为 `{ info: RobotBasicInfo, fetchedAt: string }`。当 TTL 到期且前端未读取时，缓存条目被自动淘汰。
+
+### 3.6 MemStore HTTP API
+
+后端提供 mem_store 的只读 RESTful API 和 SSE 订阅端点，供前端获取缓存的机器人动态信息及接收实时更新推送。
+
+**HTTP Endpoints**:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/memstore/cache?key={key}` | Read cached value by key |
+| POST | `/api/memstore/cache/refresh?key={key}` | Force refresh a cache key |
+| GET | `/api/memstore/cache/meta?key={key}` | Read cache metadata |
+| GET | `/api/sse?key={key}` | Subscribe to SSE events for a key |
+
+> **URL 设计说明**：由于 key 格式 `robot:{solutionId}/{robotId}` 包含 `/` 字符，不能作为 URL 路径参数，因此 mem_store REST API 和 SSE 端点均使用 query parameter 传递 key（如 `?key=robot:my-solution/robot-abc123`）。
 
 ### 3.2 当前激活解决方案管理器（ActiveSolutionManager）
 
@@ -245,9 +329,9 @@ interface ObjectStoreHttpClient {
 | POST | `/api/objects/export` | Export to ZIP (`{ sourcePath, destinationPath }`) |
 | POST | `/api/objects/import` | Import from ZIP (`{ zipPath, targetPath }`) |
 
-### 3.6 机器人 API 客户端（robotApi）
+### 3.8 机器人 API 客户端（robotApi）
 
-前端通过通用对象存储 API 实现机器人的生命周期管理。机器人存储数据仅包含持久化字段，动态信息由前端生成。
+前端通过专用 RESTful API 实现机器人的生命周期管理，并通过 mem_store REST API 和 SSE 获取机器人动态信息。
 
 ```typescript
 interface StoredRobotData {
@@ -258,6 +342,22 @@ interface StoredRobotData {
   port: number;
   createdAt: string;
   updatedAt: string;
+}
+
+interface RobotBasicInfoResponse {
+  model: string;
+  robotSn: string;
+  thingsId: string;
+  vendorId: string;
+  productId: string;
+  mainBoardSn: string;
+  mainBoardId: string;
+  mainSomSn: string;
+}
+
+interface RobotWithBasicInfoResponse extends StoredRobotData {
+  basicInfo: RobotBasicInfoResponse | null;
+  basicInfoFetchedAt: string | null;
 }
 
 interface RobotDefinition extends StoredRobotData {
@@ -287,31 +387,34 @@ interface CreateRobotInput {
   alias?: string;
 }
 
-// Address parsing utility
 interface ParsedAddress {
   host: string;
   port: number;
   addressType: "ip" | "mdns";
 }
 
-function parseAddressInput(input: string): ParsedAddress | null;
-function formatAddressDisplay(host: string, port: number): string;
-
 interface RobotApiClient {
-  list(solutionId: string): Promise<StoredRobotData[]>;
-  get(solutionId: string, robotId: string): Promise<StoredRobotData | null>;
-  create(solutionId: string, input: CreateRobotInput): Promise<StoredRobotData>;
-  update(solutionId: string, robotId: string, patch: Partial<Pick<StoredRobotData, "alias" | "address" | "port">>): Promise<StoredRobotData>;
-  delete(solutionId: string, robotId: string): Promise<void>;
+  listRobots(solutionId: string): Promise<StoredRobotData[]>;
+  fetchRobotsInfo(solutionId: string): Promise<RobotWithBasicInfoResponse[]>;
+  fetchRobotInfo(solutionId: string, robotId: string): Promise<RobotWithBasicInfoResponse>;
+  getRobot(solutionId: string, robotId: string): Promise<StoredRobotData>;
+  createRobot(solutionId: string, input: CreateRobotInput): Promise<StoredRobotData>;
+  updateRobot(solutionId: string, robotId: string, patch: Partial<Pick<StoredRobotData, "alias" | "address" | "port">>): Promise<StoredRobotData>;
+  deleteRobot(solutionId: string, robotId: string): Promise<void>;
+  getMemStoreValue(key: string): Promise<unknown | null>;
+  refreshMemStoreKey(key: string): Promise<unknown | null>;
+  subscribeMemStoreKey(key: string, onData: (data: { key: string; value: unknown; type: string }) => void): () => void;
 }
 
-// Frontend utility functions
+function buildRobotMemStoreKey(solutionId: string, robotId: string): string;
+function parseAddressInput(input: string): ParsedAddress | null;
+function formatAddressDisplay(host: string, port: number): string;
 function enrichRobot(stored: StoredRobotData): RobotDefinition;
+function enrichRobotFromBackend(robot: RobotWithBasicInfoResponse): RobotDefinition;
 function generateMockRobotInfo(address: string, alias: string): Omit<RobotDefinition, keyof StoredRobotData>;
-function generateRobotId(): string;
 ```
 
-> **Design decision**: Only `alias`, `address` and `port` are editable/persisted. The `address` field stores only the host part (IP or mDNS hostname). The `port` field stores the SSH port (default 22). Users input address in `<host>:<port>` format (port optional, defaults to 22), and the system parses it into separate `address` and `port` fields for storage. Display format is `<address>:<port>`. All other fields in `RobotDefinition` are dynamically generated by the frontend via `generateMockRobotInfo()` (current stage) and will be replaced by real robot communication protocol calls in the future.
+> **Design decision**: 机器人动态信息（model、SN 等）由后端通过 SSH 协议从机器人获取，并通过 mem_store 缓存。前端首次通过 `/robots/info` 获取全量数据，之后为每个机器人订阅 mem_store SSE（key 为 `robot:{solutionId}/{robotId}`）接收实时更新推送。当后端 SSH 获取失败或缓存尚未就绪时，前端仍使用 `generateMockRobotInfo()` 生成兜底数据。`enrichRobotFromBackend` 函数优先使用后端返回的 basicInfo，缺失字段用 mock 数据补充。仅 `alias`、`address` 和 `port` 可编辑/持久化，所有动态字段只读。
 
 ---
 
@@ -916,17 +1019,24 @@ function bumpPatchVersion(version: string): string {
 3. 解析 `meta.json` 以确认其符合 SolutionMeta Schema。
 4. 仅当校验通过后，才开始解压并写入对象存储。
 
-### 10.3 Robot Info Mock Strategy (Current Stage)
+### 10.3 Robot Info Cache Strategy
 
-`generateMockRobotInfo` implementation principles:
+机器人动态信息获取与缓存策略：
 
-- Uses a deterministic seed based on `address` to generate random data, ensuring the same address always produces the same info.
-- Mock fields cover all fields in `RobotDefinition` except those in `StoredRobotData` (id, address, addressType, alias, createdAt, updatedAt).
-- Mock data follows reasonable business rules (e.g., version format `x.y.z`, SN as alphanumeric combinations).
-- The `enrichRobot` function merges `StoredRobotData` from the object store with dynamically generated mock info to produce a complete `RobotDefinition` for display.
-- When replacing with real protocol calls in the future, only the `generateMockRobotInfo` implementation needs to change; the interface contract and storage schema remain the same.
-- Only `alias`, `address` and `port` are editable; all dynamically generated fields are read-only in the UI.
-- The `address` input field accepts `<host>:<port>` format (port optional, defaults to 22). The system parses the input and stores `address` (host only) and `port` (integer) separately in `StoredRobotData`. Display format combines them as `<address>:<port>`.
+- 后端通过 SSH 协议连接机器人，执行预定义命令获取 `RobotBasicInfo`（model、robotSn、thingsId 等）。
+- 获取结果存入 mem_store 缓存，key 格式为 `robot:{solutionId}/{robotId}`，缓存值格式为 `{ info: RobotBasicInfo, fetchedAt: string }`。
+- 每个缓存条目配置 TTL=5 分钟、cron 刷新间隔=3 分钟。mem_store 自动按 cron 间隔执行 DAG（SSH 连接 + 命令执行）刷新缓存。
+- 缓存 miss 时（首次访问或 TTL 过期后首次读取），mem_store 自动触发 DAG 刷新，异步回填缓存。
+- 缓存更新时，mem_store 通过 SSE 向已订阅的前端客户端推送 `{ key, value, type: "update" }` 事件。
+- 前端首次加载通过 `GET /api/solutions/:solutionId/robots/info` 获取全量数据，之后为每个机器人订阅 `GET /api/sse?key=robot:{solutionId}/{robotId}` 接收实时更新。
+- 当后端 SSH 获取失败或缓存尚未就绪时，前端使用 `generateMockRobotInfo()` 生成兜底数据。`enrichRobotFromBackend` 函数优先使用后端返回的 basicInfo，缺失字段用 mock 数据补充。
+- 创建机器人时，`RobotService.create()` 自动在 mem_store 中创建对应的缓存条目并启动定时刷新。
+- 删除机器人时，`RobotService.remove()` 同步删除 mem_store 中的缓存条目。
+- 更新机器人地址时，旧的 mem_store 条目被删除，以新地址创建新条目。
+- 删除或关闭解决方案时，通过 `SolutionService` 的生命周期回调通知 `RobotService.removeSolutionCache()`，使用 `deleteByPrefix("robot:{solutionId}/")` 批量清理该解决方案下所有机器人的缓存条目。
+- 服务重启后 mem_store 为空，首次访问自动触发 DAG 回填，无需手动恢复。
+- 仅 `alias`、`address` 和 `port` 可编辑/持久化，所有动态字段只读。
+- `address` 输入格式为 `<host>:<port>`（port 可选，默认 22），系统解析后分别存储 `address`（host）和 `port`。
 
 ---
 
@@ -938,11 +1048,14 @@ function bumpPatchVersion(version: string): string {
 | 2. Object Store HTTP API | Generic RESTful API at `/api/objects/` | Backend provides generic CRUD (GET/PUT/DELETE/LIST) plus specialized clone/export/import routes for backward compatibility. |
 | 3. Solution/Robot Backend Services | Dedicated `SolutionService` and `RobotService` | Backend provides specialized services that internally call `ObjectStore` for persistence. Business logic (ID generation, validation, address parsing, dedup) runs on the backend. |
 | 4. Solution/Robot HTTP API | Dedicated RESTful APIs at `/api/solutions/...` and `/api/solutions/:solutionId/robots/...` | Frontend uses these dedicated APIs instead of the generic object store API for solution and robot operations. |
-| 5. In-memory state management | `SolutionService.openedSolutions` Map + `RobotService.solutionRobots` Map | Backend maintains opened solutions and per-solution robot caches in memory. First access loads from object store; subsequent reads hit cache. Create/update/delete operations sync cache. |
+| 5. In-memory state management | `SolutionService.openedSolutions` Map + `RobotService.solutionRobots` Map + mem_store | Backend maintains opened solutions and per-solution robot caches in memory. Robot dynamic info is cached in mem_store with TTL=5min and cron refresh=3min. First access loads from object store / triggers DAG refresh; subsequent reads hit cache. Create/update/delete operations sync cache. |
 | 6. Clone atomicity | Simple implementation (cleanup on failure) | Delete target directory on failure; no temporary directory + rename mechanism. |
 | 7. Local settings persistence | `localStorage` | Active solution ID, recent solutions list, and UI preferences are persisted in browser `localStorage`. |
 | 8. Artifact ref count atomicity | Simple implementation (optimistic lock) | ETag-based read-modify-write with up to 5 retries; no distributed locks or transactions. Managed by backend ArtifactService. |
 | 9. Checksum algorithm | SHA-256 | Used for artifact deduplication and integrity verification. |
-| 10. Robot info generation | Frontend-generated (current stage: mock) | Robot dynamic info (model, SN, versions, etc.) is generated by frontend `generateMockRobotInfo()`. Only `StoredRobotData` is persisted. Future: replace with real protocol calls. |
-| 11. Robot editability | Only `alias`, `address` and `port` | Only alias, address (host part) and port are user-editable and persisted. Users input address in `<host>:<port>` format; the system parses and stores host and port separately. All other fields are dynamically generated and read-only. |
+| 10. Robot info acquisition | Backend SSH + mem_store cache + SSE | Robot dynamic info (model, SN, etc.) is fetched via SSH by the backend and cached in mem_store. Frontend subscribes to per-robot SSE for real-time updates. Mock data (`generateMockRobotInfo`) serves as fallback when SSH fails or cache is not yet ready. |
+| 11. Robot editability | Only `alias`, `address` and `port` | Only alias, address (host part) and port are user-editable and persisted. Users input address in `<host>:<port>` format; the system parses and stores host and port separately. All other fields are dynamically fetched and read-only. |
 | 12. Solution/Robot business logic | Backend services | Business logic (validation, ID generation, address parsing, dedup, version bumping) runs in backend `SolutionService` and `RobotService`. Frontend API clients are thin wrappers. |
+| 13. Mem_store key format | `robot:{solutionId}/{robotId}` | Namespace prefix `robot:` avoids collision with other resource types. `/` separator expresses hierarchy. Supports `deleteByPrefix("robot:{solutionId}/")` for solution-level cleanup. |
+| 14. Mem_store REST API key passing | Query parameter (`?key=...`) | Since keys contain `/`, they cannot be used as URL path segments. All mem_store REST endpoints and SSE endpoint accept key via query parameter. |
+| 15. Solution lifecycle cache cleanup | Callback pattern | `SolutionService.onSolutionRemove()` and `SolutionService.onSolutionClose()` callbacks notify `RobotService.removeSolutionCache()` to clean up mem_store entries via `deleteByPrefix()`. |
