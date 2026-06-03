@@ -23,7 +23,7 @@ import { useRecentSolutions } from "./hooks/useRecentSolutions.js";
 import RobotsView from "./components/robots/RobotsView.js";
 
 type TopView = "solutions" | "artifacts";
-type SolutionSubView = "robots" | "upgrade" | "maps" | "configs" | "diagnostics" | "logs";
+type SolutionSubView = "robots" | "tasks";
 
 export default function App() {
   const { activeId, activeMeta, activate, deactivate } = useActiveSolution();
@@ -37,11 +37,7 @@ export default function App() {
 
   const sidebarItems: { key: SolutionSubView; label: string }[] = [
     { key: "robots", label: "Robots" },
-    { key: "upgrade", label: "Upgrade Packages" },
-    { key: "maps", label: "Maps" },
-    { key: "configs", label: "Program Configs" },
-    { key: "diagnostics", label: "Diagnostics" },
-    { key: "logs", label: "Logs" },
+    { key: "tasks", label: "Tasks" },
   ];
 
   const handleActivateSolution = async (id: string) => {
@@ -109,11 +105,9 @@ export default function App() {
               onBackToSolutions={() => setInWorkspace(false)}
             />
           )}
-          {subView !== "robots" && (
+          {subView === "tasks" && (
             <div style={{ padding: "2rem" }}>
-              <h3 style={{ marginBottom: "1rem" }}>
-                {sidebarItems.find((i) => i.key === subView)?.label}
-              </h3>
+              <h3 style={{ marginBottom: "1rem" }}>Tasks</h3>
               <p style={{ color: "#525252" }}>
                 This feature is not yet implemented.
               </p>

@@ -598,7 +598,7 @@ graph LR
 
 **UI-SOL-006**：导出或克隆解决方案过程中，应显示进度指示器。
 
-**UI-ROB-001**：打开解决方案后，左侧导航栏应包含 "Robots" 入口，点击进入 Robots 子界面。
+**UI-ROB-001**：打开解决方案后，左侧导航栏应包含 "Robots" 和 "Tasks" 入口，分别点击进入对应子界面。
 
 **UI-ROB-002**：Robots 子界面以数据表格形式展示机器人列表，列包括：`alias`、`address`、`model`、`robotSN`、`thingsId`、`megaCosmOSVersion`、操作按钮（查看详情、删除）。
 

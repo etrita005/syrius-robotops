@@ -81,7 +81,7 @@ def draw_active_solution_bar(draw, W):
 
 def draw_sidebar(draw, H, active_index=0):
     draw.rectangle([0, 96, 220, H], fill="#f4f4f4", outline="#e0e0e0", width=1)
-    nav_items = ["Robots", "Upgrade Packages", "Maps", "Program Configs", "Diagnostics", "Logs"]
+    nav_items = ["Robots", "Tasks"]
     for i, item in enumerate(nav_items):
         y = 120 + i*44
         fill = "#e0e0e0" if i == active_index else None
