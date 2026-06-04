@@ -34,11 +34,13 @@
 
 1. **内建集成**：任务流引擎代码直接位于 `src/backend/src/services/taskFlowEngine/` 目录下，作为后端服务的内建模块，不作为外部依赖引入。
 2. **依赖注入**：引擎通过构造函数接收 `ObjectStore`、`SseManager`、`ResolverRegistry` 等依赖，而非直接导入具体实现，便于测试与替换。
-3. **DAG 驱动**：任务执行顺序完全由 DAG 定义驱动，引擎不预设任何执行流程，所有流程由调用方通过 DAG 描述。
-4. **数据流显式化**：子任务间通过 `requires`/`provides` 机制显式声明数据依赖，引擎保证依赖满足后才执行下游任务。
-5. **实时可观测**：所有状态变更均通过 SSE 实时推送，前端无需轮询即可获取最新状态。
-6. **持久化与恢复**：用户流持久化到对象存储，后端重启后自动恢复未完成的流。
-7. **自动清理**：已结束的任务流在 TTL 到期后自动清理，防止内存与存储无限增长。
+3. **业务无关**：引擎模块不包含任何业务逻辑（如解决方案、机器人等概念），仅提供通用的任务流执行、查询、控制能力。业务参数通过 `input`（参数列表）以 key-value 形式传入，引擎本身不解析或依赖参数的具体语义。
+4. **不由引擎实现单例**：引擎不实现单例模式，不暴露全局实例访问函数。由引擎的创建者（后端入口模块）负责管理引擎实例的单例生命周期。
+5. **DAG 驱动**：任务执行顺序完全由 DAG 定义驱动，引擎不预设任何执行流程，所有流程由调用方通过 DAG 描述。
+6. **数据流显式化**：子任务间通过 `requires`/`provides` 机制显式声明数据依赖，引擎保证依赖满足后才执行下游任务。
+7. **实时可观测**：所有状态变更均通过 SSE 实时推送，前端无需轮询即可获取最新状态。
+8. **持久化与恢复**：用户流持久化到对象存储，后端重启后自动恢复未完成的流。
+9. **自动清理**：已结束的任务流在 TTL 到期后自动清理，防止内存与存储无限增长。
 
 ---
 
@@ -236,11 +238,13 @@ API 返回的流摘要信息，包含完整的状态与结果数据：
 - 系统将所有子任务的 `provides` 与 `expectedResults` 合并后作为期望输出传递给引擎。
 - 返回 `FlowSummary`。
 
-**FR-TFE-002**：系统应支持流级别输入参数传递。
+**FR-TFE-002**：系统应支持流级别输入参数（参数列表）传递。
 
-- 调用方在创建流时提供 `input` 对象。
+- 调用方在创建流时提供 `input` 对象（key-value 参数列表）。
+- `input`（参数列表）在创建时设置，此后为只读，不可修改。
 - `input` 中的值作为流级别数据上下文，所有子任务可通过 `resolver.params` 引用。
 - 若未提供 `input`，默认为空对象 `{}`。
+- 典型用法：获取机器人基础信息的任务流需设置 `{ solutionId, robotId }` 作为参数列表。
 
 **FR-TFE-003**：系统应支持子任务参数映射。
 
@@ -267,6 +271,7 @@ API 返回的流摘要信息，包含完整的状态与结果数据：
 
 - 返回 `FlowSummary[]`，按 `createdAt` 降序排列。
 - 支持按流类型（`internal` / `user`）过滤。
+- 支持按参数列表（`input`）过滤。调用方可传入部分或全部参数进行过滤匹配。例如：按 `solutionId` 过滤返回该解决方案下所有任务流，或按 `solutionId` + `robotId` 过滤返回指定机器人的任务流。匹配方式为精确匹配（AND 逻辑），仅返回所有过滤条件均满足的任务流。
 
 **FR-TFE-007**：系统应支持查询单个任务流详情。
 
@@ -392,20 +397,22 @@ API 返回的流摘要信息，包含完整的状态与结果数据：
 
 ### 7.1 REST API
 
-| 方法 | 端点 | 请求体 / 查询参数 | 描述 |
-|------|------|-------------------|------|
-| `POST` | `/api/flows` | `{ type, input?, expectedResults?, dag }` | 创建并启动新任务流 |
-| `GET` | `/api/flows` | `?type=internal|user`（可选） | 列举任务流（含子任务状态） |
-| `GET` | `/api/flows/:id` | — | 查询单个任务流详情（含结果） |
-| `POST` | `/api/flows/:id/pause` | — | 暂停单个任务流 |
-| `POST` | `/api/flows/:id/resume` | — | 恢复已暂停的任务流 |
-| `POST` | `/api/flows/:id/stop` | — | 停止任务流，记录保留 |
-| `DELETE` | `/api/flows/:id` | — | 删除任务流记录（须为终态） |
-| `POST` | `/api/flows/batch/pause` | `{ ids: string[] }` | 批量暂停 |
-| `POST` | `/api/flows/batch/resume` | `{ ids: string[] }` | 批量恢复 |
-| `POST` | `/api/flows/batch/stop` | `{ ids: string[] }` | 批量停止 |
-| `POST` | `/api/flows/batch/delete` | `{ ids: string[] }` | 批量删除 |
-| `GET` | `/api/flows/events` | — | SSE 实时事件端点 |
+TaskFlowEngine 的 HTTP API 与内部调用接口一一对应，行为一致。每个 HTTP 端点均有对应的引擎内部方法。
+
+| 方法 | 端点 | 请求体 / 查询参数 | 描述 | 对应内部方法 |
+|------|------|-------------------|------|------------|
+| `POST` | `/api/flows` | `{ type, input?, expectedResults?, dag }` | 创建并启动新任务流 | `createFlow()` |
+| `GET` | `/api/flows` | `?type=internal\|user`（可选）<br>`?solutionId=xxx&robotId=yyy`（可选，参数列表过滤） | 列举任务流（含子任务状态） | `listFlows()` |
+| `GET` | `/api/flows/:id` | — | 查询单个任务流详情（含结果） | `getFlow()` |
+| `POST` | `/api/flows/:id/pause` | — | 暂停单个任务流 | `pauseFlow()` |
+| `POST` | `/api/flows/:id/resume` | — | 恢复已暂停的任务流 | `resumeFlow()` |
+| `POST` | `/api/flows/:id/stop` | — | 停止任务流，记录保留 | `stopFlow()` |
+| `DELETE` | `/api/flows/:id` | — | 删除任务流记录（须为终态） | `deleteFlow()` |
+| `POST` | `/api/flows/batch/pause` | `{ ids: string[] }` | 批量暂停 | `batchPause()` |
+| `POST` | `/api/flows/batch/resume` | `{ ids: string[] }` | 批量恢复 | `batchResume()` |
+| `POST` | `/api/flows/batch/stop` | `{ ids: string[] }` | 批量停止 | `batchStop()` |
+| `POST` | `/api/flows/batch/delete` | `{ ids: string[] }` | 批量删除 | `batchDelete()` |
+| `GET` | `/api/flows/events` | — | SSE 实时事件端点 | — |
 
 ### 7.2 Stop 与 Delete 的区别
 
@@ -455,7 +462,7 @@ graph LR
 | 用例编号 | 用例名称 | 参与者 | 前置条件 | 后置条件 | 主事件流 |
 |---------|---------|--------|---------|---------|---------|
 | UC-TFE-01 | 创建并启动任务流 | FAE | 无 | 任务流创建并开始执行 | 1. FAE 提供 DAG、类型、输入参数；2. 系统生成 flowId 并初始化；3. 系统持久化（用户流）；4. 系统启动执行；5. 系统广播 SSE 事件；6. 返回 FlowSummary |
-| UC-TFE-02 | 查询任务流列表 | FAE | 无 | 展示任务流列表 | 1. FAE 请求列表（可选类型过滤）；2. 系统返回按时间降序排列的 FlowSummary[] |
+| UC-TFE-02 | 查询任务流列表 | FAE | 无 | 展示任务流列表 | 1. FAE 请求列表（可选类型过滤、参数列表过滤）；2. 系统返回按时间降序排列的 FlowSummary[] |
 | UC-TFE-03 | 查询任务流详情 | FAE | 流已存在 | 展示完整流信息与结果 | 1. FAE 指定 flowId；2. 系统返回完整 FlowSummary（含 results） |
 | UC-TFE-04 | 暂停任务流 | FAE | 流处于 RUNNING 状态 | 流暂停 | 1. FAE 请求暂停；2. 系统调用引擎 pause()；3. 状态转为 PAUSED；4. 广播 SSE 事件 |
 | UC-TFE-05 | 恢复任务流 | FAE | 流处于 PAUSED 状态 | 流继续执行 | 1. FAE 请求恢复；2. 系统调用引擎 resume()；3. 状态转为 RUNNING；4. 广播 SSE 事件 |

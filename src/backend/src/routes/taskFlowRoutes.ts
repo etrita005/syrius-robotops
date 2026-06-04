@@ -36,7 +36,22 @@ export function createTaskFlowRoutes(engine: TaskFlowEngine): Hono {
 
   app.get("/", (c) => {
     const type = c.req.query("type") as "internal" | "user" | undefined;
-    const flows = engine.listFlows(type);
+    const allQueries = c.req.queries();
+    let filterParams: Record<string, string> | undefined;
+    if (allQueries) {
+      const params: Record<string, string> = {};
+      for (const key of Object.keys(allQueries)) {
+        if (key === "type") continue;
+        const values = allQueries[key];
+        if (values && values.length > 0) {
+          params[key] = values[0];
+        }
+      }
+      if (Object.keys(params).length > 0) {
+        filterParams = params;
+      }
+    }
+    const flows = engine.listFlows(type, filterParams);
     return c.json(flows);
   });
 

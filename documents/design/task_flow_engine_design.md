@@ -18,6 +18,7 @@
 - 所有解析器通过 `ResolverRegistry` 注册和查找，禁止硬编码解析器映射。
 - 模块内部使用 TypeScript + ES6 模块语法。
 - 所有日志和注释使用英文。
+- **引擎不实现单例**：不暴露 `getTaskFlowEngine()` 等全局访问函数。由引擎的创建者（后端入口模块）负责管理实例生命周期。
 
 ---
 
@@ -76,7 +77,7 @@ src/backend/src/
 │   ├── checksumService.ts                # 校验和服务（不变）
 │   ├── objectStore.ts                    # 对象存储服务（不变）
 │   └── taskFlowEngine/
-│       ├── index.ts                      # 模块导出（需修改：扩展导出）
+│       ├── index.ts                      # 模块导出
 │       ├── taskFlowEngine.ts             # 核心引擎（需修改：增强功能）
 │       ├── resolverRegistry.ts           # 解析器注册表（不变）
 │       └── sseManager.ts                # SSE 管理器（不变）
@@ -113,7 +114,7 @@ class TaskFlowEngine {
   + stopFlow(id): Promise<void>
   + deleteFlow(id): Promise<void>
   + getFlow(id): FlowSummary | undefined
-  + listFlows(filterType?): FlowSummary[]
+  + listFlows(filterType?, filterParams?): FlowSummary[]
   + batchPause(ids): Promise<void>
   + batchResume(ids): Promise<void>
   + batchStop(ids): Promise<void>
@@ -149,6 +150,8 @@ class TaskFlowEngine {
 | `batchDelete()` | 无 | 支持批量删除 |
 | `flow-completed` 事件 | 无 | 流进入终态时广播 |
 | `task-result` 事件 | 无 | 子任务完成时广播 |
+| `listFlows` 参数过滤 | 无 | 支持按 `input` 参数列表过滤 |
+| 单例模式 | 模块内提供 `getTaskFlowEngine()` | 移除单例，由创建者管理 |
 
 ### 4.2 TaskFlowEngineOptions
 
@@ -445,34 +448,102 @@ sequenceDiagram
 
 ---
 
-## 6. 路由设计
+## 6. 接口设计
 
-### 6.1 createTaskFlowRoutes
+TaskFlowEngine 提供两种调用接口：
+
+- **HTTP REST API**：面向前端/外部系统的 HTTP 接口，由 `taskFlowRoutes` 路由层实现。
+- **内部调用接口**：面向后端内部模块（如 `robotService`）的直接方法调用接口，由 `TaskFlowEngine` 类暴露的公开方法组成。
+
+两种接口的能力对等：HTTP API 的每个端点均有对应的引擎内部方法，行为一致。
+
+### 6.1 接口对照表
+
+| 操作 | HTTP 接口 | 内部调用接口 |
+|------|----------|-------------|
+| 创建流 | `POST /api/flows` | `createFlow(type, dag, input?, expectedResults?)` |
+| 列举流 | `GET /api/flows?type=&key=value` | `listFlows(type?, filterParams?)` |
+| 查询流 | `GET /api/flows/:id` | `getFlow(id)` |
+| 暂停流 | `POST /api/flows/:id/pause` | `pauseFlow(id)` |
+| 恢复流 | `POST /api/flows/:id/resume` | `resumeFlow(id)` |
+| 停止流 | `POST /api/flows/:id/stop` | `stopFlow(id)` |
+| 删除流 | `DELETE /api/flows/:id` | `deleteFlow(id)` |
+| 批量暂停 | `POST /api/flows/batch/pause` | `batchPause(ids)` |
+| 批量恢复 | `POST /api/flows/batch/resume` | `batchResume(ids)` |
+| 批量停止 | `POST /api/flows/batch/stop` | `batchStop(ids)` |
+| 批量删除 | `POST /api/flows/batch/delete` | `batchDelete(ids)` |
+| 持久化恢复 | —（启动时自动调用） | `loadPersistedFlows()` |
+| 销毁引擎 | —（进程关闭时调用） | `destroy()` |
+
+### 6.2 内部调用接口签名
 
 ```typescript
-function createTaskFlowRoutes(engine: TaskFlowEngine, sseManager: SseManager): Hono
+class TaskFlowEngine {
+  // 创建并启动任务流
+  async createFlow(
+    type: FlowType,
+    dag: FlowSpec,
+    input?: ValueMap,           // 参数列表（key-value map），设置后只读
+    expectedResults?: string[]
+  ): Promise<FlowSummary>
+
+  // 列举任务流（支持类型和参数列表过滤）
+  listFlows(
+    filterType?: FlowType,
+    filterParams?: Record<string, string>  // 按参数列表精确匹配（AND 逻辑）
+  ): FlowSummary[]
+
+  // 查询单个任务流
+  getFlow(id: string): FlowSummary | undefined
+
+  // 暂停/恢复/停止/删除
+  async pauseFlow(id: string): Promise<void>
+  async resumeFlow(id: string): Promise<void>
+  async stopFlow(id: string): Promise<void>
+  async deleteFlow(id: string): Promise<void>
+
+  // 批量操作
+  async batchPause(ids: string[]): Promise<void>
+  async batchResume(ids: string[]): Promise<void>
+  async batchStop(ids: string[]): Promise<void>
+  async batchDelete(ids: string[]): Promise<void>
+
+  // 生命周期
+  async loadPersistedFlows(): Promise<void>
+  destroy(): void
+}
 ```
 
-路由挂载点：`app.route("/api/flows", createTaskFlowRoutes(engine, sseManager))`
+### 6.3 HTTP REST API 规格
 
-### 6.2 路由详细设计
+| 方法 | 端点 | 请求体 / 查询参数 | 描述 |
+|------|------|-------------------|------|
+| `POST` | `/api/flows` | `{ type, input?, expectedResults?, dag }` | 创建并启动新任务流。`input` 为参数列表（key-value map），设置后只读 |
+| `GET` | `/api/flows` | `?type=internal\|user`（可选，类型过滤）<br>`?key1=val1&key2=val2`（可选，参数列表过滤，AND 逻辑） | 列举任务流。除 `type` 外的所有查询参数均作为参数列表过滤条件 |
+| `GET` | `/api/flows/:id` | — | 查询单个任务流详情，含 `input`（参数列表）、`results`、`taskResults` 等 |
+| `POST` | `/api/flows/:id/pause` | — | 暂停单个任务流 |
+| `POST` | `/api/flows/:id/resume` | — | 恢复已暂停的任务流 |
+| `POST` | `/api/flows/:id/stop` | — | 停止任务流，记录保留 |
+| `DELETE` | `/api/flows/:id` | — | 删除任务流记录（须为终态） |
+| `POST` | `/api/flows/batch/pause` | `{ ids: string[] }` | 批量暂停 |
+| `POST` | `/api/flows/batch/resume` | `{ ids: string[] }` | 批量恢复 |
+| `POST` | `/api/flows/batch/stop` | `{ ids: string[] }` | 批量停止 |
+| `POST` | `/api/flows/batch/delete` | `{ ids: string[] }` | 批量删除 |
+| `GET` | `/api/flows/events` | — | SSE 实时事件端点 |
 
-| 路由 | 方法 | 处理逻辑 |
-|------|------|---------|
-| `/` | POST | 解析 `{ type, dag, input, expectedResults }`，校验必填字段，调用 `engine.createFlow()`，返回 201 + FlowSummary |
-| `/` | GET | 读取 `?type=` 查询参数，调用 `engine.listFlows(type)`，返回 FlowSummary[] |
-| `/:id` | GET | 调用 `engine.getFlow(id)`，不存在返回 404，否则返回 FlowSummary |
-| `/:id/pause` | POST | 调用 `engine.pauseFlow(id)`，捕获异常返回 404 |
-| `/:id/resume` | POST | 调用 `engine.resumeFlow(id)`，捕获异常返回 404 |
-| `/:id/stop` | POST | 调用 `engine.stopFlow(id)`，捕获异常返回 404 |
-| `/:id` | DELETE | 调用 `engine.deleteFlow(id)`，捕获异常返回 404 |
-| `/batch/pause` | POST | 解析 `{ ids }`，校验数组，调用 `engine.batchPause(ids)` |
-| `/batch/resume` | POST | 解析 `{ ids }`，校验数组，调用 `engine.batchResume(ids)` |
-| `/batch/stop` | POST | 解析 `{ ids }`，校验数组，调用 `engine.batchStop(ids)` |
-| `/batch/delete` | POST | 解析 `{ ids }`，校验数组，调用 `engine.batchDelete(ids)` |
-| `/events` | GET | 创建 SSE ReadableStream，注册客户端到 SseManager，返回 text/event-stream 响应 |
+### 6.4 参数列表过滤规范
 
-### 6.3 SSE 端点实现
+参数列表过滤通过 `GET /api/flows` 的查询参数实现。除 `type` 外的所有查询参数均视为过滤条件，引擎按 AND 逻辑精确匹配 `input` 字段：
+
+| 查询示例 | 含义 |
+|---------|------|
+| `GET /api/flows?solutionId=sol1` | 返回 `input.solutionId === "sol1"` 的所有流 |
+| `GET /api/flows?solutionId=sol1&robotId=r1` | 返回同时满足 `input.solutionId === "sol1"` 且 `input.robotId === "r1"` 的流 |
+| `GET /api/flows?type=user&solutionId=sol1` | 返回 `type === "user"` 且 `input.solutionId === "sol1"` 的流 |
+
+> 过滤值统一按字符串比较。若 `input` 中对应字段为 `undefined`，视为空字符串与过滤值比较。
+
+### 6.5 SSE 端点实现
 
 ```typescript
 app.get("/events", (c) => {
@@ -520,8 +591,10 @@ resolverRegistry.register("GetRobotBasicInfoTask", new GetRobotBasicInfoTask());
 const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
 await taskFlowEngine.loadPersistedFlows();
 
-app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine, sseManager));
+app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine));
 ```
+
+> 注意：`TaskFlowEngine` 不实现单例，不暴露 `getTaskFlowEngine()` 等全局访问函数。引擎实例由后端入口模块创建并管理其生命周期。
 
 ### 7.2 优雅关闭
 
@@ -749,3 +822,5 @@ destroy(): void {
 | 8. TTL 清理 | 定时器 + 可配置参数 | 防止内存与存储无限增长 |
 | 9. 解析器注册 | 启动时在 index.ts 中注册 | 集中管理，便于维护 |
 | 10. 流 ID 生成 | UUID v4 | 系统生成，全局唯一 |
+| 11. 单例管理 | 不在引擎模块内实现单例 | 由创建者管理实例生命周期，保持引擎模块业务无关 |
+| 12. 参数列表过滤 | `listFlows(type, filterParams)` 按 input 字段精确匹配 | AND 逻辑，支持任意 key-value 组合过滤 |

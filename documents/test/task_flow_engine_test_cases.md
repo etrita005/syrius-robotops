@@ -49,15 +49,15 @@
 | **预期结果** | 返回 FlowSummary，`state === "RUNNING"`；ObjectStore 中持久化了流记录 |
 | **验证点** | 通过 ObjectStore.getJson 能获取到流记录 |
 
-### TC-TFE-003：创建流时传递流级别输入参数（FR-TFE-002）
+### TC-TFE-003：创建流时传递流级别输入参数（参数列表）（FR-TFE-002）
 
 | 项 | 值 |
 |----|-----|
-| **测试目标** | 验证 createFlow 的 input 参数被正确存储和传递 |
+| **测试目标** | 验证 createFlow 的 input 参数（参数列表）被正确存储和传递，且设置后为只读 |
 | **前置条件** | 引擎初始化完成 |
-| **输入** | `type: "internal"`, `input: { robotIp: "10.0.0.1" }`, DAG 包含 1 个任务 |
-| **预期结果** | FlowSummary 中 `input === { robotIp: "10.0.0.1" }` |
-| **验证点** | input 被存储在 FlowRecord 中并出现在 FlowSummary 中 |
+| **输入** | `type: "internal"`, `input: { solutionId: "sol1", robotId: "r1" }`, DAG 包含 1 个任务 |
+| **预期结果** | FlowSummary 中 `input === { solutionId: "sol1", robotId: "r1" }` |
+| **验证点** | input（参数列表）被存储在 FlowRecord 中并出现在 FlowSummary 中，后续不可修改 |
 
 ### TC-TFE-004：创建流时未提供 input 参数（FR-TFE-002）
 
@@ -128,6 +128,36 @@
 | **输入** | `filterType: "internal"` |
 | **预期结果** | 仅返回 internal 类型的流 |
 | **验证点** | 返回的数组中所有元素的 type 为 internal |
+
+### TC-TFE-010b：按参数列表过滤任务流 — 单参数（FR-TFE-006）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 listFlows 按单个参数过滤（如 solutionId） |
+| **前置条件** | 已创建 2 个流，input 分别为 `{ solutionId: "sol1" }` 和 `{ solutionId: "sol2" }` |
+| **输入** | `filterParams: { solutionId: "sol1" }` |
+| **预期结果** | 仅返回 solutionId 为 sol1 的流 |
+| **验证点** | 返回的数组中所有元素的 input.solutionId 为 sol1 |
+
+### TC-TFE-010c：按参数列表过滤任务流 — 多参数（FR-TFE-006）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 listFlows 按多个参数过滤（如 solutionId + robotId） |
+| **前置条件** | 已创建 2 个流，input 分别为 `{ solutionId: "sol1", robotId: "r1" }` 和 `{ solutionId: "sol1", robotId: "r2" }` |
+| **输入** | `filterParams: { solutionId: "sol1", robotId: "r1" }` |
+| **预期结果** | 仅返回同时满足两个条件（AND 逻辑）的流 |
+| **验证点** | 仅返回 1 个流，input.robotId 为 r1 |
+
+### TC-TFE-010d：按参数列表过滤任务流 — 无匹配（FR-TFE-006）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 listFlows 在无匹配参数时返回空数组 |
+| **前置条件** | 已创建流 |
+| **输入** | `filterParams: { nonExistentKey: "xxx" }` |
+| **预期结果** | 返回空数组 |
+| **验证点** | 数组长度为 0 |
 
 ### TC-TFE-011：查询单个任务流详情（FR-TFE-007）
 
@@ -459,6 +489,16 @@
 | **预期结果** | cleanupTimer 被清除，不再触发清理 |
 | **验证点** | 可以通过多次调用 destroy 验证幂等性 |
 
+### TC-TFE-044：引擎不实现单例
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 TaskFlowEngine 模块不暴露全局单例访问函数 |
+| **前置条件** | 从 taskFlowEngine/index.ts 导入 |
+| **输入** | 尝试调用 getTaskFlowEngine / setTaskFlowEngine / clearTaskFlowEngine |
+| **预期结果** | 这些函数不存在于模块导出中 |
+| **验证点** | 导入不包含单例函数，引擎实例由创建者管理 |
+
 ---
 
 ## 3. API 路由测试
@@ -508,6 +548,35 @@
 | **输入** | GET /api/flows?type=internal |
 | **预期结果** | 仅返回 internal 类型的流 |
 | **验证点** | 所有元素的 type 为 internal |
+
+### TC-API-005b：GET /api/flows?solutionId=xxx — 按参数列表过滤
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证按参数列表过滤（API 层） |
+| **前置条件** | 已创建 2 个流，input 分别为 `{ solutionId: "sol1" }` 和 `{ solutionId: "sol2" }` |
+| **输入** | GET /api/flows?solutionId=sol1 |
+| **预期结果** | 仅返回 solutionId 为 sol1 的流 |
+| **验证点** | 返回数组中的所有元素 input.solutionId 为 sol1 |
+
+### TC-API-005c：GET /api/flows?solutionId=xxx&robotId=yyy — 按多参数过滤
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证按多参数列表过滤（API 层） |
+| **输入** | GET /api/flows?solutionId=sol1&robotId=r1 |
+| **预期结果** | 仅返回同时满足两个条件的流 |
+| **验证点** | AND 逻辑，返回结果正确过滤 |
+
+### TC-API-005d：HTTP 与内部调用接口一致性
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 HTTP API 的 listFlows 与内部调用的 listFlows 结果一致 |
+| **前置条件** | 已创建多个带不同 input 参数的流 |
+| **输入** | 分别通过 HTTP（`?solutionId=sol1&robotId=r1`）和内部调用（`listFlows(undefined, { solutionId: "sol1", robotId: "r1" })`）查询 |
+| **预期结果** | 两次调用返回的结果数量相同，ID 一致 |
+| **验证点** | HTTP 和内部接口的行为完全一致 |
 
 ### TC-API-006：GET /api/flows/:id — 查询详情
 

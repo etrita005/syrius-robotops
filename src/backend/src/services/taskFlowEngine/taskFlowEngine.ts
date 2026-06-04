@@ -467,12 +467,21 @@ export class TaskFlowEngine {
     return record ? this.summarize(record) : undefined;
   }
 
-  listFlows(filterType?: FlowType): FlowSummary[] {
+  listFlows(filterType?: FlowType, filterParams?: Record<string, string>): FlowSummary[] {
     const results: FlowSummary[] = [];
     for (const record of this.flows.values()) {
-      if (!filterType || record.type === filterType) {
-        results.push(this.summarize(record));
+      if (filterType && record.type !== filterType) continue;
+      if (filterParams) {
+        let match = true;
+        for (const [key, value] of Object.entries(filterParams)) {
+          if (String(record.input?.[key] ?? "") !== value) {
+            match = false;
+            break;
+          }
+        }
+        if (!match) continue;
       }
+      results.push(this.summarize(record));
     }
     results.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return results;

@@ -405,6 +405,58 @@ describe("TaskFlowEngine - Core", () => {
       assert.equal(result, undefined);
       engine.destroy();
     });
+
+    it("TC-TFE-010b: should filter flows by single param (solutionId)", async () => {
+      const { engine } = createEngine();
+      await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1" });
+      await engine.createFlow("internal", singleTaskDag, { solutionId: "sol2" });
+
+      const filtered = engine.listFlows(undefined, { solutionId: "sol1" });
+      assert.ok(filtered.length >= 1);
+      for (const f of filtered) {
+        const input = f.input as Record<string, string> | undefined;
+        assert.equal(input?.solutionId, "sol1");
+      }
+      engine.destroy();
+    });
+
+    it("TC-TFE-010c: should filter flows by multiple params (solutionId + robotId)", async () => {
+      const { engine } = createEngine();
+      await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1", robotId: "r1" });
+      await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1", robotId: "r2" });
+      await engine.createFlow("internal", singleTaskDag, { solutionId: "sol2", robotId: "r1" });
+
+      const filtered = engine.listFlows(undefined, { solutionId: "sol1", robotId: "r1" });
+      assert.equal(filtered.length, 1);
+      const input = filtered[0].input as Record<string, string>;
+      assert.equal(input.solutionId, "sol1");
+      assert.equal(input.robotId, "r1");
+      engine.destroy();
+    });
+
+    it("TC-TFE-010d: should return empty array when no params match", async () => {
+      const { engine } = createEngine();
+      await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1" });
+
+      const filtered = engine.listFlows(undefined, { nonExistentKey: "xxx" });
+      assert.equal(filtered.length, 0);
+      engine.destroy();
+    });
+
+    it("should combine type filter with params filter", async () => {
+      const { engine } = createEngine();
+      await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1" });
+      await engine.createFlow("user", singleTaskDag, { solutionId: "sol1" });
+
+      const filtered = engine.listFlows("internal", { solutionId: "sol1" });
+      assert.ok(filtered.length >= 1);
+      for (const f of filtered) {
+        assert.equal(f.type, "internal");
+        const input = f.input as Record<string, string>;
+        assert.equal(input?.solutionId, "sol1");
+      }
+      engine.destroy();
+    });
   });
 
   describe("pauseFlow and resumeFlow", () => {
@@ -911,6 +963,13 @@ describe("TaskFlowEngine - Lifecycle", () => {
 
     engine.destroy();
   });
+
+  it("TC-TFE-044: module should not expose singleton access functions", async () => {
+    const mod = await import("./services/taskFlowEngine/index.js");
+    assert.equal("getTaskFlowEngine" in mod, false, "getTaskFlowEngine should not be exported");
+    assert.equal("setTaskFlowEngine" in mod, false, "setTaskFlowEngine should not be exported");
+    assert.equal("clearTaskFlowEngine" in mod, false, "clearTaskFlowEngine should not be exported");
+  });
 });
 
 describe("ResolverRegistry", () => {
@@ -1355,6 +1414,72 @@ describe("TaskFlowEngine - Routes", () => {
     for (const f of body) {
       assert.equal(f.type, "internal");
     }
+    engine.destroy();
+  });
+
+  it("TC-API-005b: GET /api/flows?solutionId=xxx should filter by params", async () => {
+    const { app, engine } = setupApp();
+    await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1" });
+    await engine.createFlow("internal", singleTaskDag, { solutionId: "sol2" });
+
+    const res = await app.request("/api/flows?solutionId=sol1");
+    assert.equal(res.status, 200);
+    const body = await res.json() as FlowSummary[];
+    assert.ok(body.length >= 1);
+    for (const f of body) {
+      const input = f.input as Record<string, string> | undefined;
+      assert.equal(input?.solutionId, "sol1");
+    }
+    engine.destroy();
+  });
+
+  it("TC-API-005c: GET /api/flows?solutionId=xxx&robotId=yyy should filter by multiple params", async () => {
+    const { app, engine } = setupApp();
+    await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1", robotId: "r1" });
+    await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1", robotId: "r2" });
+
+    const res = await app.request("/api/flows?solutionId=sol1&robotId=r1");
+    assert.equal(res.status, 200);
+    const body = await res.json() as FlowSummary[];
+    assert.equal(body.length, 1);
+    const input = body[0].input as Record<string, string>;
+    assert.equal(input.solutionId, "sol1");
+    assert.equal(input.robotId, "r1");
+    engine.destroy();
+  });
+
+  it("GET /api/flows?type=internal&solutionId=xxx should combine type and param filter", async () => {
+    const { app, engine } = setupApp();
+    await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1" });
+    await engine.createFlow("user", singleTaskDag, { solutionId: "sol1" });
+
+    const res = await app.request("/api/flows?type=internal&solutionId=sol1");
+    assert.equal(res.status, 200);
+    const body = await res.json() as FlowSummary[];
+    assert.ok(body.length >= 1);
+    for (const f of body) {
+      assert.equal(f.type, "internal");
+      const input = f.input as Record<string, string>;
+      assert.equal(input?.solutionId, "sol1");
+    }
+    engine.destroy();
+  });
+
+  it("HTTP listFlows should produce same results as internal listFlows for param filter", async () => {
+    const { app, engine } = setupApp();
+    await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1", robotId: "r1" });
+    await engine.createFlow("internal", singleTaskDag, { solutionId: "sol1", robotId: "r2" });
+    await engine.createFlow("user", singleTaskDag, { solutionId: "sol2", robotId: "r1" });
+
+    const httpRes = await app.request("/api/flows?solutionId=sol1&robotId=r1");
+    assert.equal(httpRes.status, 200);
+    const httpBody = await httpRes.json() as FlowSummary[];
+
+    const internalBody = engine.listFlows(undefined, { solutionId: "sol1", robotId: "r1" });
+
+    assert.equal(httpBody.length, internalBody.length);
+    assert.equal(httpBody.length, 1);
+    assert.equal(httpBody[0].id, internalBody[0].id);
     engine.destroy();
   });
 
