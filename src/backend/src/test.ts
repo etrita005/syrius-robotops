@@ -10,7 +10,9 @@ import { SseManager } from "./services/taskFlowEngine/sseManager.js";
 import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import type { ObjectStoreResource } from "./services/objectStore.js";
 import { setTaskFlowEngine } from "./services/taskFlowEngine/index.js";
-import { memStore } from "./memStore/index.js";
+import { MemStore, MemStoreSseManager } from "./memStore/index.js";
+import type { CacheEventHandler, CacheEntry } from "./memStore/index.js";
+import { setGlobalMemStore } from "./memStore/index.js";
 import { buildRobotInfoKey } from "./services/robotService.js";
 import { MockGetRobotBasicInfoTask } from "./tasks/mockGetRobotBasicInfoTask.js";
 import { UpdateRobotBasicInfoTask } from "./tasks/updateRobotBasicInfoTask.js";
@@ -1837,8 +1839,14 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
       registry
     );
     setTaskFlowEngine(engine);
+    setGlobalMemStore(robotService.memStore);
 
     return { objStore: objStore as unknown as EnhancedObjectStore, solutionService, robotService, sse: sse as unknown as SpySseManager, engine };
+  }
+
+  function cleanup(services: { robotService: RobotService; engine: TaskFlowEngine }) {
+    services.robotService.memStore.destroy();
+    services.engine.destroy();
   }
 
   async function waitForInternalFlow(engine: TaskFlowEngine, timeoutMs = 5000): Promise<FlowSummary> {
@@ -1879,16 +1887,18 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
     const key = buildRobotInfoKey(solution.id, robot.id);
 
-    const meta = memStore.getCacheMeta(key);
+    const ms = robotService.memStore;
+    const meta = ms.getCacheMeta(key);
     assert.ok(meta, "memStore cache meta should exist after robot creation");
-    assert.ok(meta.spec, "memStore cache spec should be defined");
+    assert.ok(meta.properties, "memStore cache properties should be defined");
+    assert.ok(meta.properties.taskFlowSpec, "memStore cache properties should contain taskFlowSpec");
     assert.equal(meta.config.ttlMs, 5 * 60 * 1000, "TTL should be 5 minutes");
     assert.equal(meta.config.cron, "*/180", "Cron should be every 180 seconds");
 
-    const hasValue = memStore.hasCache(key);
+    const hasValue = ms.hasCache(key);
     assert.equal(hasValue, false, "Cache should have no value immediately after creation (no initialValue)");
 
-    engine.destroy();
+    cleanup({ robotService, engine });
   });
 
   it("TC-INT-002: getRobotInfoList should trigger task flow and return basicInfo=null on first call", { timeout: 10000 }, async () => {
@@ -1905,7 +1915,7 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     const flow = await waitForInternalFlow(engine);
     assert.ok(flow, "At least one internal flow should have been triggered");
 
-    engine.destroy();
+    cleanup({ robotService, engine });
   });
 
   it("TC-INT-003: mock task flow should complete and update memStore cache with robot basic info", { timeout: 20000 }, async () => {
@@ -1926,18 +1936,18 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
 
     await sleep(500);
 
-    const cached = memStore.getCache(key) as RobotBasicInfo | undefined;
+    const cached = robotService.memStore.getCache(key) as RobotBasicInfo | undefined;
     assert.ok(cached, "memStore cache should have robot basic info after task flow completes");
     assert.equal(cached.model, "MLLBA0201");
-    assert.equal(cached.robotSn, "SQADO420250306");
-    assert.equal(cached.thingsId, "M263DG67HJ");
+    assert.equal(cached.robotSn, "SQA000000000");
+    assert.equal(cached.thingsId, "M000000000000");
     assert.equal(cached.vendorId, "0x000036a1");
     assert.equal(cached.productId, "0x00002410");
     assert.equal(cached.mainBoardSn, "SyriusRobotics");
     assert.equal(cached.mainBoardId, "WWVU0100406JCB06");
-    assert.equal(cached.mainSomSn, "1420124249761");
+    assert.equal(cached.mainSomSn, "1420124249000");
 
-    engine.destroy();
+    cleanup({ robotService, engine });
   });
 
   it("TC-INT-004: getRobotInfoList should return cached basicInfo after task flow completes", { timeout: 20000 }, async () => {
@@ -1956,9 +1966,9 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     assert.equal(infoList.length, 1);
     assert.ok(infoList[0].basicInfo, "basicInfo should be populated from cache");
     assert.equal(infoList[0].basicInfo!.model, "MLLBA0201");
-    assert.equal(infoList[0].basicInfo!.robotSn, "SQADO420250306");
+    assert.equal(infoList[0].basicInfo!.robotSn, "SQA000000000");
 
-    engine.destroy();
+    cleanup({ robotService, engine });
   });
 
   it("TC-INT-005: getRobotInfo (single) should return cached basicInfo after task flow completes", { timeout: 20000 }, async () => {
@@ -1977,7 +1987,7 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     assert.ok(info.basicInfo, "basicInfo should be populated from cache");
     assert.equal(info.basicInfo!.model, "MLLBA0201");
 
-    engine.destroy();
+    cleanup({ robotService, engine });
   });
 
   it("TC-INT-006: robotService.remove should delete memStore cache for the robot", { timeout: 5000 }, async () => {
@@ -1987,14 +1997,14 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
     const key = buildRobotInfoKey(solution.id, robot.id);
 
-    assert.ok(memStore.getCacheMeta(key), "Cache should exist before removal");
+    assert.ok(robotService.memStore.getCacheMeta(key), "Cache should exist before removal");
 
     await robotService.remove(solution.id, robot.id);
 
-    const metaAfter = memStore.getCacheMeta(key);
+    const metaAfter = robotService.memStore.getCacheMeta(key);
     assert.equal(metaAfter, undefined, "Cache should be deleted after robot removal");
 
-    engine.destroy();
+    cleanup({ robotService, engine });
   });
 
   it("TC-INT-007: removeSolutionCache should delete all robot info caches for a solution", { timeout: 5000 }, async () => {
@@ -2007,15 +2017,15 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     const key1 = buildRobotInfoKey(solution.id, r1.id);
     const key2 = buildRobotInfoKey(solution.id, r2.id);
 
-    assert.ok(memStore.getCacheMeta(key1), "Cache for robot 1 should exist");
-    assert.ok(memStore.getCacheMeta(key2), "Cache for robot 2 should exist");
+    assert.ok(robotService.memStore.getCacheMeta(key1), "Cache for robot 1 should exist");
+    assert.ok(robotService.memStore.getCacheMeta(key2), "Cache for robot 2 should exist");
 
     robotService.removeSolutionCache(solution.id);
 
-    assert.equal(memStore.getCacheMeta(key1), undefined, "Cache for robot 1 should be deleted");
-    assert.equal(memStore.getCacheMeta(key2), undefined, "Cache for robot 2 should be deleted");
+    assert.equal(robotService.memStore.getCacheMeta(key1), undefined, "Cache for robot 1 should be deleted");
+    assert.equal(robotService.memStore.getCacheMeta(key2), undefined, "Cache for robot 2 should be deleted");
 
-    engine.destroy();
+    cleanup({ robotService, engine });
   });
 
   it("TC-INT-008: updating robot address should recreate memStore cache with new key", { timeout: 20000 }, async () => {
@@ -2030,16 +2040,16 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     await waitForFlowComplete(engine, flow.id, 15000);
     await sleep(500);
 
-    assert.ok(memStore.hasCache(key), "Cache should have value before address update");
+    assert.ok(robotService.memStore.hasCache(key), "Cache should have value before address update");
 
     await robotService.update(solution.id, robot.id, { address: "10.0.0.2:22" });
 
-    assert.equal(memStore.hasCache(key), false, "Cache value should be cleared after address update (new cache created without value)");
+    assert.equal(robotService.memStore.hasCache(key), false, "Cache value should be cleared after address update (new cache created without value)");
 
-    const meta = memStore.getCacheMeta(key);
+    const meta = robotService.memStore.getCacheMeta(key);
     assert.ok(meta, "Cache meta should still exist after address update (recreated with same key)");
 
-    engine.destroy();
+    cleanup({ robotService, engine });
   });
 
   it("TC-INT-009: SSE broadcast should fire when memStore cache is updated by task flow", { timeout: 20000 }, async () => {
@@ -2058,7 +2068,7 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     assert.ok(sse.hasEvent("task-flow-engine/task-updated"), "SSE should broadcast task-updated event");
     assert.ok(sse.hasEvent("task-flow-engine/flow-completed"), "SSE should broadcast flow-completed event");
 
-    engine.destroy();
+    cleanup({ robotService, engine });
   });
 
   it("TC-INT-010: memStore subscribe should receive update when cache is populated", { timeout: 20000 }, async () => {
@@ -2069,9 +2079,9 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     const key = buildRobotInfoKey(solution.id, robot.id);
 
     const received: unknown[] = [];
-    const unsubscribe = memStore.subscribe(key, (data: string) => {
+    const unsubscribe = robotService.sseManager.subscribe(key, (data: string) => {
       received.push(JSON.parse(data));
-    });
+    }, robotService.memStore);
 
     robotService.getRobotInfoList(solution.id);
 
@@ -2085,7 +2095,350 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     assert.ok((updateEvent as any).value, "Update event should contain robot basic info value");
 
     unsubscribe();
-    engine.destroy();
+    cleanup({ robotService, engine });
+  });
+});
+
+describe("MemStore Unit Tests", () => {
+  function createTestMemStore(handler?: CacheEventHandler): MemStore {
+    return new MemStore(handler);
+  }
+
+  function createTrackingHandler(): {
+    handler: CacheEventHandler;
+    createdCalls: CacheEntry[];
+    updateCalls: CacheEntry[];
+    valueChangedCalls: CacheEntry[];
+    deletedCalls: CacheEntry[];
+  } {
+    const createdCalls: CacheEntry[] = [];
+    const updateCalls: CacheEntry[] = [];
+    const valueChangedCalls: CacheEntry[] = [];
+    const deletedCalls: CacheEntry[] = [];
+    const handler: CacheEventHandler = {
+      onCreated(entry) { createdCalls.push(entry); },
+      onUpdate(entry) { updateCalls.push(entry); },
+      onValueChanged(entry) { valueChangedCalls.push(entry); },
+      onDeleted(entry) { deletedCalls.push(entry); },
+    };
+    return { handler, createdCalls, updateCalls, valueChangedCalls, deletedCalls };
+  }
+
+  it("TC-MS-001: createCache without initial value or properties", () => {
+    const { handler, createdCalls } = createTrackingHandler();
+    const store = createTestMemStore(handler);
+
+    store.createCache("k1", { ttlMs: 60000 });
+
+    assert.equal(store.hasCache("k1"), false);
+    assert.equal(store.getCache("k1"), undefined);
+    assert.equal(createdCalls.length, 1);
+    assert.equal(createdCalls[0].key, "k1");
+    assert.equal(createdCalls[0].hasValue, false);
+
+    const meta = store.getCacheMeta("k1");
+    assert.ok(meta);
+    assert.equal(meta.config.ttlMs, 60000);
+
+    store.destroy();
+  });
+
+  it("TC-MS-002: createCache with initial value and properties", () => {
+    const { handler, createdCalls } = createTrackingHandler();
+    const store = createTestMemStore(handler);
+
+    store.createCache("k2", { ttlMs: 60000 }, {
+      initialValue: { a: 1 },
+      properties: { solutionId: "sol1", robotId: "r1" },
+    });
+
+    assert.equal(store.hasCache("k2"), true);
+    assert.deepEqual(store.getCache("k2"), { a: 1 });
+    assert.equal(createdCalls.length, 1);
+    assert.deepEqual(createdCalls[0].value, { a: 1 });
+    assert.equal((createdCalls[0].properties as Record<string, unknown>).solutionId, "sol1");
+    assert.equal((createdCalls[0].properties as Record<string, unknown>).robotId, "r1");
+
+    store.destroy();
+  });
+
+  it("TC-MS-003: getCacheDetail returns value and properties", () => {
+    const store = createTestMemStore();
+    store.createCache("k2", { ttlMs: 60000 }, {
+      initialValue: { a: 1 },
+      properties: { solutionId: "sol1" },
+    });
+
+    const detail = store.getCacheDetail("k2");
+    assert.ok(detail);
+    assert.deepEqual(detail.value, { a: 1 });
+    assert.equal((detail.properties as Record<string, unknown>).solutionId, "sol1");
+
+    store.destroy();
+  });
+
+  it("TC-MS-005: context map is read-write at runtime", () => {
+    const store = createTestMemStore();
+    store.createCache("k1", { ttlMs: 60000 });
+
+    const detail1 = store.getCacheDetail("k1");
+    assert.ok(detail1);
+    detail1.context.lastFlowId = "flow-123";
+
+    const detail2 = store.getCacheDetail("k1");
+    assert.ok(detail2);
+    assert.equal(detail2.context.lastFlowId, "flow-123");
+
+    store.destroy();
+  });
+
+  it("TC-MS-006: cache miss triggers onUpdate", () => {
+    const { handler, updateCalls } = createTrackingHandler();
+    const store = createTestMemStore(handler);
+    store.createCache("k1", { ttlMs: 60000 });
+
+    updateCalls.length = 0;
+
+    const value = store.getCache("k1");
+    assert.equal(value, undefined);
+    assert.equal(updateCalls.length, 1);
+    assert.equal(updateCalls[0].key, "k1");
+
+    store.destroy();
+  });
+
+  it("TC-MS-007: triggerRefresh calls onUpdate", () => {
+    const { handler, updateCalls } = createTrackingHandler();
+    const store = createTestMemStore(handler);
+    store.createCache("k1", { ttlMs: 60000 });
+
+    updateCalls.length = 0;
+
+    store.triggerRefresh("k1");
+    assert.equal(updateCalls.length, 1);
+    assert.equal(updateCalls[0].key, "k1");
+
+    store.destroy();
+  });
+
+  it("TC-MS-008: updateCache triggers onValueChanged but not onUpdate", () => {
+    const { handler, createdCalls, updateCalls, valueChangedCalls, deletedCalls } = createTrackingHandler();
+    const store = createTestMemStore(handler);
+    store.createCache("k1", { ttlMs: 60000 });
+    createdCalls.length = 0;
+
+    store.updateCache("k1", { updated: true });
+
+    assert.deepEqual(store.getCache("k1"), { updated: true });
+    assert.equal(createdCalls.length, 0);
+    assert.equal(updateCalls.length, 0);
+    assert.equal(valueChangedCalls.length, 1);
+    assert.equal(valueChangedCalls[0].key, "k1");
+    assert.deepEqual(valueChangedCalls[0].value, { updated: true });
+    assert.equal(deletedCalls.length, 0);
+
+    store.destroy();
+  });
+
+  it("TC-MS-009: deleteCache triggers onDeleted", () => {
+    const { handler, deletedCalls } = createTrackingHandler();
+    const store = createTestMemStore(handler);
+    store.createCache("k1", { ttlMs: 60000 });
+
+    store.deleteCache("k1");
+
+    assert.equal(store.hasCache("k1"), false);
+    assert.equal(store.getCacheMeta("k1"), undefined);
+    assert.equal(deletedCalls.length, 1);
+    assert.equal(deletedCalls[0].key, "k1");
+
+    store.destroy();
+  });
+
+  it("TC-MS-010: deleteByPrefix batch deletes", () => {
+    const { handler, deletedCalls } = createTrackingHandler();
+    const store = createTestMemStore(handler);
+    store.createCache("robot:sol1/r1", { ttlMs: 60000 });
+    store.createCache("robot:sol1/r2", { ttlMs: 60000 });
+    store.createCache("robot:sol2/r3", { ttlMs: 60000 });
+
+    const deleted = store.deleteByPrefix("robot:sol1/");
+
+    assert.deepEqual(deleted, ["robot:sol1/r1", "robot:sol1/r2"]);
+    assert.equal(store.hasCache("robot:sol1/r1"), false);
+    assert.equal(store.hasCache("robot:sol1/r2"), false);
+    assert.equal(store.hasCache("robot:sol2/r3"), false);
+    assert.equal(deletedCalls.length, 2);
+
+    store.destroy();
+  });
+
+  it("TC-MS-011: listCaches with property filter", () => {
+    const store = createTestMemStore();
+    store.createCache("k1", { ttlMs: 60000 }, { properties: { solutionId: "sol1", robotId: "r1" } });
+    store.createCache("k2", { ttlMs: 60000 }, { properties: { solutionId: "sol1", robotId: "r2" } });
+    store.createCache("k3", { ttlMs: 60000 }, { properties: { solutionId: "sol2", robotId: "r3" } });
+
+    const sol1 = store.listCaches({ solutionId: "sol1" });
+    assert.equal(sol1.length, 2);
+
+    const sol1r1 = store.listCaches({ solutionId: "sol1", robotId: "r1" });
+    assert.equal(sol1r1.length, 1);
+    assert.equal(sol1r1[0].key, "k1");
+
+    const all = store.listCaches();
+    assert.equal(all.length, 3);
+
+    const empty = store.listCaches({ solutionId: "sol3" });
+    assert.equal(empty.length, 0);
+
+    store.destroy();
+  });
+
+  it("TC-MS-012: refresh debounce", () => {
+    const { handler, updateCalls } = createTrackingHandler();
+    const store = createTestMemStore(handler);
+    store.createCache("k1", { ttlMs: 60000 });
+
+    updateCalls.length = 0;
+
+    store.triggerRefresh("k1");
+    store.triggerRefresh("k1");
+    store.triggerRefresh("k1");
+
+    assert.equal(updateCalls.length, 1);
+
+    store.destroy();
+  });
+
+  it("TC-MS-013: updateConfig dynamically", () => {
+    const store = createTestMemStore();
+    store.createCache("k1", { ttlMs: 60000 });
+
+    store.updateConfig("k1", { ttlMs: 120000, cron: "*/60" });
+
+    const meta = store.getCacheMeta("k1");
+    assert.ok(meta);
+    assert.equal(meta.config.ttlMs, 120000);
+    assert.equal(meta.config.cron, "*/60");
+
+    store.destroy();
+  });
+
+  it("TC-MS-014: SSE subscribe receives update via MemStoreSseManager", () => {
+    const sseManager = new MemStoreSseManager();
+    const { handler } = createTrackingHandler();
+    const wrappedHandler: CacheEventHandler = {
+      onCreated: handler.onCreated,
+      onUpdate: handler.onUpdate,
+      onValueChanged(entry) {
+        sseManager.broadcast(entry.key, { key: entry.key, value: entry.value, type: "update" });
+      },
+      onDeleted(entry) {
+        sseManager.broadcast(entry.key, { key: entry.key, type: "deleted" });
+      },
+    };
+    const store = createTestMemStore(wrappedHandler);
+    store.createCache("k1", { ttlMs: 60000 });
+
+    const received: unknown[] = [];
+    const unsubscribe = sseManager.subscribe("k1", (data: string) => {
+      received.push(JSON.parse(data));
+    }, store);
+
+    store.updateCache("k1", { newVal: true });
+
+    const updateEvent = received.find((e: any) => e.type === "update");
+    assert.ok(updateEvent);
+    assert.equal((updateEvent as any).key, "k1");
+
+    unsubscribe();
+    store.destroy();
+  });
+
+  it("TC-MS-015: SSE subscribe immediately pushes current value", () => {
+    const sseManager = new MemStoreSseManager();
+    const { handler } = createTrackingHandler();
+    const wrappedHandler: CacheEventHandler = {
+      onCreated: handler.onCreated,
+      onUpdate: handler.onUpdate,
+      onValueChanged(entry) {
+        sseManager.broadcast(entry.key, { key: entry.key, value: entry.value, type: "update" });
+      },
+      onDeleted(entry) {
+        sseManager.broadcast(entry.key, { key: entry.key, type: "deleted" });
+      },
+    };
+    const store = createTestMemStore(wrappedHandler);
+    store.createCache("k1", { ttlMs: 60000 }, { initialValue: { x: 1 } });
+
+    const received: unknown[] = [];
+    const unsubscribe = sseManager.subscribe("k1", (data: string) => {
+      received.push(JSON.parse(data));
+    }, store);
+
+    const currentEvent = received.find((e: any) => e.type === "current");
+    assert.ok(currentEvent);
+
+    unsubscribe();
+    store.destroy();
+  });
+
+  it("TC-MS-031: multiple MemStore instances are independent", () => {
+    const store1 = createTestMemStore();
+    const store2 = createTestMemStore();
+
+    store1.createCache("k1", { ttlMs: 60000 }, { initialValue: "v1" });
+
+    assert.equal(store1.hasCache("k1"), true);
+    assert.equal(store2.hasCache("k1"), false);
+    assert.equal(store2.getCache("k1"), undefined);
+
+    store1.destroy();
+    store2.destroy();
+  });
+
+  it("TC-MS-032: no handler uses no-op implementation", () => {
+    const store = createTestMemStore();
+    store.createCache("k1", { ttlMs: 60000 });
+    store.triggerRefresh("k1");
+    store.deleteCache("k1");
+
+    store.destroy();
+  });
+
+  it("TC-MS-020: handler can inject context in events", () => {
+    const { handler, updateCalls } = createTrackingHandler();
+    const store = createTestMemStore(handler);
+    store.createCache("k1", { ttlMs: 60000 }, {
+      properties: { taskFlowSpec: { type: "test" } },
+    });
+
+    const originalOnUpdate = handler.onUpdate.bind(handler);
+    handler.onUpdate = (entry: CacheEntry) => {
+      entry.context.flowId = "flow-abc";
+      originalOnUpdate(entry);
+    };
+
+    store.triggerRefresh("k1");
+
+    assert.equal(updateCalls.length, 1);
+    assert.equal(updateCalls[0].context.flowId, "flow-abc");
+
+    store.destroy();
+  });
+
+  it("properties are frozen after creation", () => {
+    const store = createTestMemStore();
+    store.createCache("k1", { ttlMs: 60000 }, {
+      properties: { solutionId: "sol1" },
+    });
+
+    const detail = store.getCacheDetail("k1");
+    assert.ok(detail);
+    assert.ok(Object.isFrozen(detail.properties));
+
+    store.destroy();
   });
 });
 

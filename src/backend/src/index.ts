@@ -19,7 +19,7 @@ import { TaskFlowEngine, ResolverRegistry, SseManager, setTaskFlowEngine } from 
 import type { TaskResolverClass } from "flowed";
 import { SshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask } from "./tasks/index.js";
 import { streamSSE } from "hono/streaming";
-import { memStore } from "./memStore/index.js";
+import { setGlobalMemStore } from "./memStore/index.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
 
 function parseArgs(): { dataDir: string; port: number; mock: boolean } {
@@ -88,6 +88,9 @@ const robotService = new RobotService(objectStore, {
   sshPassword: SSH_PASSWORD,
 });
 
+const memStoreInstance = robotService.memStore;
+setGlobalMemStore(memStoreInstance);
+
 solutionService.onSolutionRemove((solutionId: string) => {
   robotService.removeSolutionCache(solutionId);
 });
@@ -105,7 +108,7 @@ app.route("/api/objects", createObjectStoreRoutes(objectStore, dataDir));
 app.route("/api/artifacts", createArtifactRoutes(artifactService));
 app.route("/api/solutions", createSolutionRoutes(solutionService));
 app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
-app.route("/api/memstore", createMemStoreRoutes());
+app.route("/api/memstore", createMemStoreRoutes(memStoreInstance));
 
 app.get("/api/sse", (c) => {
   const key = c.req.query("key");
@@ -113,9 +116,9 @@ app.get("/api/sse", (c) => {
     return c.json({ error: "Missing key query parameter" }, 400);
   }
   return streamSSE(c, async (stream) => {
-    const unsubscribe = memStore.subscribe(key, (data) => {
+    const unsubscribe = robotService.sseManager.subscribe(key, (data) => {
       stream.writeSSE({ data }).catch(() => unsubscribe());
-    });
+    }, memStoreInstance);
 
     while (!stream.aborted) {
       await stream.sleep(5000);

@@ -44,27 +44,84 @@ export async function deleteRobot(solutionId: string, robotId: string): Promise<
   await del<{ ok: boolean }>(`/solutions/${solutionId}/robots/${robotId}`);
 }
 
-export async function getMemStoreValue(key: string): Promise<unknown | null> {
+export interface MemStoreCacheDetail {
+  key: string;
+  value: unknown;
+  properties: Record<string, unknown>;
+}
+
+export async function getMemStoreValue(key: string): Promise<MemStoreCacheDetail | null> {
   try {
-    const result = await get<{ key: string; value: unknown }>(`/memstore/cache?key=${encodeURIComponent(key)}`);
-    return result.value;
+    const result = await get<MemStoreCacheDetail>(`/memstore/cache?key=${encodeURIComponent(key)}`);
+    return result;
   } catch {
     return null;
   }
 }
 
-export async function refreshMemStoreKey(key: string): Promise<unknown | null> {
+export async function getMemStoreCacheDetail(key: string): Promise<{
+  key: string;
+  value: unknown;
+  hasValue: boolean;
+  properties: Record<string, unknown>;
+  context: Record<string, unknown>;
+} | null> {
   try {
-    const result = await post<{ success: boolean; key: string; value: unknown }>(`/memstore/cache/refresh?key=${encodeURIComponent(key)}`);
-    return result.value;
+    const result = await get<{
+      key: string;
+      value: unknown;
+      hasValue: boolean;
+      properties: Record<string, unknown>;
+      context: Record<string, unknown>;
+    }>(`/memstore/cache/detail?key=${encodeURIComponent(key)}`);
+    return result;
   } catch {
     return null;
+  }
+}
+
+export async function memStoreCacheExists(key: string): Promise<boolean> {
+  try {
+    const result = await get<{ key: string; exists: boolean }>(`/memstore/cache/exists?key=${encodeURIComponent(key)}`);
+    return result.exists;
+  } catch {
+    return false;
+  }
+}
+
+export async function refreshMemStoreKey(key: string): Promise<boolean> {
+  try {
+    await post<{ success: boolean; key: string }>(`/memstore/cache/refresh?key=${encodeURIComponent(key)}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function queryMemStoreCaches(properties?: Record<string, unknown>): Promise<{
+  key: string;
+  value: unknown;
+  hasValue: boolean;
+  properties: Record<string, unknown>;
+}[]> {
+  try {
+    const result = await post<{
+      caches: {
+        key: string;
+        value: unknown;
+        hasValue: boolean;
+        properties: Record<string, unknown>;
+      }[];
+    }>("/memstore/caches/query", { properties });
+    return result.caches;
+  } catch {
+    return [];
   }
 }
 
 export function subscribeMemStoreKey(
   key: string,
-  onData: (data: { key: string; value: unknown; type: string }) => void
+  onData: (data: { key: string; value: unknown; type: string; properties?: Record<string, unknown> }) => void
 ): () => void {
   const eventSource = new EventSource(`/api/sse?key=${encodeURIComponent(key)}`);
 
