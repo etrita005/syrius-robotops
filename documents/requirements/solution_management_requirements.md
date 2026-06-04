@@ -135,14 +135,10 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
   "properties": {
     "id": { "type": "string", "format": "uuid" },
     "type": { "type": "string", "enum": ["internal", "user"] },
-    "solutionId": { "type": "string", "description": "关联的解决方案 ID" },
-    "robotIds": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "关联的机器人 ID 列表"
+    "input": {
+      "type": "object",
+      "description": "任务输入参数。其中 solutionId / robotIds / taskName / artifactId 等元数据也存储于此"
     },
-    "taskName": { "type": "string", "description": "任务显示名称，例如 Upgrade BUP、Upgrade Movebase" },
-    "input": { "type": "object", "description": "任务输入参数，不同任务类型参数结构不同" },
     "expectedResults": { "type": "array", "items": { "type": "string" } },
     "dag": { "type": "object", "description": "Flowed DAG 规范" },
     "state": { "type": "string", "enum": ["PENDING", "RUNNING", "PAUSED", "COMPLETED", "FAILED", "STOPPED"] },
@@ -157,10 +153,28 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 }
 ```
 
+> **设计说明**：`solutionId`、`robotIds`、`taskName` 等业务元数据不扩展为 `FlowRecord` 的顶层字段，而是通过 `input` ValueMap 传递。`TaskFlowEngine` 保持为通用执行引擎，不感知业务层 solution/robot 概念。业务过滤和展示由上层服务或前端基于 `input` 中的元数据完成。
+
 **任务输入参数示例**：
 
-- **升级 BUP**：`{ "artifactId": "artifact-bup-001" }`
-- **升级 Movebase**：`{ "artifactId": "artifact-movebase-001" }`
+- **升级 BUP**：
+  ```json
+  {
+    "solutionId": "customer-a-site-3f2a",
+    "robotIds": ["robot-001", "robot-002"],
+    "taskName": "Upgrade BUP",
+    "artifactId": "artifact-bup-001"
+  }
+  ```
+- **升级 Movebase**：
+  ```json
+  {
+    "solutionId": "customer-a-site-3f2a",
+    "robotIds": ["robot-003"],
+    "taskName": "Upgrade Movebase",
+    "artifactId": "artifact-movebase-001"
+  }
+  ```
 
 ### 5.3 机器人存储数据 Schema
 
@@ -384,23 +398,27 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 - 不同任务类型需要不同的输入参数：
   - **Upgrade BUP**：用户需选择一个已在 Artifacts Manage 模块中添加的资源文件（`artifactId`）。
   - **Upgrade Movebase**：用户需选择一个已在 Artifacts Manage 模块中添加的资源文件（`artifactId`）。
-- 系统通过 `POST /api/solutions/{solutionId}/tasks` 创建任务，后端调用 `TaskFlowEngine.createFlow("user", dag, input)`。
-- 创建任务时，`solutionId`、`robotIds`、`taskName` 必须作为元数据写入 Flow 记录。
+- 系统通过 `POST /api/solutions/{solutionId}/tasks` 创建任务，后端组装 DAG 并调用 `TaskFlowEngine.createFlow("user", dag, input)`。
+- `input` 中必须包含以下元数据字段：
+  - `solutionId`：当前解决方案 ID。
+  - `robotIds`：所选机器人 ID 数组。
+  - `taskName`：任务显示名称（如 `Upgrade BUP`）。
+  - `artifactId`：所选制品 ID（任务业务参数）。
 - 创建成功后，任务出现在当前解决方案的 Tasks 列表中。
 
 **FR-SOL-029**：系统应展示当前解决方案下正在执行的 tasks 列表。
 
-- 系统通过 `GET /api/solutions/{solutionId}/tasks` 获取任务列表，后端调用 `TaskFlowEngine.listFlows("user")` 并按 `solutionId` 过滤。
-- 列表仅展示 `type = "user"` 且 `solutionId` 匹配当前解决方案的任务。
+- 系统通过 `GET /api/solutions/{solutionId}/tasks` 获取任务列表，后端调用 `TaskFlowEngine.listFlows("user", { solutionId })`，利用 `filterParams` 对 `input.solutionId` 做字符串精确匹配过滤。
+- 列表仅展示 `type = "user"` 且 `input.solutionId` 匹配当前解决方案的任务。
+- `robotIds` 不过滤，由前端从 `input.robotIds` 读取并关联当前解决方案的机器人缓存解析别名。
 - 列表展示字段（核心信息）：
-  - `robotAliases`：关联机器人的别名列表（从当前解决方案机器人缓存中解析）。
-  - `taskName`：任务显示名称（如 Upgrade BUP、Upgrade Movebase）。
+  - `robotAliases`：关联机器人的别名列表（前端从 `input.robotIds` 关联当前解决方案机器人缓存解析）。
+  - `taskName`：任务显示名称（前端从 `input.taskName` 读取）。
   - `state`：任务执行状态（PENDING / RUNNING / PAUSED / COMPLETED / FAILED / STOPPED）。
-  - `resultSummary`：任务执行结果汇总（成功/失败/部分成功，基于 `taskStates` 和 `taskResults` 计算）。
-  - `elapsedTime`：任务已执行时长（从 `startedAt` 到当前时间或 `finishedAt` 的差值）。
-- 列表支持搜索：按 `robotAliases`、`taskName` 子串匹配过滤。
-- 列表支持排序：按 `createdAt`、`state`、`taskName`、`elapsedTime` 排序。
-- 列表支持分页显示，默认每页 10 条，可选 10/25/50。
+  - `resultSummary`：任务执行结果汇总（前端基于 `taskStates` 计算，例如 `"2 completed, 1 failed"` 或 `"In progress"`）。
+  - `elapsedTime`：任务已执行时长（前端从 `startedAt` 到当前时间或 `finishedAt` 计算）。
+- 搜索、排序、分页均由前端完成：前端获取当前解决方案的全量 `user` 任务列表后，在内存中按 `robotAliases`、`taskName` 子串搜索，按 `createdAt`、`state`、`taskName`、`elapsedTime` 排序，并按 10/25/50 条每页进行内存分页。因单解决方案下并行 `user` 任务量有限，此方案可简化后端实现。
+- 后端 `TaskFlowEngine.listFlows()` 扩展支持可选的分页参数接口（见 FR-SOL-032），当前阶段前端不传 `pagination`，由后端返回全量数组。
 - 空状态时提示用户创建任务。
 
 **FR-SOL-030**：系统应支持对任务进行暂停、继续、停止和删除操作。
@@ -433,15 +451,13 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 
 **FR-SOL-032**：TaskFlowEngine 接口增强需求。
 
-- `FlowRecord` 和 `FlowSummary` 必须扩展以下字段：
-  - `solutionId: string`：任务所属解决方案 ID。
-  - `robotIds: string[]`：任务关联的机器人 ID 列表。
-  - `taskName: string`：任务显示名称。
-  - `startedAt?: string`：任务开始执行时间（ISO 8601）。
-- `listFlows` 方法必须支持按 `solutionId` 过滤：
-  - 签名更新为 `listFlows(filter?: { type?: FlowType; solutionId?: string }): FlowSummary[]`。
-- `createFlow` 方法必须接受并保存 `solutionId`、`robotIds`、`taskName` 元数据。
-- `loadPersistedFlows` 方法必须恢复 `PAUSED` 状态的任务。
+- `FlowRecord` 和 `FlowSummary` 扩展字段：
+  - `startedAt?: string`：任务开始执行时间（ISO 8601）。在 `startFlow()` 被调用时自动赋值。
+- `listFlows` 方法增强：
+  - 保持现有 `filterType` 和 `filterParams`（基于 `input[key]` 精确匹配）过滤能力，`solutionId` 通过 `filterParams` 过滤即可满足需求。
+  - 新增可选分页参数：`listFlows(filterType?, filterParams?, pagination?: { page: number; pageSize: number }): { items: FlowSummary[]; total: number }`。若未传 `pagination`，返回全量数组以保持向后兼容。
+- `createFlow` 方法签名保持不变。`solutionId`、`robotIds`、`taskName` 等业务元数据通过 `input` ValueMap 传递，由调用方组装。
+- `loadPersistedFlows` 恢复 `PAUSED` 状态任务：当前实现已满足。恢复时通过 `new Flow(dag, serializedRunStatus)` 重建 Flow 实例并放入内存，保持 `PAUSED` 状态，等待用户后续调用 `resumeFlow()`。
 
 ### 6.12 机器人管理（Robots 子界面）
 
@@ -758,9 +774,9 @@ graph LR
 
 **UI-TASK-001**：打开解决方案后，左侧导航栏的 "Tasks" 入口点击进入 Tasks 子界面。
 
-**UI-TASK-002**：Tasks 子界面以数据表格形式展示任务列表，列包括：复选框（批量选择）、`robotAliases`（关联机器人别名，多个时以逗号分隔或折叠显示）、`taskName`（任务名称）、`state`（状态标签，带颜色区分）、`resultSummary`（结果汇总）、`elapsedTime`（已执行时长，格式为 `HH:MM:SS`）、操作按钮（Pause / Resume / Stop / Delete）。
+**UI-TASK-002**：Tasks 子界面以数据表格形式展示任务列表，列包括：复选框（批量选择）、`robotAliases`（关联机器人别名，前端从 `input.robotIds` 关联当前解决方案机器人缓存解析，多个时以逗号分隔或折叠显示）、`taskName`（任务名称，前端从 `input.taskName` 读取）、`state`（状态标签，带颜色区分）、`resultSummary`（结果汇总，前端基于 `taskStates` 实时计算，例如 `"2 completed, 1 failed"` 或 `"In progress"`）、`elapsedTime`（已执行时长，前端基于 `startedAt` 到当前时间或 `finishedAt` 计算，格式为 `HH:MM:SS`）、操作按钮（Pause / Resume / Stop / Delete）。
 
-**UI-TASK-003**：表格上方应提供搜索框（按 robotAliases / taskName 过滤）、"Create Task" 按钮、分页控制器（每页 10/25/50 条）。当用户通过行首复选框选中一个或多个任务后，表格上方显示批量操作工具栏，提供 Batch Pause、Batch Resume、Batch Stop、Batch Delete 按钮，并展示已选任务数量。
+**UI-TASK-003**：表格上方应提供搜索框（按 robotAliases / taskName 前端子串过滤）、"Create Task" 按钮、分页控制器（每页 10/25/50 条，前端内存分页）。当用户通过行首复选框选中一个或多个任务后，表格上方显示批量操作工具栏，提供 Batch Pause、Batch Resume、Batch Stop、Batch Delete 按钮，并展示已选任务数量。
 
 **UI-TASK-003a**：Tasks 子界面应包含面包屑导航，显示 "Solutions > {Solution Name} > Tasks"。
 

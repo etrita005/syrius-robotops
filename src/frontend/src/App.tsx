@@ -21,6 +21,7 @@ import { useArtifacts } from "./hooks/useArtifacts.js";
 import { RecentSolutionsDropdown } from "./components/common/RecentSolutionsDropdown.js";
 import { useRecentSolutions } from "./hooks/useRecentSolutions.js";
 import RobotsView from "./components/robots/RobotsView.js";
+import TasksView from "./components/tasks/TasksView.js";
 
 type TopView = "solutions" | "artifacts";
 type SolutionSubView = "robots" | "tasks";
@@ -106,12 +107,10 @@ export default function App() {
             />
           )}
           {subView === "tasks" && (
-            <div style={{ padding: "2rem" }}>
-              <h3 style={{ marginBottom: "1rem" }}>Tasks</h3>
-              <p style={{ color: "#525252" }}>
-                This feature is not yet implemented.
-              </p>
-            </div>
+            <TasksView
+              solutionId={activeId}
+              onBackToSolutions={() => setInWorkspace(false)}
+            />
           )}
         </div>
       </div>

@@ -28,6 +28,7 @@ export interface FlowRecord {
   results?: ValueMap;
   serializedRunStatus?: SerializedFlowRunStatus;
   createdAt: string;
+  startedAt?: string;
   finishedAt?: string;
 }
 
@@ -41,6 +42,7 @@ export interface FlowSummary {
   input?: ValueMap;
   expectedResults?: string[];
   createdAt: string;
+  startedAt?: string;
   finishedAt?: string;
 }
 
@@ -234,6 +236,7 @@ export class TaskFlowEngine {
     if (!record || !flow) return;
 
     record.state = "RUNNING";
+    record.startedAt = nowISO();
     this.saveFlow(record).catch(() => {});
     this.emitFlowUpdated(record);
 
@@ -591,6 +594,7 @@ export class TaskFlowEngine {
       input: record.input,
       expectedResults: record.expectedResults,
       createdAt: record.createdAt,
+      startedAt: record.startedAt,
       finishedAt: record.finishedAt,
     };
   }
