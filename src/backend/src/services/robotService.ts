@@ -12,9 +12,10 @@ import {
   RobotAddressExistsError,
 } from "../errors/appErrors.js";
 import type { RobotBasicInfo } from "../tasks/getRobotBasicInfoTask.js";
-import { MemStore, MemStoreSseManager } from "../memStore/index.js";
+import { MemStore } from "../memStore/index.js";
 import type { CacheEntry, CacheEventHandler, IMemStore } from "../memStore/index.js";
 import { TaskFlowEngine } from "./taskFlowEngine/index.js";
+import type { UnifiedSseManager } from "./sseManager.js";
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
 const DEFAULT_SSH_USERNAME = "root";
@@ -79,12 +80,12 @@ export interface RobotServiceOptions {
 }
 
 export class RobotCacheEventHandler implements CacheEventHandler {
-  private sseManager: MemStoreSseManager;
+  private sseManager: UnifiedSseManager;
   private engine: TaskFlowEngine;
   private getRobotAddress: (solutionId: string, robotId: string) => Promise<{ address: string; port: number } | null>;
 
   constructor(
-    sseManager: MemStoreSseManager,
+    sseManager: UnifiedSseManager,
     engine: TaskFlowEngine,
     getRobotAddress: (solutionId: string, robotId: string) => Promise<{ address: string; port: number } | null>
   ) {
@@ -102,11 +103,25 @@ export class RobotCacheEventHandler implements CacheEventHandler {
   }
 
   onValueChanged(_store: IMemStore, entry: CacheEntry): void {
-    this.sseManager.broadcast(entry.key, { key: entry.key, value: entry.value, type: "update" });
+    this.emitEntryUpdated(entry);
   }
 
   onDeleted(_store: IMemStore, entry: CacheEntry): void {
-    this.sseManager.broadcast(entry.key, { key: entry.key, type: "deleted" });
+    this.emitEntryDeleted(entry);
+  }
+
+  private emitEntryUpdated(entry: CacheEntry): void {
+    this.sseManager.broadcast("memstore/entry-updated", {
+      key: entry.key,
+      value: entry.value,
+      properties: entry.properties,
+    });
+  }
+
+  private emitEntryDeleted(entry: CacheEntry): void {
+    this.sseManager.broadcast("memstore/entry-deleted", {
+      key: entry.key,
+    });
   }
 
   private executeRefreshFlow(store: IMemStore, entry: CacheEntry): void {
@@ -183,12 +198,12 @@ export class RobotService {
   private sshUsername: string;
   private sshPassword: string;
   public readonly memStore: MemStore;
-  public readonly sseManager: MemStoreSseManager;
+  public readonly sseManager: UnifiedSseManager;
 
   constructor(
     obs: ObjectStore,
     engine: TaskFlowEngine,
-    sseManager: MemStoreSseManager,
+    sseManager: UnifiedSseManager,
     memStore: MemStore,
     options?: RobotServiceOptions
   ) {

@@ -2,4 +2,3 @@ export type { CacheConfig, CacheValuePayload, CacheEntry, CacheEventHandler, Cre
 export { noopHandler } from './types.js';
 export { MemStore } from './memStore.js';
 export { Scheduler } from './scheduler.js';
-export { MemStoreSseManager } from './sseManager.js';

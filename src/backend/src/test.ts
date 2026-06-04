@@ -6,10 +6,10 @@ import type { FlowSpec, ValueMap, ITaskResolver, TaskResolverClass } from "flowe
 import { TaskFlowEngine } from "./services/taskFlowEngine/taskFlowEngine.js";
 import type { FlowRecord, FlowSummary, FlowType, TaskState } from "./services/taskFlowEngine/taskFlowEngine.js";
 import { ResolverRegistry } from "./services/taskFlowEngine/resolverRegistry.js";
-import { SseManager } from "./services/taskFlowEngine/sseManager.js";
+import { UnifiedSseManager } from "./services/sseManager.js";
 import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import type { ObjectStoreResource } from "./services/objectStore.js";
-import { MemStore, MemStoreSseManager } from "./memStore/index.js";
+import { MemStore } from "./memStore/index.js";
 import type { CacheEventHandler, CacheEntry } from "./memStore/index.js";
 import { buildRobotInfoKey } from "./services/robotService.js";
 import { MockGetRobotBasicInfoTask } from "./tasks/mockGetRobotBasicInfoTask.js";
@@ -163,12 +163,13 @@ class SpySseManager {
 
   removeClient(_id: string): void {}
 
-  broadcast(event: string, data: unknown): void {
-    const enriched =
-      typeof data === "object" && data !== null && !Array.isArray(data)
-        ? { ...(data as Record<string, unknown>), timestamp: new Date().toISOString() }
-        : data;
-    this.events.push({ event, data: enriched });
+  broadcast<T>(event: string, payload: T): void {
+    const envelope = { event, payload, timestamp: new Date().toISOString() };
+    this.events.push({ event, data: envelope });
+  }
+
+  getClientCount(): number {
+    return 0;
   }
 
   clear(): void {
@@ -231,7 +232,7 @@ const dependentDag: FlowSpec = {
 
 function createEngine(ttlMs?: number, cleanupMs?: number) {
   const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
-  const sse = new SpySseManager() as unknown as import("./services/taskFlowEngine/sseManager.js").SseManager;
+  const sse = new SpySseManager() as unknown as UnifiedSseManager;
   const registry = new ResolverRegistry();
   registry.register("MockTask1", MockTask1);
   registry.register("MockTask2", MockTask2);
@@ -268,9 +269,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function createHonoApp(engine: TaskFlowEngine, sse: SseManager): Hono {
+function createHonoApp(engine: TaskFlowEngine): Hono {
   const app = new Hono();
-  app.route("/api/flows", createTaskFlowRoutes(engine, sse));
+  app.route("/api/flows", createTaskFlowRoutes(engine));
   return app;
 }
 
@@ -656,9 +657,9 @@ describe("TaskFlowEngine - SSE Events", () => {
 
     const event = sse.findEvent("task-flow-engine/flow-created");
     assert.ok(event);
-    const data = event.data as Record<string, unknown>;
-    assert.equal(data.id, summary.id);
-    assert.ok(data.timestamp);
+    const envelope = event.data as { event: string; payload: Record<string, unknown>; timestamp: string };
+    assert.equal(envelope.payload.id, summary.id);
+    assert.ok(envelope.timestamp);
     engine.destroy();
   });
 
@@ -681,11 +682,11 @@ describe("TaskFlowEngine - SSE Events", () => {
     const taskEvents = sse.events.filter((e) => e.event === "task-flow-engine/task-updated");
     assert.ok(taskEvents.length >= 2);
 
-    const startedEvent = taskEvents.find((e) => (e.data as any).state === "RUNNING");
+    const startedEvent = taskEvents.find((e) => (e.data as { payload: { state: string } }).payload.state === "RUNNING");
     assert.ok(startedEvent);
-    assert.equal((startedEvent.data as any).taskName, "task1");
+    assert.equal((startedEvent!.data as { payload: { taskName: string } }).payload.taskName, "task1");
 
-    const completedEvent = taskEvents.find((e) => (e.data as any).state === "COMPLETED");
+    const completedEvent = taskEvents.find((e) => (e.data as { payload: { state: string } }).payload.state === "COMPLETED");
     assert.ok(completedEvent);
     engine.destroy();
   });
@@ -697,9 +698,9 @@ describe("TaskFlowEngine - SSE Events", () => {
 
     const resultEvent = sse.findEvent("task-flow-engine/task-result");
     if (resultEvent) {
-      const data = resultEvent.data as Record<string, unknown>;
-      assert.equal(data.state, "COMPLETED");
-      assert.ok(data.result);
+      const envelope = resultEvent.data as { event: string; payload: Record<string, unknown>; timestamp: string };
+      assert.equal(envelope.payload.state, "COMPLETED");
+      assert.ok(envelope.payload.result);
     }
     engine.destroy();
   });
@@ -711,11 +712,11 @@ describe("TaskFlowEngine - SSE Events", () => {
 
     const event = sse.findEvent("task-flow-engine/flow-completed");
     assert.ok(event);
-    const data = event.data as Record<string, unknown>;
-    assert.equal(data.flowId, summary.id);
-    assert.equal(data.state, "COMPLETED");
-    assert.ok(data.finishedAt);
-    assert.ok(data.timestamp);
+    const envelope = event.data as { event: string; payload: Record<string, unknown>; timestamp: string };
+    assert.equal(envelope.payload.flowId, summary.id);
+    assert.equal(envelope.payload.state, "COMPLETED");
+    assert.ok(envelope.payload.finishedAt);
+    assert.ok(envelope.timestamp);
     engine.destroy();
   });
 
@@ -728,8 +729,8 @@ describe("TaskFlowEngine - SSE Events", () => {
     await engine.deleteFlow(summary.id);
     assert.ok(sse.hasEvent("task-flow-engine/flow-removed"));
     const event = sse.findEvent("task-flow-engine/flow-removed");
-    const data = event!.data as Record<string, unknown>;
-    assert.equal(data.flowId, summary.id);
+    const envelope = event!.data as { event: string; payload: Record<string, unknown>; timestamp: string };
+    assert.equal(envelope.payload.flowId, summary.id);
     engine.destroy();
   });
 
@@ -738,9 +739,9 @@ describe("TaskFlowEngine - SSE Events", () => {
     const summary = await engine.createFlow("internal", singleTaskDag);
 
     for (const e of sse.events) {
-      const data = e.data as Record<string, unknown>;
-      assert.ok(data.timestamp);
-      assert.ok(typeof data.timestamp === "string");
+      const envelope = e.data as { timestamp: string };
+      assert.ok(envelope.timestamp);
+      assert.ok(typeof envelope.timestamp === "string");
     }
     engine.destroy();
   });
@@ -810,7 +811,7 @@ describe("TaskFlowEngine - Persistence and Recovery", () => {
     registry2.register("MockFailingTask", MockFailingTask);
     const engine2 = new TaskFlowEngine(
       objStore as unknown as import("./services/objectStore.js").ObjectStore,
-      sse as unknown as SseManager,
+      sse as unknown as UnifiedSseManager,
       registry2
     );
     await engine2.loadPersistedFlows();
@@ -841,7 +842,7 @@ describe("TaskFlowEngine - Persistence and Recovery", () => {
     registry2.register("MockFailingTask", MockFailingTask);
     const engine2 = new TaskFlowEngine(
       objStore as unknown as import("./services/objectStore.js").ObjectStore,
-      sse as unknown as SseManager,
+      sse as unknown as UnifiedSseManager,
       registry2
     );
     await engine2.loadPersistedFlows();
@@ -864,7 +865,7 @@ describe("TaskFlowEngine - Persistence and Recovery", () => {
     registry2.register("MockFailingTask", MockFailingTask);
     const engine2 = new TaskFlowEngine(
       objStore as unknown as import("./services/objectStore.js").ObjectStore,
-      sse as unknown as SseManager,
+      sse as unknown as UnifiedSseManager,
       registry2
     );
     await engine2.loadPersistedFlows();
@@ -928,19 +929,21 @@ describe("ResolverRegistry", () => {
   });
 });
 
-describe("SseManager", () => {
+describe("UnifiedSseManager", () => {
   it("should add and remove clients", () => {
-    const mgr = new SseManager();
+    const mgr = new UnifiedSseManager();
     const controller = {} as ReadableStreamDefaultController;
 
     mgr.addClient({ id: "c1", controller });
     mgr.addClient({ id: "c2", controller });
+    assert.equal(mgr.getClientCount(), 2);
 
     mgr.removeClient("c1");
+    assert.equal(mgr.getClientCount(), 1);
   });
 
   it("should broadcast events to clients", () => {
-    const mgr = new SseManager();
+    const mgr = new UnifiedSseManager();
     const enqueued: string[] = [];
     const controller = {
       enqueue: (data: Uint8Array) => {
@@ -955,6 +958,196 @@ describe("SseManager", () => {
     assert.ok(enqueued[0].includes("event: test-event"));
     assert.ok(enqueued[0].includes("key"));
     assert.ok(enqueued[0].includes("timestamp"));
+  });
+});
+
+function createMockController(options?: { failAfter?: number }): ReadableStreamDefaultController & { enqueued: Uint8Array[]; failCount: number } {
+  const enqueued: Uint8Array[] = [];
+  let failCount = 0;
+  return {
+    enqueued,
+    failCount,
+    enqueue(chunk: Uint8Array) {
+      if (options?.failAfter !== undefined && enqueued.length >= options.failAfter) {
+        failCount++;
+        throw new Error("Simulated write failure");
+      }
+      enqueued.push(chunk);
+    },
+  } as unknown as ReadableStreamDefaultController & { enqueued: Uint8Array[]; failCount: number };
+}
+
+describe("UnifiedSseManager - Unit Tests", () => {
+  it("TC-SSE-001: addClient registers a new client", () => {
+    const mgr = new UnifiedSseManager();
+    const controller = createMockController();
+    mgr.addClient({ id: "client-1", controller });
+    assert.equal(mgr.getClientCount(), 1);
+  });
+
+  it("TC-SSE-002: removeClient unregisters a client by ID", () => {
+    const mgr = new UnifiedSseManager();
+    const controller = createMockController();
+    mgr.addClient({ id: "client-1", controller });
+    mgr.removeClient("client-1");
+    assert.equal(mgr.getClientCount(), 0);
+  });
+
+  it("TC-SSE-003: removeClient is idempotent for non-existent ID", () => {
+    const mgr = new UnifiedSseManager();
+    mgr.removeClient("non-existent");
+    assert.equal(mgr.getClientCount(), 0);
+  });
+
+  it("TC-SSE-004: broadcast sends event to all connected clients", () => {
+    const mgr = new UnifiedSseManager();
+    const c1 = createMockController();
+    const c2 = createMockController();
+    mgr.addClient({ id: "client-1", controller: c1 });
+    mgr.addClient({ id: "client-2", controller: c2 });
+
+    mgr.broadcast("test/event", { foo: "bar" });
+
+    assert.equal(c1.enqueued.length, 1);
+    assert.equal(c2.enqueued.length, 1);
+  });
+
+  it("TC-SSE-005: broadcast includes timestamp in envelope", () => {
+    const mgr = new UnifiedSseManager();
+    const c = createMockController();
+    mgr.addClient({ id: "client-1", controller: c });
+
+    mgr.broadcast("test/event", { foo: "bar" });
+
+    const text = new TextDecoder().decode(c.enqueued[0]);
+    const dataLine = text.split("\n").find((l) => l.startsWith("data: "));
+    assert.ok(dataLine);
+    const json = JSON.parse(dataLine!.slice(6));
+    assert.ok(json.timestamp);
+    assert.ok(new Date(json.timestamp).getTime() > 0);
+  });
+
+  it("TC-SSE-006: broadcast uses correct SSE protocol format", () => {
+    const mgr = new UnifiedSseManager();
+    const c = createMockController();
+    mgr.addClient({ id: "client-1", controller: c });
+
+    mgr.broadcast("test/event", { foo: "bar" });
+
+    const text = new TextDecoder().decode(c.enqueued[0]);
+    assert.match(text, /^event: test\/event\ndata: /);
+    assert.match(text, /\n\n$/);
+  });
+
+  it("TC-SSE-007: broadcast removes client on write failure and continues", () => {
+    const mgr = new UnifiedSseManager();
+    const cGood = createMockController();
+    const cFail = createMockController({ failAfter: 0 });
+    mgr.addClient({ id: "client-good", controller: cGood });
+    mgr.addClient({ id: "client-fail", controller: cFail });
+
+    mgr.broadcast("test/event", { foo: "bar" });
+
+    assert.equal(cGood.enqueued.length, 1);
+    assert.equal(mgr.getClientCount(), 1);
+  });
+
+  it("TC-SSE-008: broadcast with empty event name throws", () => {
+    const mgr = new UnifiedSseManager();
+    const c = createMockController();
+    mgr.addClient({ id: "client-1", controller: c });
+
+    assert.throws(() => mgr.broadcast("", {}), /Event name must not be empty/);
+  });
+
+  it("TC-SSE-010: getClientCount reflects accurate state", () => {
+    const mgr = new UnifiedSseManager();
+    assert.equal(mgr.getClientCount(), 0);
+
+    const c1 = createMockController();
+    const c2 = createMockController();
+    const c3 = createMockController();
+    mgr.addClient({ id: "c1", controller: c1 });
+    mgr.addClient({ id: "c2", controller: c2 });
+    mgr.addClient({ id: "c3", controller: c3 });
+    assert.equal(mgr.getClientCount(), 3);
+
+    mgr.removeClient("c2");
+    assert.equal(mgr.getClientCount(), 2);
+  });
+
+  it("TC-SSE-024: single client failure does not affect others during broadcast", () => {
+    const mgr = new UnifiedSseManager();
+    const cA = createMockController();
+    const cB = createMockController({ failAfter: 0 });
+    const cC = createMockController();
+    mgr.addClient({ id: "A", controller: cA });
+    mgr.addClient({ id: "B", controller: cB });
+    mgr.addClient({ id: "C", controller: cC });
+
+    mgr.broadcast("test", {});
+
+    assert.equal(cA.enqueued.length, 1);
+    assert.equal(cC.enqueued.length, 1);
+    assert.equal(mgr.getClientCount(), 2);
+  });
+
+  it("TC-SSE-025: broadcast never throws with all failing clients", () => {
+    const mgr = new UnifiedSseManager();
+    const c1 = createMockController({ failAfter: 0 });
+    const c2 = createMockController({ failAfter: 0 });
+    mgr.addClient({ id: "c1", controller: c1 });
+    mgr.addClient({ id: "c2", controller: c2 });
+
+    mgr.broadcast("test", {});
+
+    assert.equal(mgr.getClientCount(), 0);
+  });
+
+  it("TC-SSE-026: broadcast with empty string event name throws", () => {
+    const mgr = new UnifiedSseManager();
+    const c = createMockController();
+    mgr.addClient({ id: "c1", controller: c });
+
+    assert.throws(() => mgr.broadcast("   ", {}), /Event name must not be empty/);
+  });
+
+  it("TC-SSE-027: broadcast with 100 clients", () => {
+    const mgr = new UnifiedSseManager();
+    const controllers: ReturnType<typeof createMockController>[] = [];
+    for (let i = 0; i < 100; i++) {
+      const c = createMockController();
+      controllers.push(c);
+      mgr.addClient({ id: `c${i}`, controller: c });
+    }
+
+    const start = performance.now();
+    mgr.broadcast("test", { data: "x".repeat(1000) });
+    const duration = performance.now() - start;
+
+    assert.ok(duration < 50);
+    for (const c of controllers) {
+      assert.equal(c.enqueued.length, 1);
+    }
+  });
+
+  it("TC-SSE-028: rapid add/remove cycle", () => {
+    const mgr = new UnifiedSseManager();
+
+    for (let round = 0; round < 10; round++) {
+      for (let i = 0; i < 50; i++) {
+        const c = createMockController();
+        mgr.addClient({ id: `c${round}-${i}`, controller: c });
+      }
+      assert.equal(mgr.getClientCount(), (round + 1) * 50);
+    }
+
+    for (let round = 0; round < 10; round++) {
+      for (let i = 0; i < 50; i++) {
+        mgr.removeClient(`c${round}-${i}`);
+      }
+    }
+    assert.equal(mgr.getClientCount(), 0);
   });
 });
 
@@ -1089,13 +1282,13 @@ describe("TaskFlowEngine - Error Handling", () => {
 describe("TaskFlowEngine - Routes", () => {
   function setupApp() {
     const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
-    const sse = new SpySseManager() as unknown as SseManager;
+    const sse = new SpySseManager() as unknown as UnifiedSseManager;
     const registry = new ResolverRegistry();
     registry.register("MockTask1", MockTask1);
     registry.register("MockTask2", MockTask2);
     registry.register("MockFailingTask", MockFailingTask);
     const engine = new TaskFlowEngine(objStore, sse, registry);
-    const app = createHonoApp(engine, sse);
+    const app = createHonoApp(engine);
     return { app, engine, objStore: objStore as unknown as InMemoryObjectStore, sse: sse as unknown as SpySseManager };
   }
 
@@ -1280,12 +1473,10 @@ describe("TaskFlowEngine - Routes", () => {
     engine.destroy();
   });
 
-  it("TC-API-015: GET /api/flows/events should return SSE response", async () => {
+  it("TC-API-015: GET /api/flows/events endpoint is deprecated and removed", async () => {
     const { app, engine } = setupApp();
     const res = await app.request("/api/flows/events");
-    assert.equal(res.status, 200);
-    assert.equal(res.headers.get("Content-Type"), "text/event-stream");
-    assert.equal(res.headers.get("Cache-Control"), "no-cache");
+    assert.notEqual(res.status, 200);
     engine.destroy();
   });
 
@@ -1361,15 +1552,15 @@ function createEnhancedTestServices() {
   const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
   const solutionService = new SolutionService(objStore);
   const engine = createTestTaskFlowEngine(objStore);
-  const memStoreSseManager = new MemStoreSseManager();
+  const sseManager = new UnifiedSseManager();
   const memStore = new MemStore();
-  const robotService = new RobotService(objStore, engine, memStoreSseManager, memStore);
-  return { solutionService, robotService, engine, memStoreSseManager, memStore, objStore: objStore as unknown as EnhancedObjectStore };
+  const robotService = new RobotService(objStore, engine, sseManager, memStore);
+  return { solutionService, robotService, engine, sseManager, memStore, objStore: objStore as unknown as EnhancedObjectStore };
 }
 
 function createTestTaskFlowEngine(objectStore?: unknown): TaskFlowEngine {
   const objStore = (objectStore ?? new EnhancedObjectStore()) as unknown as import("./services/objectStore.js").ObjectStore;
-  const sse = new SpySseManager() as unknown as SseManager;
+  const sse = new SpySseManager() as unknown as UnifiedSseManager;
   const registry = new ResolverRegistry();
   registry.register("GetRobotBasicInfoTask", MockGetRobotBasicInfoTask as unknown as import("flowed").TaskResolverClass);
   registry.register("UpdateRobotBasicInfoTask", UpdateRobotBasicInfoTask as unknown as import("flowed").TaskResolverClass);
@@ -1848,9 +2039,9 @@ describe("Solution Routes - API", () => {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
     const solutionService = new SolutionService(objStore);
     const engine = createTestTaskFlowEngine(objStore);
-    const memStoreSseManager = new MemStoreSseManager();
+    const sseManager = new UnifiedSseManager();
     const memStore = new MemStore();
-    const robotService = new RobotService(objStore, engine, memStoreSseManager, memStore);
+    const robotService = new RobotService(objStore, engine, sseManager, memStore);
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
     app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
@@ -1863,7 +2054,7 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
     const solutionService = new SolutionService(objStore);
 
-    const sse = new SpySseManager() as unknown as SseManager;
+    const sse = new SpySseManager() as unknown as UnifiedSseManager;
     const registry = new ResolverRegistry();
     registry.register("GetRobotBasicInfoTask", MockGetRobotBasicInfoTask);
     registry.register("UpdateRobotBasicInfoTask", UpdateRobotBasicInfoTask as unknown as import("flowed").TaskResolverClass);
@@ -1874,9 +2065,9 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
       registry
     );
 
-    const memStoreSseManager = new MemStoreSseManager();
+    const sseManager = new UnifiedSseManager();
     const memStore = new MemStore();
-    const robotService = new RobotService(objStore, engine, memStoreSseManager, memStore);
+    const robotService = new RobotService(objStore, engine, sseManager, memStore);
     engine.setFlowContext({ memStore });
 
     return { objStore: objStore as unknown as EnhancedObjectStore, solutionService, robotService, sse: sse as unknown as SpySseManager, engine };
@@ -2109,17 +2300,20 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     cleanup({ robotService, engine });
   });
 
-  it("TC-INT-010: memStore subscribe should receive update when cache is populated", { timeout: 20000 }, async () => {
+  it("TC-INT-010: RobotService SSE broadcast should fire entry-updated when cache is populated", { timeout: 20000 }, async () => {
     const { solutionService, robotService, engine } = createIntegrationServices();
     const solution = await solutionService.create({ name: "Integration Test" });
 
     const robot = await robotService.create(solution.id, { address: "192.168.1.100:22" });
     const key = buildRobotInfoKey(solution.id, robot.id);
 
-    const received: unknown[] = [];
-    const unsubscribe = robotService.sseManager.subscribe(key, (data: string) => {
-      received.push(JSON.parse(data));
-    }, robotService.memStore);
+    const received: string[] = [];
+    const controller = {
+      enqueue: (data: Uint8Array) => {
+        received.push(new TextDecoder().decode(data));
+      },
+    } as unknown as ReadableStreamDefaultController;
+    robotService.sseManager.addClient({ id: "test-client", controller });
 
     robotService.getRobotInfoList(solution.id);
 
@@ -2127,12 +2321,11 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     await waitForFlowComplete(engine, flow.id, 15000);
     await sleep(500);
 
-    const updateEvent = received.find((e: any) => e.type === "update");
-    assert.ok(updateEvent, "Subscriber should receive an 'update' event");
-    assert.equal((updateEvent as any).key, key);
-    assert.ok((updateEvent as any).value, "Update event should contain robot basic info value");
+    const updateEvent = received.find((e: string) => e.includes("memstore/entry-updated") && e.includes(key));
+    assert.ok(updateEvent, "SSE should receive entry-updated event for the cache key");
+    assert.ok(updateEvent.includes(key), "SSE event should contain the cache key");
 
-    unsubscribe();
+    robotService.sseManager.removeClient("test-client");
     cleanup({ robotService, engine });
   });
 });
@@ -2363,62 +2556,70 @@ describe("MemStore Unit Tests", () => {
     store.destroy();
   });
 
-  it("TC-MS-014: SSE subscribe receives update via MemStoreSseManager", () => {
-    const sseManager = new MemStoreSseManager();
+  it("TC-MS-014: SSE broadcast receives update via UnifiedSseManager", () => {
+    const sseManager = new UnifiedSseManager();
+    const enqueued: string[] = [];
+    const controller = {
+      enqueue: (data: Uint8Array) => {
+        enqueued.push(new TextDecoder().decode(data));
+      },
+    } as unknown as ReadableStreamDefaultController;
+    sseManager.addClient({ id: "c1", controller });
+
     const { handler } = createTrackingHandler();
     const wrappedHandler: CacheEventHandler = {
       onCreated: handler.onCreated,
       onUpdate: handler.onUpdate,
       onValueChanged(_store, entry) {
-        sseManager.broadcast(entry.key, { key: entry.key, value: entry.value, type: "update" });
+        sseManager.broadcast("memstore/entry-updated", { key: entry.key, value: entry.value, properties: entry.properties });
       },
       onDeleted(_store, entry) {
-        sseManager.broadcast(entry.key, { key: entry.key, type: "deleted" });
+        sseManager.broadcast("memstore/entry-deleted", { key: entry.key });
       },
     };
     const store = createTestMemStore(wrappedHandler);
     store.createCache("k1", { ttlMs: 60000 });
 
-    const received: unknown[] = [];
-    const unsubscribe = sseManager.subscribe("k1", (data: string) => {
-      received.push(JSON.parse(data));
-    }, store);
-
+    enqueued.length = 0;
     store.updateCache("k1", { newVal: true });
 
-    const updateEvent = received.find((e: any) => e.type === "update");
-    assert.ok(updateEvent);
-    assert.equal((updateEvent as any).key, "k1");
+    assert.ok(enqueued.length > 0);
+    assert.ok(enqueued[0].includes("memstore/entry-updated"));
+    assert.ok(enqueued[0].includes("newVal"));
 
-    unsubscribe();
     store.destroy();
   });
 
-  it("TC-MS-015: SSE subscribe immediately pushes current value", () => {
-    const sseManager = new MemStoreSseManager();
+  it("TC-MS-015: SSE broadcast on value changed via unified events", () => {
+    const sseManager = new UnifiedSseManager();
+    const enqueued: string[] = [];
+    const controller = {
+      enqueue: (data: Uint8Array) => {
+        enqueued.push(new TextDecoder().decode(data));
+      },
+    } as unknown as ReadableStreamDefaultController;
+    sseManager.addClient({ id: "c1", controller });
+
     const { handler } = createTrackingHandler();
     const wrappedHandler: CacheEventHandler = {
       onCreated: handler.onCreated,
       onUpdate: handler.onUpdate,
       onValueChanged(_store, entry) {
-        sseManager.broadcast(entry.key, { key: entry.key, value: entry.value, type: "update" });
+        sseManager.broadcast("memstore/entry-updated", { key: entry.key, value: entry.value, properties: entry.properties });
       },
       onDeleted(_store, entry) {
-        sseManager.broadcast(entry.key, { key: entry.key, type: "deleted" });
+        sseManager.broadcast("memstore/entry-deleted", { key: entry.key });
       },
     };
     const store = createTestMemStore(wrappedHandler);
     store.createCache("k1", { ttlMs: 60000 }, { initialValue: { x: 1 } });
 
-    const received: unknown[] = [];
-    const unsubscribe = sseManager.subscribe("k1", (data: string) => {
-      received.push(JSON.parse(data));
-    }, store);
+    enqueued.length = 0;
+    store.updateCache("k1", { x: 2 });
 
-    const currentEvent = received.find((e: any) => e.type === "current");
-    assert.ok(currentEvent);
+    assert.ok(enqueued.length > 0);
+    assert.ok(enqueued[0].includes("memstore/entry-updated"));
 
-    unsubscribe();
     store.destroy();
   });
 
@@ -2493,9 +2694,9 @@ describe("Robot Routes - API", () => {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
     const solutionService = new SolutionService(objStore);
     const engine = createTestTaskFlowEngine(objStore);
-    const memStoreSseManager = new MemStoreSseManager();
+    const sseManager = new UnifiedSseManager();
     const memStore = new MemStore();
-    const robotService = new RobotService(objStore, engine, memStoreSseManager, memStore);
+    const robotService = new RobotService(objStore, engine, sseManager, memStore);
     engine.setFlowContext({ memStore });
     robotServiceInstances.push(robotService);
     const app = new Hono();

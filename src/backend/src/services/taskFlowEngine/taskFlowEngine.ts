@@ -8,7 +8,7 @@ import {
 import { randomUUID } from "node:crypto";
 import type { ObjectStore } from "../objectStore.js";
 import type { ResolverRegistry } from "./resolverRegistry.js";
-import type { SseManager } from "./sseManager.js";
+import type { UnifiedSseManager } from "../sseManager.js";
 
 type SerializedFlowRunStatus = ReturnType<Flow["getSerializableState"]>;
 
@@ -59,23 +59,15 @@ function getTaskCodes(dag: FlowSpec): string[] {
 
 const DEFAULT_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
-const SSE_PREFIX = "task-flow-engine";
 
 export class TaskFlowEngine {
   private flows = new Map<string, FlowRecord>();
   private flowInstances = new Map<string, Flow>();
-  private sseManager: SseManager;
-  private resolverRegistry: ResolverRegistry;
-  private objectStore: ObjectStore;
-  private loggerInstalled = false;
-  private completedFlowTtlMs: number;
-  private cleanupIntervalMs: number;
-  private cleanupTimer?: ReturnType<typeof setInterval>;
-  private flowContext: ValueMap;
+  private sseManager: UnifiedSseManager;
 
   constructor(
     objectStore: ObjectStore,
-    sseManager: SseManager,
+    sseManager: UnifiedSseManager,
     resolverRegistry: ResolverRegistry,
     options?: TaskFlowEngineOptions
   ) {
@@ -94,6 +86,40 @@ export class TaskFlowEngine {
 
   private startCleanupTimer(): void {
     this.cleanupTimer = setInterval(() => this.cleanupExpiredFlows(), this.cleanupIntervalMs);
+  }
+
+  private emitFlowCreated(record: FlowRecord): void {
+    this.sseManager.broadcast("task-flow-engine/flow-created", this.summarize(record));
+  }
+
+  private emitFlowUpdated(record: FlowRecord): void {
+    this.sseManager.broadcast("task-flow-engine/flow-updated", this.summarize(record));
+  }
+
+  private emitFlowCompleted(record: FlowRecord): void {
+    this.sseManager.broadcast("task-flow-engine/flow-completed", {
+      flowId: record.id,
+      state: record.state,
+      results: record.results ?? null,
+      finishedAt: record.finishedAt,
+    });
+  }
+
+  private emitFlowRemoved(flowId: string): void {
+    this.sseManager.broadcast("task-flow-engine/flow-removed", { flowId });
+  }
+
+  private emitTaskUpdated(flowId: string, taskName: string, state: TaskState): void {
+    this.sseManager.broadcast("task-flow-engine/task-updated", { flowId, taskName, state });
+  }
+
+  private emitTaskResult(flowId: string, taskName: string, result: ValueMap): void {
+    this.sseManager.broadcast("task-flow-engine/task-result", {
+      flowId,
+      taskName,
+      state: "COMPLETED",
+      result,
+    });
   }
 
   private cleanupExpiredFlows(): void {
@@ -119,7 +145,7 @@ export class TaskFlowEngine {
       if (record?.type === "user") {
         this.objectStore.deletePath(`flows/${id}`).catch(() => {});
       }
-      this.sseManager.broadcast(`${SSE_PREFIX}/flow-removed`, { flowId: id });
+      this.emitFlowRemoved(id);
     }
   }
 
@@ -195,7 +221,7 @@ export class TaskFlowEngine {
     this.flowInstances.set(id, flow);
 
     await this.saveFlow(record);
-    this.sseManager.broadcast(`${SSE_PREFIX}/flow-created`, this.summarize(record));
+    this.emitFlowCreated(record);
 
     this.startFlow(id);
 
@@ -209,7 +235,7 @@ export class TaskFlowEngine {
 
     record.state = "RUNNING";
     this.saveFlow(record).catch(() => {});
-    this.sseManager.broadcast(`${SSE_PREFIX}/flow-updated`, this.summarize(record));
+    this.emitFlowUpdated(record);
 
     const startParams = record.input ?? {};
     const expected = this.computeExpectedResults(record);
@@ -348,13 +374,8 @@ export class TaskFlowEngine {
     }
 
     this.saveFlow(record).catch(() => {});
-    this.sseManager.broadcast(`${SSE_PREFIX}/flow-updated`, this.summarize(record));
-    this.sseManager.broadcast(`${SSE_PREFIX}/flow-completed`, {
-      flowId: id,
-      state: record.state,
-      results: record.results ?? null,
-      finishedAt: record.finishedAt,
-    });
+    this.emitFlowUpdated(record);
+    this.emitFlowCompleted(record);
   }
 
   async pauseFlow(id: string): Promise<void> {
@@ -371,7 +392,7 @@ export class TaskFlowEngine {
       // ignore
     }
     await this.saveFlow(record);
-    this.sseManager.broadcast(`${SSE_PREFIX}/flow-updated`, this.summarize(record));
+    this.emitFlowUpdated(record);
   }
 
   async resumeFlow(id: string): Promise<void> {
@@ -382,7 +403,7 @@ export class TaskFlowEngine {
 
     record.state = "RUNNING";
     this.saveFlow(record).catch(() => {});
-    this.sseManager.broadcast(`${SSE_PREFIX}/flow-updated`, this.summarize(record));
+    this.emitFlowUpdated(record);
 
     flow
       .resume()
@@ -438,7 +459,7 @@ export class TaskFlowEngine {
       await this.objectStore.deletePath(`flows/${id}`).catch(() => {});
     }
 
-    this.sseManager.broadcast(`${SSE_PREFIX}/flow-removed`, { flowId: id });
+    this.emitFlowRemoved(id);
   }
 
   getFlow(id: string): FlowSummary | undefined {
@@ -516,11 +537,7 @@ export class TaskFlowEngine {
       const taskCode = (entry.extra?.task as { code?: string } | undefined)?.code;
       if (taskCode) {
         record.taskStates[taskCode] = "RUNNING";
-        this.sseManager.broadcast(`${SSE_PREFIX}/task-updated`, {
-          flowId,
-          taskName: taskCode,
-          state: "RUNNING",
-        });
+        this.emitTaskUpdated(flowId, taskCode, "RUNNING");
       }
     } else if (entry.eventType === "Task.Finished") {
       const taskCode = (entry.extra?.task as { code?: string } | undefined)?.code;
@@ -532,19 +549,10 @@ export class TaskFlowEngine {
           this.extractTaskResultOnFinish(flowId, taskCode);
         }
 
-        this.sseManager.broadcast(`${SSE_PREFIX}/task-updated`, {
-          flowId,
-          taskName: taskCode,
-          state: record.taskStates[taskCode],
-        });
+        this.emitTaskUpdated(flowId, taskCode, record.taskStates[taskCode]);
 
         if (!isError && record.taskResults?.[taskCode]) {
-          this.sseManager.broadcast(`${SSE_PREFIX}/task-result`, {
-            flowId,
-            taskName: taskCode,
-            state: "COMPLETED",
-            result: record.taskResults[taskCode],
-          });
+          this.emitTaskResult(flowId, taskCode, record.taskResults[taskCode]);
         }
       }
     }
@@ -559,7 +567,7 @@ export class TaskFlowEngine {
         }
       }
       this.saveFlow(record).catch(() => {});
-      this.sseManager.broadcast(`${SSE_PREFIX}/flow-updated`, this.summarize(record));
+      this.emitFlowUpdated(record);
     }
   }
 

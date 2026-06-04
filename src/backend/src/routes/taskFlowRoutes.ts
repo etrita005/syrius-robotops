@@ -1,7 +1,5 @@
 import { Hono } from "hono";
-import { randomUUID } from "node:crypto";
 import type { TaskFlowEngine } from "../services/taskFlowEngine/taskFlowEngine.js";
-import type { SseManager } from "../services/taskFlowEngine/sseManager.js";
 import {
   AppError,
   MissingTypeOrDagError,
@@ -9,7 +7,7 @@ import {
   InvalidIdsError,
 } from "../errors/appErrors.js";
 
-export function createTaskFlowRoutes(engine: TaskFlowEngine, sseManager: SseManager): Hono {
+export function createTaskFlowRoutes(engine: TaskFlowEngine): Hono {
   const app = new Hono();
 
   app.post("/", async (c) => {
@@ -40,29 +38,6 @@ export function createTaskFlowRoutes(engine: TaskFlowEngine, sseManager: SseMana
     const type = c.req.query("type") as "internal" | "user" | undefined;
     const flows = engine.listFlows(type);
     return c.json(flows);
-  });
-
-  app.get("/events", (c) => {
-    let clientId = "";
-    const stream = new ReadableStream({
-      start(controller) {
-        clientId = randomUUID();
-        sseManager.addClient({ id: clientId, controller });
-        const encoder = new TextEncoder();
-        controller.enqueue(encoder.encode("event: connected\ndata: {}\n\n"));
-      },
-      cancel() {
-        sseManager.removeClient(clientId);
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    });
   });
 
   app.post("/batch/pause", async (c) => {
