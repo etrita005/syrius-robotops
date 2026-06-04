@@ -1,4 +1,4 @@
-import { describe, it, before, after, beforeEach } from "node:test";
+import { describe, it, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
@@ -9,10 +9,8 @@ import { ResolverRegistry } from "./services/taskFlowEngine/resolverRegistry.js"
 import { SseManager } from "./services/taskFlowEngine/sseManager.js";
 import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import type { ObjectStoreResource } from "./services/objectStore.js";
-import { setTaskFlowEngine } from "./services/taskFlowEngine/index.js";
 import { MemStore, MemStoreSseManager } from "./memStore/index.js";
 import type { CacheEventHandler, CacheEntry } from "./memStore/index.js";
-import { setGlobalMemStore } from "./memStore/index.js";
 import { buildRobotInfoKey } from "./services/robotService.js";
 import { MockGetRobotBasicInfoTask } from "./tasks/mockGetRobotBasicInfoTask.js";
 import { UpdateRobotBasicInfoTask } from "./tasks/updateRobotBasicInfoTask.js";
@@ -1362,9 +1360,31 @@ import type { StoredRobotData } from "./types/robot.js";
 function createEnhancedTestServices() {
   const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
   const solutionService = new SolutionService(objStore);
-  const robotService = new RobotService(objStore);
-  return { solutionService, robotService, objStore: objStore as unknown as EnhancedObjectStore };
+  const engine = createTestTaskFlowEngine(objStore);
+  const memStoreSseManager = new MemStoreSseManager();
+  const memStore = new MemStore();
+  const robotService = new RobotService(objStore, engine, memStoreSseManager, memStore);
+  return { solutionService, robotService, engine, memStoreSseManager, memStore, objStore: objStore as unknown as EnhancedObjectStore };
 }
+
+function createTestTaskFlowEngine(objectStore?: unknown): TaskFlowEngine {
+  const objStore = (objectStore ?? new EnhancedObjectStore()) as unknown as import("./services/objectStore.js").ObjectStore;
+  const sse = new SpySseManager() as unknown as SseManager;
+  const registry = new ResolverRegistry();
+  registry.register("GetRobotBasicInfoTask", MockGetRobotBasicInfoTask as unknown as import("flowed").TaskResolverClass);
+  registry.register("UpdateRobotBasicInfoTask", UpdateRobotBasicInfoTask as unknown as import("flowed").TaskResolverClass);
+  const engine = new TaskFlowEngine(objStore, sse, registry);
+  testEngines.add(engine);
+  return engine;
+}
+
+const testEngines = new Set<TaskFlowEngine>();
+after(() => {
+  for (const engine of testEngines) {
+    engine.destroy();
+  }
+  testEngines.clear();
+});
 
 describe("SolutionService - Core", () => {
   describe("create", () => {
@@ -1587,9 +1607,18 @@ describe("SolutionService - Core", () => {
 });
 
 describe("RobotService - Core", () => {
+  const robotServiceInstances: RobotService[] = [];
+
+  afterEach(() => {
+    while (robotServiceInstances.length) {
+      robotServiceInstances.pop()!.memStore.destroy();
+    }
+  });
+
   async function createSolutionWithService() {
     const services = createEnhancedTestServices();
     const solution = await services.solutionService.create({ name: "Test Solution" });
+    robotServiceInstances.push(services.robotService);
     return { ...services, solution };
   }
 
@@ -1649,6 +1678,7 @@ describe("RobotService - Core", () => {
 
     it("TC-ROB-SVC-008: should allow same address in different solutions", async () => {
       const { robotService, solutionService } = createEnhancedTestServices();
+      robotServiceInstances.push(robotService);
       const sol1 = await solutionService.create({ name: "Sol1" });
       const sol2 = await solutionService.create({ name: "Sol2" });
       const r1 = await robotService.create(sol1.id, { address: "10.0.0.1:22" });
@@ -1660,6 +1690,7 @@ describe("RobotService - Core", () => {
 
     it("TC-ROB-SVC-009: should throw when creating robot in non-existent solution", async () => {
       const { robotService } = createEnhancedTestServices();
+      robotServiceInstances.push(robotService);
       await assert.rejects(
         () => robotService.create("nonexistent", { address: "10.0.0.1" }),
         { code: "SOLUTION_NOT_FOUND" }
@@ -1692,6 +1723,7 @@ describe("RobotService - Core", () => {
 
     it("TC-ROB-SVC-013: should throw when listing robots in non-existent solution", async () => {
       const { robotService } = createEnhancedTestServices();
+      robotServiceInstances.push(robotService);
       await assert.rejects(
         () => robotService.list("nonexistent"),
         { code: "SOLUTION_NOT_FOUND" }
@@ -1718,6 +1750,7 @@ describe("RobotService - Core", () => {
 
     it("TC-ROB-SVC-016: should throw for non-existent solution", async () => {
       const { robotService } = createEnhancedTestServices();
+      robotServiceInstances.push(robotService);
       await assert.rejects(
         () => robotService.get("nonexistent", "some-robot"),
         { code: "SOLUTION_NOT_FOUND" }
@@ -1814,7 +1847,10 @@ describe("Solution Routes - API", () => {
   function setupSolutionApp() {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
     const solutionService = new SolutionService(objStore);
-    const robotService = new RobotService(objStore);
+    const engine = createTestTaskFlowEngine(objStore);
+    const memStoreSseManager = new MemStoreSseManager();
+    const memStore = new MemStore();
+    const robotService = new RobotService(objStore, engine, memStoreSseManager, memStore);
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
     app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
@@ -1826,7 +1862,6 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
   function createIntegrationServices() {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
     const solutionService = new SolutionService(objStore);
-    const robotService = new RobotService(objStore);
 
     const sse = new SpySseManager() as unknown as SseManager;
     const registry = new ResolverRegistry();
@@ -1838,8 +1873,11 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
       sse,
       registry
     );
-    setTaskFlowEngine(engine);
-    setGlobalMemStore(robotService.memStore);
+
+    const memStoreSseManager = new MemStoreSseManager();
+    const memStore = new MemStore();
+    const robotService = new RobotService(objStore, engine, memStoreSseManager, memStore);
+    engine.setFlowContext({ memStore });
 
     return { objStore: objStore as unknown as EnhancedObjectStore, solutionService, robotService, sse: sse as unknown as SpySseManager, engine };
   }
@@ -2116,10 +2154,10 @@ describe("MemStore Unit Tests", () => {
     const valueChangedCalls: CacheEntry[] = [];
     const deletedCalls: CacheEntry[] = [];
     const handler: CacheEventHandler = {
-      onCreated(entry) { createdCalls.push(entry); },
-      onUpdate(entry) { updateCalls.push(entry); },
-      onValueChanged(entry) { valueChangedCalls.push(entry); },
-      onDeleted(entry) { deletedCalls.push(entry); },
+      onCreated(_store, entry) { createdCalls.push(entry); },
+      onUpdate(_store, entry) { updateCalls.push(entry); },
+      onValueChanged(_store, entry) { valueChangedCalls.push(entry); },
+      onDeleted(_store, entry) { deletedCalls.push(entry); },
     };
     return { handler, createdCalls, updateCalls, valueChangedCalls, deletedCalls };
   }
@@ -2331,10 +2369,10 @@ describe("MemStore Unit Tests", () => {
     const wrappedHandler: CacheEventHandler = {
       onCreated: handler.onCreated,
       onUpdate: handler.onUpdate,
-      onValueChanged(entry) {
+      onValueChanged(_store, entry) {
         sseManager.broadcast(entry.key, { key: entry.key, value: entry.value, type: "update" });
       },
-      onDeleted(entry) {
+      onDeleted(_store, entry) {
         sseManager.broadcast(entry.key, { key: entry.key, type: "deleted" });
       },
     };
@@ -2362,10 +2400,10 @@ describe("MemStore Unit Tests", () => {
     const wrappedHandler: CacheEventHandler = {
       onCreated: handler.onCreated,
       onUpdate: handler.onUpdate,
-      onValueChanged(entry) {
+      onValueChanged(_store, entry) {
         sseManager.broadcast(entry.key, { key: entry.key, value: entry.value, type: "update" });
       },
-      onDeleted(entry) {
+      onDeleted(_store, entry) {
         sseManager.broadcast(entry.key, { key: entry.key, type: "deleted" });
       },
     };
@@ -2415,9 +2453,9 @@ describe("MemStore Unit Tests", () => {
     });
 
     const originalOnUpdate = handler.onUpdate.bind(handler);
-    handler.onUpdate = (entry: CacheEntry) => {
+    handler.onUpdate = (store, entry) => {
       entry.context.flowId = "flow-abc";
-      originalOnUpdate(entry);
+      originalOnUpdate(store, entry);
     };
 
     store.triggerRefresh("k1");
@@ -2443,10 +2481,23 @@ describe("MemStore Unit Tests", () => {
 });
 
 describe("Robot Routes - API", () => {
+  const robotServiceInstances: RobotService[] = [];
+
+  afterEach(() => {
+    while (robotServiceInstances.length) {
+      robotServiceInstances.pop()!.memStore.destroy();
+    }
+  });
+
   function setupRobotApp() {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
     const solutionService = new SolutionService(objStore);
-    const robotService = new RobotService(objStore);
+    const engine = createTestTaskFlowEngine(objStore);
+    const memStoreSseManager = new MemStoreSseManager();
+    const memStore = new MemStore();
+    const robotService = new RobotService(objStore, engine, memStoreSseManager, memStore);
+    engine.setFlowContext({ memStore });
+    robotServiceInstances.push(robotService);
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
     app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));

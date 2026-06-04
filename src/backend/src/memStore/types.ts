@@ -24,23 +24,30 @@ export interface CacheEntry {
   expireAt: number;
 }
 
+export interface IMemStore {
+  clearRefreshing(key: string): void;
+  getCache(key: string): unknown | undefined;
+  hasCache(key: string): boolean;
+}
+
 export interface CacheEventHandler {
-  onCreated(entry: CacheEntry): void;
-  onUpdate(entry: CacheEntry): void;
-  onValueChanged(entry: CacheEntry): void;
-  onDeleted(entry: CacheEntry): void;
+  onCreated(store: IMemStore, entry: CacheEntry): void;
+  onUpdate(store: IMemStore, entry: CacheEntry): void;
+  onValueChanged(store: IMemStore, entry: CacheEntry): void;
+  onDeleted(store: IMemStore, entry: CacheEntry): void;
 }
 
 export interface CreateCacheOptions {
   initialValue?: unknown;
   properties?: Record<string, unknown>;
+  context?: Record<string, unknown>;
 }
 
 const noopHandler: CacheEventHandler = {
-  onCreated() {},
-  onUpdate() {},
-  onValueChanged() {},
-  onDeleted() {},
+  onCreated(_store: IMemStore) {},
+  onUpdate(_store: IMemStore) {},
+  onValueChanged(_store: IMemStore) {},
+  onDeleted(_store: IMemStore) {},
 };
 
 export { noopHandler };

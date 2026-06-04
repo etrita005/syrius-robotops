@@ -24,6 +24,10 @@ export class MemStore {
     });
   }
 
+  setHandler(handler: CacheEventHandler): void {
+    this.handler = handler;
+  }
+
   createCache(key: string, config: CacheConfig, options?: CreateCacheOptions): void {
     const now = Date.now();
     const payload: CacheValuePayload = {
@@ -40,14 +44,14 @@ export class MemStore {
 
     this.metaStore.set(key, { ...config });
     this.propertiesStore.set(key, properties);
-    this.contextStore.set(key, {});
+    this.contextStore.set(key, options?.context ? { ...options.context } : {});
     this.cache.set(key, payload, { ttl: Math.max(1, config.ttlMs) });
 
     this.setupSchedule(key, config, payload.expireAt);
 
     const entry = this.buildEntry(key);
     if (entry) {
-      this.handler.onCreated(entry);
+      this.handler.onCreated(this, entry);
     }
   }
 
@@ -101,7 +105,7 @@ export class MemStore {
 
     const entry = this.buildEntry(key);
     if (entry) {
-      this.handler.onValueChanged(entry);
+      this.handler.onValueChanged(this, entry);
     }
   }
 
@@ -114,7 +118,7 @@ export class MemStore {
     this.scheduler.clearJobsForKey(key);
     this.refreshing.delete(key);
     if (entry) {
-      this.handler.onDeleted(entry);
+      this.handler.onDeleted(this, entry);
     }
   }
 
@@ -165,7 +169,7 @@ export class MemStore {
     this.refreshing.add(key);
     const entry = this.buildEntry(key);
     if (entry) {
-      this.handler.onUpdate(entry);
+      this.handler.onUpdate(this, entry);
     }
   }
 
@@ -251,7 +255,7 @@ export class MemStore {
       this.refreshing.delete(key);
       console.log(`[MemStore] Expired and fully cleaned key: ${key}`);
       if (entry) {
-        this.handler.onDeleted(entry);
+        this.handler.onDeleted(this, entry);
       }
     } else if (reason === 'delete') {
       console.log(`[MemStore] Deleted key: ${key}`);

@@ -11,6 +11,10 @@ export function setTaskFlowEngine(engine: TaskFlowEngine): void {
   engineInstance = engine;
 }
 
+export function clearTaskFlowEngine(): void {
+  engineInstance = null;
+}
+
 export function getTaskFlowEngine(): TaskFlowEngine {
   if (!engineInstance) throw new Error("TaskFlowEngine not initialized");
   return engineInstance;

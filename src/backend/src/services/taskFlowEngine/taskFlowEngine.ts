@@ -71,6 +71,7 @@ export class TaskFlowEngine {
   private completedFlowTtlMs: number;
   private cleanupIntervalMs: number;
   private cleanupTimer?: ReturnType<typeof setInterval>;
+  private flowContext: ValueMap;
 
   constructor(
     objectStore: ObjectStore,
@@ -83,7 +84,12 @@ export class TaskFlowEngine {
     this.resolverRegistry = resolverRegistry;
     this.completedFlowTtlMs = options?.completedFlowTtlMs ?? DEFAULT_TTL_MS;
     this.cleanupIntervalMs = options?.cleanupIntervalMs ?? DEFAULT_CLEANUP_INTERVAL_MS;
+    this.flowContext = {};
     this.startCleanupTimer();
+  }
+
+  setFlowContext(context: ValueMap): void {
+    this.flowContext = { ...context };
   }
 
   private startCleanupTimer(): void {
@@ -210,7 +216,7 @@ export class TaskFlowEngine {
     const resolvers = this.resolverRegistry.getAll();
 
     flow
-      .start(startParams, expected, resolvers, {}, { instanceId: id })
+      .start(startParams, expected, resolvers, this.flowContext, { instanceId: id })
       .then((flowResults: ValueMap) => {
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "COMPLETED";

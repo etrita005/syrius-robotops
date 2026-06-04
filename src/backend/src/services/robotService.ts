@@ -13,8 +13,8 @@ import {
 } from "../errors/appErrors.js";
 import type { RobotBasicInfo } from "../tasks/getRobotBasicInfoTask.js";
 import { MemStore, MemStoreSseManager } from "../memStore/index.js";
-import type { CacheEntry, CacheEventHandler } from "../memStore/index.js";
-import { getTaskFlowEngine } from "./taskFlowEngine/index.js";
+import type { CacheEntry, CacheEventHandler, IMemStore } from "../memStore/index.js";
+import { TaskFlowEngine } from "./taskFlowEngine/index.js";
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
 const DEFAULT_SSH_USERNAME = "root";
@@ -79,41 +79,41 @@ export interface RobotServiceOptions {
 }
 
 export class RobotCacheEventHandler implements CacheEventHandler {
-  private memStore: MemStore;
   private sseManager: MemStoreSseManager;
+  private engine: TaskFlowEngine;
   private getRobotAddress: (solutionId: string, robotId: string) => Promise<{ address: string; port: number } | null>;
 
   constructor(
-    memStore: MemStore,
     sseManager: MemStoreSseManager,
+    engine: TaskFlowEngine,
     getRobotAddress: (solutionId: string, robotId: string) => Promise<{ address: string; port: number } | null>
   ) {
-    this.memStore = memStore;
     this.sseManager = sseManager;
+    this.engine = engine;
     this.getRobotAddress = getRobotAddress;
   }
 
-  onCreated(entry: CacheEntry): void {
-    this.executeRefreshFlow(entry);
+  onCreated(store: IMemStore, entry: CacheEntry): void {
+    this.executeRefreshFlow(store, entry);
   }
 
-  onUpdate(entry: CacheEntry): void {
-    this.executeRefreshFlow(entry);
+  onUpdate(store: IMemStore, entry: CacheEntry): void {
+    this.executeRefreshFlow(store, entry);
   }
 
-  onValueChanged(entry: CacheEntry): void {
+  onValueChanged(_store: IMemStore, entry: CacheEntry): void {
     this.sseManager.broadcast(entry.key, { key: entry.key, value: entry.value, type: "update" });
   }
 
-  onDeleted(entry: CacheEntry): void {
+  onDeleted(_store: IMemStore, entry: CacheEntry): void {
     this.sseManager.broadcast(entry.key, { key: entry.key, type: "deleted" });
   }
 
-  private executeRefreshFlow(entry: CacheEntry): void {
+  private executeRefreshFlow(store: IMemStore, entry: CacheEntry): void {
     const taskFlowSpec = entry.properties.taskFlowSpec;
     if (!taskFlowSpec) {
       console.warn(`[RobotCacheEventHandler] No taskFlowSpec in properties for key: ${entry.key}`);
-      this.memStore.clearRefreshing(entry.key);
+      store.clearRefreshing(entry.key);
       return;
     }
 
@@ -123,21 +123,21 @@ export class RobotCacheEventHandler implements CacheEventHandler {
     ).then((robotAddr) => {
       if (!robotAddr) {
         console.warn(`[RobotCacheEventHandler] Robot not found for key: ${entry.key}`);
-        this.memStore.clearRefreshing(entry.key);
+        store.clearRefreshing(entry.key);
         return;
       }
 
       const spec = this.buildSpec(entry.key, robotAddr, taskFlowSpec as Record<string, unknown>);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      getTaskFlowEngine()
+      this.engine
         .createFlow("internal", spec as any)
         .catch((err: unknown) => {
           console.error(`[RobotCacheEventHandler] Failed to create refresh flow for key ${entry.key}:`, err instanceof Error ? err.message : String(err));
         })
-        .finally(() => this.memStore.clearRefreshing(entry.key));
+        .finally(() => store.clearRefreshing(entry.key));
     }).catch((err: unknown) => {
       console.error(`[RobotCacheEventHandler] Error getting robot address for key ${entry.key}:`, err instanceof Error ? err.message : String(err));
-      this.memStore.clearRefreshing(entry.key);
+      store.clearRefreshing(entry.key);
     });
   }
 
@@ -185,21 +185,27 @@ export class RobotService {
   public readonly memStore: MemStore;
   public readonly sseManager: MemStoreSseManager;
 
-  constructor(obs: ObjectStore, options?: RobotServiceOptions) {
+  constructor(
+    obs: ObjectStore,
+    engine: TaskFlowEngine,
+    sseManager: MemStoreSseManager,
+    memStore: MemStore,
+    options?: RobotServiceOptions
+  ) {
     this.obs = obs;
     this.sshUsername = options?.sshUsername ?? DEFAULT_SSH_USERNAME;
     this.sshPassword = options?.sshPassword ?? DEFAULT_SSH_PASSWORD;
 
-    this.sseManager = new MemStoreSseManager();
+    this.sseManager = sseManager;
+    this.memStore = memStore;
 
     const handler = new RobotCacheEventHandler(
-      null as unknown as MemStore,
-      this.sseManager,
+      sseManager,
+      engine,
       this.getRobotAddress.bind(this)
     );
 
-    this.memStore = new MemStore(handler);
-    handler["memStore"] = this.memStore;
+    this.memStore.setHandler(handler);
   }
 
   async getRobotInfoList(solutionId: string): Promise<RobotWithBasicInfo[]> {

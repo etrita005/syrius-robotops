@@ -15,11 +15,11 @@ import { createMemStoreRoutes } from "./routes/memStoreRoutes.js";
 import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
-import { TaskFlowEngine, ResolverRegistry, SseManager, setTaskFlowEngine } from "./services/taskFlowEngine/index.js";
+import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
 import { SshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask } from "./tasks/index.js";
 import { streamSSE } from "hono/streaming";
-import { setGlobalMemStore } from "./memStore/index.js";
+import { MemStore, MemStoreSseManager } from "./memStore/index.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
 
 function parseArgs(): { dataDir: string; port: number; mock: boolean } {
@@ -81,15 +81,16 @@ registerTasks(resolverRegistry, mock, [
 ]);
 
 const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
-setTaskFlowEngine(taskFlowEngine);
 
-const robotService = new RobotService(objectStore, {
+const memStoreSseManager = new MemStoreSseManager();
+const memStoreInstance = new MemStore();
+
+const robotService = new RobotService(objectStore, taskFlowEngine, memStoreSseManager, memStoreInstance, {
   sshUsername: SSH_USERNAME,
   sshPassword: SSH_PASSWORD,
 });
 
-const memStoreInstance = robotService.memStore;
-setGlobalMemStore(memStoreInstance);
+taskFlowEngine.setFlowContext({ memStore: memStoreInstance });
 
 solutionService.onSolutionRemove((solutionId: string) => {
   robotService.removeSolutionCache(solutionId);
