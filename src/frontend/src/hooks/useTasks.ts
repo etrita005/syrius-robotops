@@ -24,13 +24,24 @@ import {
 } from "../types/task.js";
 
 const POLL_INTERVAL_MS = 10_000;
+const TICK_INTERVAL_MS = 1_000;
 
 export function useTasks(solutionId: string | null) {
   const [flows, setFlows] = useState<FlowSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [robotMap, setRobotMap] = useState<Map<string, string>>(new Map());
+  const [tick, setTick] = useState(0);
+  const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
+  const pendingRef = useRef<Set<string>>(new Set());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const hasRunning = flows.some((f) => f.state === "RUNNING");
+    if (!hasRunning) return;
+    const id = setInterval(() => setTick((t) => t + 1), TICK_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [flows]);
 
   useEffect(() => {
     if (!solutionId) {
@@ -73,12 +84,26 @@ export function useTasks(solutionId: string | null) {
 
     loadData();
 
-    const unsubSse = subscribeTaskEvents((_event, data) => {
+    const unsubSse = subscribeTaskEvents((eventType, data) => {
       if (cancelled) return;
       const flowId = data.flowId as string | undefined;
       if (!flowId) return;
 
+      if (
+        eventType === "task-flow-engine/flow-updated" ||
+        eventType === "task-flow-engine/flow-completed"
+      ) {
+        if (pendingRef.current.has(flowId)) {
+          pendingRef.current.delete(flowId);
+          setPendingActions(new Set(pendingRef.current));
+        }
+      }
+
       setFlows((prev) => {
+        if (eventType === "task-flow-engine/flow-removed") {
+          return prev.filter((f) => f.id !== flowId);
+        }
+
         const index = prev.findIndex((f) => f.id === flowId);
         if (index === -1) {
           const newFlow = data as unknown as FlowSummary;
@@ -103,6 +128,8 @@ export function useTasks(solutionId: string | null) {
         const data = await listFlows("user", { solutionId });
         if (!cancelled) {
           setFlows(data);
+          pendingRef.current.clear();
+          setPendingActions(new Set());
         }
       } catch {
         // silent poll failure
@@ -135,7 +162,7 @@ export function useTasks(solutionId: string | null) {
         taskStates: f.taskStates,
         input: f.input,
       })),
-    [flows, robotMap]
+    [flows, robotMap, tick]
   );
 
   const createTask = useCallback(
@@ -172,6 +199,8 @@ export function useTasks(solutionId: string | null) {
         expectedResults: ["upgrade_result"],
       });
 
+      setFlows((prev) => [summary, ...prev]);
+
       const taskDef: TaskDefinition = {
         id: summary.id,
         type: summary.type,
@@ -193,34 +222,79 @@ export function useTasks(solutionId: string | null) {
   );
 
   const handlePause = useCallback(async (id: string) => {
-    await pauseFlow(id);
+    pendingRef.current.add(id);
+    setPendingActions(new Set(pendingRef.current));
+    try {
+      await pauseFlow(id);
+    } catch {
+      pendingRef.current.delete(id);
+      setPendingActions(new Set(pendingRef.current));
+    }
   }, []);
 
   const handleResume = useCallback(async (id: string) => {
-    await resumeFlow(id);
+    pendingRef.current.add(id);
+    setPendingActions(new Set(pendingRef.current));
+    try {
+      await resumeFlow(id);
+    } catch {
+      pendingRef.current.delete(id);
+      setPendingActions(new Set(pendingRef.current));
+    }
   }, []);
 
   const handleStop = useCallback(async (id: string) => {
-    await stopFlow(id);
+    pendingRef.current.add(id);
+    setPendingActions(new Set(pendingRef.current));
+    try {
+      await stopFlow(id);
+    } catch {
+      pendingRef.current.delete(id);
+      setPendingActions(new Set(pendingRef.current));
+    }
   }, []);
 
   const handleDelete = useCallback(async (id: string) => {
+    setFlows((prev) => prev.filter((f) => f.id !== id));
     await deleteFlow(id);
   }, []);
 
   const handleBatchPause = useCallback(async (ids: string[]) => {
-    await batchPause(ids);
+    for (const id of ids) pendingRef.current.add(id);
+    setPendingActions(new Set(pendingRef.current));
+    try {
+      await batchPause(ids);
+    } catch {
+      for (const id of ids) pendingRef.current.delete(id);
+      setPendingActions(new Set(pendingRef.current));
+    }
   }, []);
 
   const handleBatchResume = useCallback(async (ids: string[]) => {
-    await batchResume(ids);
+    for (const id of ids) pendingRef.current.add(id);
+    setPendingActions(new Set(pendingRef.current));
+    try {
+      await batchResume(ids);
+    } catch {
+      for (const id of ids) pendingRef.current.delete(id);
+      setPendingActions(new Set(pendingRef.current));
+    }
   }, []);
 
   const handleBatchStop = useCallback(async (ids: string[]) => {
-    await batchStop(ids);
+    for (const id of ids) pendingRef.current.add(id);
+    setPendingActions(new Set(pendingRef.current));
+    try {
+      await batchStop(ids);
+    } catch {
+      for (const id of ids) pendingRef.current.delete(id);
+      setPendingActions(new Set(pendingRef.current));
+    }
   }, []);
 
   const handleBatchDelete = useCallback(async (ids: string[]) => {
+    const idSet = new Set(ids);
+    setFlows((prev) => prev.filter((f) => !idSet.has(f.id)));
     await batchDelete(ids);
   }, []);
 
@@ -228,6 +302,7 @@ export function useTasks(solutionId: string | null) {
     tasks,
     loading,
     error,
+    pendingActions,
     createTask,
     pauseTask: handlePause,
     resumeTask: handleResume,

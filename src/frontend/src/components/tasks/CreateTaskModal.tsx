@@ -54,6 +54,7 @@ export default function CreateTaskModal({
       setSelectedTaskType(null);
       setParams({});
       setError(null);
+      setSubmitting(false);
       setRobotSearch("");
       setTaskTypeSearch("");
       setArtifactSearch("");
@@ -165,6 +166,7 @@ export default function CreateTaskModal({
       );
     } catch (err) {
       setError((err as Error).message);
+    } finally {
       setSubmitting(false);
     }
   };

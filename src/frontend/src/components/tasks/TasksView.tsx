@@ -53,6 +53,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
     tasks,
     loading,
     error,
+    pendingActions,
     createTask,
     pauseTask,
     resumeTask,
@@ -101,7 +102,6 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
     );
   }, [filtered]);
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const paginatedItems = sorted.slice((page - 1) * pageSize, page * pageSize);
 
   const toggleSelection = (taskId: string) => {
@@ -304,16 +304,20 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
     elapsedTime: t.elapsedTime,
     actions: (
       <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
-        {getActionsForState(t.state).map((action) => (
-          <Button
-            key={action}
-            kind={action === "delete" ? "danger--ghost" : "ghost"}
-            size="sm"
-            onClick={() => handleAction(action, t)}
-          >
-            {action.charAt(0).toUpperCase() + action.slice(1)}
-          </Button>
-        ))}
+        {getActionsForState(t.state).map((action) => {
+          const isPending = pendingActions.has(t.id);
+          return (
+            <Button
+              key={action}
+              kind={action === "delete" ? "danger--ghost" : "ghost"}
+              size="sm"
+              disabled={isPending}
+              onClick={() => handleAction(action, t)}
+            >
+              {isPending ? "..." : action.charAt(0).toUpperCase() + action.slice(1)}
+            </Button>
+          );
+        })}
       </div>
     ),
   }));
@@ -438,23 +442,6 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
                 </Button>
               </div>
             )}
-            <div style={{ marginLeft: "auto" }}>
-              <Pagination
-                page={page}
-                pageSize={pageSize}
-                pageSizes={PAGE_SIZE_OPTIONS}
-                totalItems={sorted.length}
-                onChange={({ page: newPage, pageSize: newSize }) => {
-                  if (newSize !== pageSize) {
-                    setPageSize(newSize);
-                    setPage(1);
-                  } else {
-                    setPage(newPage);
-                  }
-                }}
-                size="md"
-              />
-            </div>
           </div>
 
           <DataTable rows={rows} headers={headers}>
@@ -496,6 +483,24 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
               </Table>
             )}
           </DataTable>
+
+          <div style={{ marginTop: "1rem" }}>
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              pageSizes={PAGE_SIZE_OPTIONS}
+              totalItems={sorted.length}
+              onChange={({ page: newPage, pageSize: newSize }) => {
+                if (newSize !== pageSize) {
+                  setPageSize(newSize);
+                  setPage(1);
+                } else {
+                  setPage(newPage);
+                }
+              }}
+              size="md"
+            />
+          </div>
         </>
       )}
 
