@@ -15,7 +15,7 @@ import type { RobotBasicInfo } from "../tasks/getRobotBasicInfoTask.js";
 import { MemStore } from "../memStore/index.js";
 import type { CacheEntry, CacheEventHandler, IMemStore } from "../memStore/index.js";
 import { TaskFlowEngine } from "./taskFlowEngine/index.js";
-import type { UnifiedSseManager } from "./sseManager.js";
+import type { SseManager, ISseManagerEventHandler } from "./sseManager.js";
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
 const DEFAULT_SSH_USERNAME = "root";
@@ -79,18 +79,21 @@ export interface RobotServiceOptions {
   sshPassword?: string;
 }
 
-export class RobotCacheEventHandler implements CacheEventHandler {
-  private sseManager: UnifiedSseManager;
+export class RobotCacheEventHandler implements CacheEventHandler, ISseManagerEventHandler {
+  private sseManager: SseManager;
   private engine: TaskFlowEngine;
+  private memStore: MemStore;
   private getRobotAddress: (solutionId: string, robotId: string) => Promise<{ address: string; port: number } | null>;
 
   constructor(
-    sseManager: UnifiedSseManager,
+    sseManager: SseManager,
     engine: TaskFlowEngine,
+    memStore: MemStore,
     getRobotAddress: (solutionId: string, robotId: string) => Promise<{ address: string; port: number } | null>
   ) {
     this.sseManager = sseManager;
     this.engine = engine;
+    this.memStore = memStore;
     this.getRobotAddress = getRobotAddress;
   }
 
@@ -108,6 +111,22 @@ export class RobotCacheEventHandler implements CacheEventHandler {
 
   onDeleted(_store: IMemStore, entry: CacheEntry): void {
     this.emitEntryDeleted(entry);
+  }
+
+  onClientConnected(sseManager: SseManager, clientId: string): void {
+    for (const entry of this.memStore.listCaches()) {
+      if (entry.hasValue) {
+        sseManager.sendToClient(clientId, "memstore/entry-current", {
+          key: entry.key,
+          value: entry.value,
+          properties: entry.properties,
+        });
+      }
+    }
+  }
+
+  onClientDisconnected(_sseManager: SseManager, _clientId: string): void {
+    // No per-client state to clean up.
   }
 
   private emitEntryUpdated(entry: CacheEntry): void {
@@ -198,12 +217,12 @@ export class RobotService {
   private sshUsername: string;
   private sshPassword: string;
   public readonly memStore: MemStore;
-  public readonly sseManager: UnifiedSseManager;
+  public readonly sseManager: SseManager;
 
   constructor(
     obs: ObjectStore,
     engine: TaskFlowEngine,
-    sseManager: UnifiedSseManager,
+    sseManager: SseManager,
     memStore: MemStore,
     options?: RobotServiceOptions
   ) {
@@ -217,10 +236,12 @@ export class RobotService {
     const handler = new RobotCacheEventHandler(
       sseManager,
       engine,
+      memStore,
       this.getRobotAddress.bind(this)
     );
 
     this.memStore.setHandler(handler);
+    this.sseManager.registerHandler(handler);
   }
 
   async getRobotInfoList(solutionId: string): Promise<RobotWithBasicInfo[]> {

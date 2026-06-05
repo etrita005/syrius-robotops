@@ -428,12 +428,18 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Routes as TaskFlowRoutes
+    participant Routes as SseRoutes
     participant SSE as SseManager
+    participant Engine as TaskFlowEngine
 
-    Client->>Routes: GET /api/flows/events
+    Client->>Routes: GET /api/sse
     Routes->>Routes: 创建 ReadableStream
     Routes->>SSE: addClient({ id, controller })
+    SSE->>Engine: onClientConnected(this, clientId)
+    loop For each active flow
+        Engine->>SSE: sendToClient(clientId, "task-flow-engine/flow-current", summary)
+        SSE->>Client: event: task-flow-engine/flow-current data: {...}
+    end
     Routes-->>Client: Response (text/event-stream)
     Routes->>Client: event: connected data: {}
 
@@ -529,7 +535,7 @@ class TaskFlowEngine {
 | `POST` | `/api/flows/batch/resume` | `{ ids: string[] }` | 批量恢复 |
 | `POST` | `/api/flows/batch/stop` | `{ ids: string[] }` | 批量停止 |
 | `POST` | `/api/flows/batch/delete` | `{ ids: string[] }` | 批量删除 |
-| `GET` | `/api/flows/events` | — | SSE 实时事件端点 |
+| `GET` | `/api/sse` | — | 统一 SSE 实时事件端点（含 `task-flow-engine/*` 事件，由共享 `SseManager` 管理） |
 
 ### 6.4 参数列表过滤规范
 

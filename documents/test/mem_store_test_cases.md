@@ -119,19 +119,19 @@
 - **操作**: `updateConfig("k1", { ttlMs: 120000, cron: "*/60" })`
 - **预期结果**: `getCacheMeta("k1")` 的 config 显示 ttlMs=120000, cron="*/60"
 
-### TC-MS-014: SSE 订阅通过 MemStoreSseManager 接收更新事件
+### TC-MS-014: SSE 广播通过 SseManager 接收更新事件
 
-- **前置条件**: 已创建缓存，handler 的 onValueChanged 调用 `sseManager.broadcast`
+- **前置条件**: 已创建缓存，handler 的 onValueChanged 调用 `sseManager.broadcast("memstore/entry-updated", ...)`
 - **操作**:
-  1. `sseManager.subscribe("k1", callback, memStore)` 注册订阅
+  1. 注册一个 mock SSE 客户端到 `SseManager`
   2. `updateCache("k1", newValue)`
-- **预期结果**: callback 收到 `type: 'update'` 事件，包含 key 和 value
+- **预期结果**: 客户端收到 `event: memstore/entry-updated` 事件，payload 包含 key、value、properties
 
-### TC-MS-015: SSE 订阅通过 MemStoreSseManager 立即推送当前值
+### TC-MS-015: SSE 客户端连接时通过 onClientConnected 推送当前值
 
-- **前置条件**: 已创建含有效值的缓存
-- **操作**: `sseManager.subscribe("k1", callback, memStore)` 注册订阅
-- **预期结果**: callback 立即收到 `type: 'current'` 事件
+- **前置条件**: 已创建含有效值的缓存；`RobotCacheEventHandler`（实现了 `ISseManagerEventHandler`）已通过 `sseManager.registerHandler` 注册
+- **操作**: 新增 SSE 客户端 `sseManager.addClient(...)`
+- **预期结果**: 客户端立即收到每个已有值缓存项对应的 `memstore/entry-current` 事件
 
 ### TC-MS-016: Cron 周期触发 onUpdate
 

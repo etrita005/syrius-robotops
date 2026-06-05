@@ -16,7 +16,7 @@ import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import { createSseRoutes } from "./routes/sseRoutes.js";
 import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
-import { TaskFlowEngine, ResolverRegistry, UnifiedSseManager } from "./services/taskFlowEngine/index.js";
+import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
 import { SshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
@@ -53,7 +53,7 @@ const checksumService = new ChecksumService();
 const artifactService = new ArtifactService(objectStore, checksumService);
 const solutionService = new SolutionService(objectStore);
 
-const sseManager = new UnifiedSseManager();
+const sseManager = new SseManager();
 const resolverRegistry = new ResolverRegistry();
 
 type TaskRegEntry = {
@@ -109,7 +109,7 @@ app.route("/api/artifacts", createArtifactRoutes(artifactService));
 app.route("/api/solutions", createSolutionRoutes(solutionService));
 app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
 app.route("/api/memstore", createMemStoreRoutes(memStoreInstance));
-app.route("/api/sse", createSseRoutes(sseManager, memStoreInstance));
+app.route("/api/sse", createSseRoutes(sseManager));
 
 await taskFlowEngine.loadPersistedFlows();
 

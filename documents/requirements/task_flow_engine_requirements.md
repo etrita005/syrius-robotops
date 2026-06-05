@@ -314,9 +314,10 @@ API 返回的流摘要信息，包含完整的状态与结果数据：
 
 **FR-TFE-013**：系统应通过 SSE 端点实时推送任务流状态变更事件。
 
-- SSE 端点路径：`GET /api/flows/events`。
+- SSE 端点路径：统一为 `GET /api/sse`（由共享的 `SseManager` 提供，详见 `documents/requirements/sse-manager.md`）。旧端点 `GET /api/flows/events` 已废弃。
 - 所有事件名称以 `task-flow-engine/` 为前缀。
 - 每条事件数据自动包含服务端 `timestamp`（ISO 8601 格式）。
+- TaskFlowEngine 实现 `ISseManagerEventHandler`，并向 `SseManager` 注册自身，以便在新客户端连接时通过 `onClientConnected` 推送 `task-flow-engine/flow-current` 事件（每个内存中的活跃 flow 一次）。
 
 **FR-TFE-014**：系统应推送以下事件类型：
 
@@ -412,7 +413,7 @@ TaskFlowEngine 的 HTTP API 与内部调用接口一一对应，行为一致。�
 | `POST` | `/api/flows/batch/resume` | `{ ids: string[] }` | 批量恢复 | `batchResume()` |
 | `POST` | `/api/flows/batch/stop` | `{ ids: string[] }` | 批量停止 | `batchStop()` |
 | `POST` | `/api/flows/batch/delete` | `{ ids: string[] }` | 批量删除 | `batchDelete()` |
-| `GET` | `/api/flows/events` | — | SSE 实时事件端点 | — |
+| `GET` | `/api/sse` | — | 统一 SSE 实时事件端点（含 `task-flow-engine/*` 事件，由共享 `SseManager` 提供） | — |
 
 ### 7.2 Stop 与 Delete 的区别
 

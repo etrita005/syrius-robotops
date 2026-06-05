@@ -659,15 +659,15 @@
 | **预期结果** | HTTP 400，error: "INVALID_IDS" |
 | **验证点** | 状态码 400 |
 
-### TC-API-015：GET /api/flows/events — SSE 连接
+### TC-API-015：GET /api/sse — 统一 SSE 连接（TaskFlowEngine 事件）
 
 | 项 | 值 |
 |----|-----|
-| **测试目标** | 验证 SSE 端点返回 text/event-stream |
-| **前置条件** | 引擎初始化完成 |
-| **输入** | GET /api/flows/events |
-| **预期结果** | HTTP 200，Content-Type: text/event-stream，body 包含 connected 事件 |
-| **验证点** | 响应头和初始 connected 事件 |
+| **测试目标** | 验证统一 SSE 端点返回 text/event-stream，并可通过 `task-flow-engine/*` 事件接收任务流事件 |
+| **前置条件** | 引擎初始化完成，已通过 `sseManager.registerHandler(taskFlowEngine)` 注册 |
+| **输入** | GET /api/sse |
+| **预期结果** | HTTP 200，Content-Type: text/event-stream，body 包含 connected 事件；若存在活跃 flow，则收到 `task-flow-engine/flow-current` 事件 |
+| **验证点** | 响应头、初始 connected 事件、按需收到 flow-current 事件 |
 
 ---
 

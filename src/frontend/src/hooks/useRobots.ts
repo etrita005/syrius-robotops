@@ -24,6 +24,36 @@ export function useRobots(solutionId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
   const sseUnsubscribers = useRef<Array<() => void>>([]);
+  const cancelledRef = useRef(false);
+
+  const subscribeRobotSse = useCallback((solId: string, robot: RobotDefinition) => {
+    const key = buildRobotMemStoreKey(solId, robot.id);
+    const unsub = subscribeMemStoreKey(key, (data) => {
+      if (cancelledRef.current) return;
+      if ((data.type === "current" || data.type === "update") && data.value) {
+        const updatedBasicInfo = data.value as RobotWithBasicInfoResponse["basicInfo"];
+        setRobots((prev) =>
+          prev.map((r) => {
+            if (r.id !== robot.id) return r;
+            return {
+              ...r,
+              model: updatedBasicInfo?.model ?? r.model,
+              robotSN: updatedBasicInfo?.robotSn ?? r.robotSN,
+              thingsId: updatedBasicInfo?.thingsId ?? r.thingsId,
+              vendorId: updatedBasicInfo?.vendorId ?? r.vendorId,
+              productId: updatedBasicInfo?.productId ?? r.productId,
+              mainboardSN: updatedBasicInfo?.mainBoardSn ?? r.mainboardSN,
+              mainboardId: updatedBasicInfo?.mainBoardId ?? r.mainboardId,
+              mainSOMSN: updatedBasicInfo?.mainSomSn ?? r.mainSOMSN,
+            };
+          })
+        );
+      } else if (data.type === "deleted") {
+        setRobots((prev) => prev.filter((r) => r.id !== robot.id));
+      }
+    });
+    sseUnsubscribers.current.push(unsub);
+  }, []);
 
   useEffect(() => {
     if (!solutionId) {
@@ -36,59 +66,29 @@ export function useRobots(solutionId: string | null) {
       return;
     }
 
-    let cancelled = false;
+    cancelledRef.current = false;
 
     const loadInitialData = async () => {
       try {
         const data = await fetchRobotsInfo(solutionId);
-        if (!cancelled) {
+        if (!cancelledRef.current) {
           const enriched = data.map(enrichRobotFromBackend);
           setRobots(enriched);
           setLoading(false);
           initialLoadDone.current = true;
 
-          subscribeToRobotUpdates(solutionId, enriched);
+          sseUnsubscribers.current.forEach((unsub) => unsub());
+          sseUnsubscribers.current = [];
+          for (const robot of enriched) {
+            subscribeRobotSse(solutionId, robot);
+          }
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelledRef.current) {
           setError((err as Error).message);
           setLoading(false);
           initialLoadDone.current = true;
         }
-      }
-    };
-
-    const subscribeToRobotUpdates = (solId: string, currentRobots: RobotDefinition[]) => {
-      sseUnsubscribers.current.forEach((unsub) => unsub());
-      sseUnsubscribers.current = [];
-
-      for (const robot of currentRobots) {
-        const key = buildRobotMemStoreKey(solId, robot.id);
-        const unsub = subscribeMemStoreKey(key, (data) => {
-          if (cancelled) return;
-          if (data.type === "update" && data.value) {
-            const updatedBasicInfo = data.value as RobotWithBasicInfoResponse["basicInfo"];
-            setRobots((prev) =>
-              prev.map((r) => {
-                if (r.id !== robot.id) return r;
-                return {
-                  ...r,
-                  model: updatedBasicInfo?.model ?? r.model,
-                  robotSN: updatedBasicInfo?.robotSn ?? r.robotSN,
-                  thingsId: updatedBasicInfo?.thingsId ?? r.thingsId,
-                  vendorId: updatedBasicInfo?.vendorId ?? r.vendorId,
-                  productId: updatedBasicInfo?.productId ?? r.productId,
-                  mainboardSN: updatedBasicInfo?.mainBoardSn ?? r.mainboardSN,
-                  mainboardId: updatedBasicInfo?.mainBoardId ?? r.mainboardId,
-                  mainSOMSN: updatedBasicInfo?.mainSomSn ?? r.mainSOMSN,
-                };
-              })
-            );
-          } else if (data.type === "deleted") {
-            setRobots((prev) => prev.filter((r) => r.id !== robot.id));
-          }
-        });
-        sseUnsubscribers.current.push(unsub);
       }
     };
 
@@ -97,10 +97,10 @@ export function useRobots(solutionId: string | null) {
     loadInitialData();
 
     const refreshInterval = setInterval(async () => {
-      if (cancelled) return;
+      if (cancelledRef.current) return;
       try {
         const data = await fetchRobotsInfo(solutionId);
-        if (!cancelled) {
+        if (!cancelledRef.current) {
           setRobots(data.map(enrichRobotFromBackend));
         }
       } catch {
@@ -109,12 +109,12 @@ export function useRobots(solutionId: string | null) {
     }, INITIAL_LOAD_TIMEOUT_MS);
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       clearInterval(refreshInterval);
       sseUnsubscribers.current.forEach((unsub) => unsub());
       sseUnsubscribers.current = [];
     };
-  }, [solutionId]);
+  }, [solutionId, subscribeRobotSse]);
 
   const addRobot = useCallback(
     async (input: CreateRobotInput) => {
@@ -122,18 +122,20 @@ export function useRobots(solutionId: string | null) {
       const stored = await createRobot(solutionId, input);
       const robot = enrichRobot(stored);
       setRobots((prev) => [...prev, robot]);
+      subscribeRobotSse(solutionId, robot);
       return robot;
     },
-    [solutionId]
+    [solutionId, subscribeRobotSse]
   );
 
   const editRobot = useCallback(
     async (robotId: string, patch: Partial<Pick<StoredRobotData, "alias" | "address" | "port">>) => {
       if (!solutionId) throw new Error("No active solution");
       const updated = await updateRobot(solutionId, robotId, patch);
-      const enriched = enrichRobot(updated);
-      setRobots((prev) => prev.map((r) => (r.id === robotId ? enriched : r)));
-      return enriched;
+      setRobots((prev) =>
+        prev.map((r) => (r.id === robotId ? { ...r, ...updated } : r))
+      );
+      return enrichRobot(updated);
     },
     [solutionId]
   );

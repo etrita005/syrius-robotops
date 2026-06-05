@@ -219,7 +219,7 @@ interface MemStore {
 | GET | `/api/memstore/cache?key={key}` | Read cached value by key |
 | POST | `/api/memstore/cache/refresh?key={key}` | Force refresh a cache key |
 | GET | `/api/memstore/cache/meta?key={key}` | Read cache metadata |
-| GET | `/api/sse?key={key}` | Subscribe to SSE events for a key |
+| GET | `/api/sse` | Unified SSE endpoint for all module events (managed by shared `SseManager`, see `documents/design/sse-manager.md`) |
 
 > **URL 设计说明**：由于 key 格式 `robot:{solutionId}/{robotId}` 包含 `/` 字符，不能作为 URL 路径参数，因此 mem_store REST API 和 SSE 端点均使用 query parameter 传递 key（如 `?key=robot:my-solution/robot-abc123`）。
 
@@ -1027,8 +1027,8 @@ function bumpPatchVersion(version: string): string {
 - 获取结果存入 mem_store 缓存，key 格式为 `robot:{solutionId}/{robotId}`，缓存值格式为 `{ info: RobotBasicInfo, fetchedAt: string }`。
 - 每个缓存条目配置 TTL=5 分钟、cron 刷新间隔=3 分钟。mem_store 自动按 cron 间隔执行 DAG（SSH 连接 + 命令执行）刷新缓存。
 - 缓存 miss 时（首次访问或 TTL 过期后首次读取），mem_store 自动触发 DAG 刷新，异步回填缓存。
-- 缓存更新时，mem_store 通过 SSE 向已订阅的前端客户端推送 `{ key, value, type: "update" }` 事件。
-- 前端首次加载通过 `GET /api/solutions/:solutionId/robots/info` 获取全量数据，之后为每个机器人订阅 `GET /api/sse?key=robot:{solutionId}/{robotId}` 接收实时更新。
+- 缓存更新时，mem_store 通过共享 `SseManager` 向所有连接的前端广播 `memstore/entry-updated` 事件，payload 包含 `{ key, value, properties }`，统一封装在 `ServerEvent` 信封中。
+- 前端首次加载通过 `GET /api/solutions/:solutionId/robots/info` 获取全量数据，之后通过统一端点 `GET /api/sse` 接收 `memstore/entry-current`（连接时初始推送）、`memstore/entry-updated`（更新）、`memstore/entry-deleted`（删除）事件，按 key 过滤需要关心的机器人。
 - 当后端 SSH 获取失败或缓存尚未就绪时，前端使用 `generateMockRobotInfo()` 生成兜底数据。`enrichRobotFromBackend` 函数优先使用后端返回的 basicInfo，缺失字段用 mock 数据补充。
 - 创建机器人时，`RobotService.create()` 自动在 mem_store 中创建对应的缓存条目并启动定时刷新。
 - 删除机器人时，`RobotService.remove()` 同步删除 mem_store 中的缓存条目。

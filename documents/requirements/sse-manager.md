@@ -1,4 +1,4 @@
-# Unified SSE Manager Module Requirements
+# SSE Manager Module Requirements
 
 ## 1. Background and Objectives
 
@@ -13,16 +13,17 @@ The frontend must maintain two separate `EventSource` connections, and the event
 
 ### 1.2 Objective
 
-Design and implement a **Unified SSE Manager** as the sole backend-to-frontend notification channel. All modules broadcast events through this single manager. Event differentiation is achieved via structured event names (namespaces).
+Design and implement a single, consolidated **SSE Manager** as the sole backend-to-frontend notification channel. All modules broadcast events through this single manager. Event differentiation is achieved via structured event names (namespaces).
 
 ### 1.3 Scope
 
 This requirement covers:
-- The Unified SSE Manager module itself
+- The SSE Manager module itself
 - Integration with MemStore / RobotService (cache events)
 - Integration with TaskFlowEngine (flow lifecycle events)
 - Unified HTTP SSE endpoint design
 - Message envelope standardization
+- Connection lifecycle event handler interface for business modules
 
 This requirement does **not** cover frontend consumption logic, which remains the responsibility of the frontend application.
 
@@ -30,11 +31,11 @@ This requirement does **not** cover frontend consumption logic, which remains th
 
 ## 2. Functional Requirements
 
-### FR-SSE-001: Unified SSE Manager as Sole Notification Channel
+### FR-SSE-001: SSE Manager as Sole Notification Channel
 
-- The Unified SSE Manager must be the **only** component responsible for managing HTTP SSE connections to the frontend.
-- All backend modules that need to push real-time events to the frontend must do so through the Unified SSE Manager instance.
-- No module is permitted to directly manipulate `ReadableStreamDefaultController` or raw HTTP response streams for event推送 purposes.
+- The SSE Manager must be the **only** component responsible for managing HTTP SSE connections to the frontend.
+- All backend modules that need to push real-time events to the frontend must do so through the SSE Manager instance.
+- No module is permitted to directly manipulate `ReadableStreamDefaultController` or raw HTTP response streams for event push purposes.
 
 ### FR-SSE-002: Event Namespace Isolation
 
@@ -46,6 +47,7 @@ This requirement does **not** cover frontend consumption logic, which remains th
   - `memstore/entry-current`
   - `task-flow-engine/flow-created`
   - `task-flow-engine/flow-updated`
+  - `task-flow-engine/flow-current`
   - `task-flow-engine/flow-completed`
   - `task-flow-engine/flow-removed`
   - `task-flow-engine/task-updated`
@@ -53,13 +55,13 @@ This requirement does **not** cover frontend consumption logic, which remains th
 
 ### FR-SSE-003: Module-Defined Payloads
 
-- The Unified SSE Manager must not impose any payload structure constraints beyond wrapping it in the standard envelope.
+- The SSE Manager must not impose any payload structure constraints beyond wrapping it in the standard envelope.
 - Each module is responsible for defining and constructing its own payload shape.
 - Payloads are passed as `unknown` (or `Record<string, unknown>`) to the broadcast method.
 
 ### FR-SSE-004: Constructor Injection of SSE Manager Instance
 
-- The Unified SSE Manager instance must be created once at application startup (e.g., in `index.ts`).
+- The SSE Manager instance must be created once at application startup (e.g., in `index.ts`).
 - This same instance must be injected into all modules that require event broadcasting capability.
 - Modules must receive the instance via their constructors (dependency injection).
 - Affected modules: `TaskFlowEngine`, `RobotService` (via `RobotCacheEventHandler`).
@@ -103,14 +105,42 @@ This requirement does **not** cover frontend consumption logic, which remains th
 - The ping interval is configurable at the route level (default: 30 seconds).
 - Ping events should use the `ping` event name (SSE protocol level), with payload `{ type: "ping" }`.
 
-### FR-SSE-010: MemStore Initial State Push on Connection
+### FR-SSE-010: Connection Lifecycle Event Handler Interface
 
-- When a client connects to `/api/sse`, the server may optionally push the current state of MemStore entries.
-- This logic resides in the **route layer**, not inside the SSE Manager.
-- The route iterates over `memStore.listCaches()` and sends a `memstore/entry-current` event for each existing cache entry.
-- This replaces the `MemStoreSseManager.subscribe()` immediate-push behavior.
+- The SSE Manager must expose an interface `ISseManagerEventHandler` so that business modules can react to client connection lifecycle events.
+- Interface definition:
+  ```typescript
+  interface ISseManagerEventHandler {
+    onClientConnected(sseManager: SseManager, clientId: string): void;
+    onClientDisconnected(sseManager: SseManager, clientId: string): void;
+  }
+  ```
+- The SSE Manager must internally maintain an ordered list of registered handlers.
+- The SSE Manager must provide `registerHandler(handler)` and `unregisterHandler(handler)` methods.
+- When a client is added to the registry (via `addClient`), the SSE Manager must invoke `onClientConnected` on every registered handler, in registration order.
+- When a client is removed from the registry (via `removeClient`, including write-failure auto-removal), the SSE Manager must invoke `onClientDisconnected` on every registered handler, in registration order.
+- Handler invocation must be isolated: if one handler throws, the exception must be caught and logged, and subsequent handlers must still be invoked. The client connect/disconnect operation itself must not fail because of a handler exception.
+- Registering the same handler instance twice must be a no-op (idempotent).
+- Unregistering a handler that is not registered must be a no-op (idempotent).
 
-### FR-SSE-011: Backward Compatibility During Migration
+### FR-SSE-011: Per-Client Targeted Send
+
+- The SSE Manager must provide a `sendToClient(clientId, event, payload)` method that sends an event to a single client identified by its ID.
+- This method must use the same envelope format (`ServerEvent`) and SSE protocol serialization as `broadcast()`.
+- If the target client does not exist, the method returns `false` and does not throw.
+- If the write fails, the client must be removed from the registry (and `onClientDisconnected` invoked on registered handlers), and the method returns `false`.
+- On success, the method returns `true`.
+- This method enables business modules to push module-specific initial state to newly connected clients from within their `onClientConnected` handler implementations.
+
+### FR-SSE-012: Initial State Push by Business Modules
+
+- Pushing module-specific initial state to a newly connected client is the responsibility of the business module, not the SSE Manager and not the HTTP route layer.
+- Business modules that need to push initial state must implement `ISseManagerEventHandler`, register themselves with the SSE Manager, and use `sseManager.sendToClient(clientId, ...)` from within `onClientConnected`.
+- Examples:
+  - `RobotCacheEventHandler` iterates over `memStore.listCaches()` and sends one `memstore/entry-current` event per cached entry.
+  - `TaskFlowEngine` iterates over its in-memory flow records and sends one `task-flow-engine/flow-current` event per active flow.
+
+### FR-SSE-013: Backward Compatibility During Migration
 
 - During the migration period, the existing endpoints (`/api/sse?key=` and `/api/flows/events`) may remain functional but are marked deprecated.
 - The unified endpoint `/api/sse` is the canonical endpoint for all new frontend code.
@@ -124,21 +154,25 @@ This requirement does **not** cover frontend consumption logic, which remains th
 
 - The SSE Manager must support at least 100 concurrent client connections without significant performance degradation.
 - A broadcast operation must complete in O(n) time relative to the number of connected clients, where n <= 100.
+- Handler list iteration on connect/disconnect must complete in O(h) time where h is the number of registered handlers (expected to be small, typically <= 10).
 
 ### NFR-SSE-002: Memory Efficiency
 
 - Disconnected clients must be removed from the registry immediately upon write failure.
 - No memory leaks must occur under normal connection/disconnection patterns.
+- Handler registrations must not accumulate duplicates.
 
 ### NFR-SSE-003: Error Resilience
 
 - A single client's disconnection or write failure must not affect event delivery to other clients.
-- The SSE Manager must never throw an exception during `broadcast()`; all errors are caught and handled internally.
+- The SSE Manager must never throw an exception during `broadcast()` due to client write failures; all such errors are caught and handled internally.
+- A handler exception during `onClientConnected` or `onClientDisconnected` must not propagate; it must be caught and logged.
 
 ### NFR-SSE-004: Type Safety
 
 - All code must be written in TypeScript with strict typing.
 - The envelope interface must be generic (`ServerEvent<T>`) to allow modules to specify payload types while maintaining type safety in their internal wrapper methods.
+- The `ISseManagerEventHandler` interface must be exported so that business modules can implement it with full type checking.
 
 ---
 
@@ -147,7 +181,10 @@ This requirement does **not** cover frontend consumption logic, which remains th
 ### Within SSE Manager Scope
 
 - Client connection registry (add/remove)
+- Handler registry (register/unregister)
+- Invocation of registered handlers on connect/disconnect with exception isolation
 - Broadcast to all connected clients
+- Targeted send to a single client (`sendToClient`)
 - Message envelope construction (adding `timestamp`)
 - SSE protocol serialization (`event: ...\ndata: ...\n\n`)
 - Write failure handling and client cleanup
@@ -157,14 +194,14 @@ This requirement does **not** cover frontend consumption logic, which remains th
 - Payload content definition (module responsibility)
 - Event triggering business logic (module responsibility)
 - HTTP route handler setup (route layer responsibility)
-- MemStore current-state iteration on connection (route layer responsibility)
-- Heartbeat loop implementation (route layer responsibility, using `streamSSE`)
+- Iteration over module-owned state (e.g., `memStore.listCaches()`, `taskFlowEngine.flows`) for initial state push (business module responsibility, implemented inside `onClientConnected`)
+- Heartbeat loop implementation (route layer responsibility)
 
 ---
 
 ## 5. Constraints
 
-- **Technology Stack**: TypeScript + ES6 modules + Hono + `hono/streaming` (`streamSSE`).
+- **Technology Stack**: TypeScript + ES6 modules + Hono.
 - **No External Dependencies**: The SSE Manager must not introduce new npm dependencies beyond what the project already uses.
 - **No Breaking Changes to Module APIs (initially)**: Modules continue to expose the same public methods; only their internal event emission logic changes.
 - All logs and comments must be in English.

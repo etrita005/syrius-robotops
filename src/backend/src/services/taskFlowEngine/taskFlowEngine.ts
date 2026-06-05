@@ -8,7 +8,7 @@ import {
 import { randomUUID } from "node:crypto";
 import type { ObjectStore } from "../objectStore.js";
 import type { ResolverRegistry } from "./resolverRegistry.js";
-import type { UnifiedSseManager } from "../sseManager.js";
+import type { SseManager, ISseManagerEventHandler } from "../sseManager.js";
 
 type SerializedFlowRunStatus = ReturnType<Flow["getSerializableState"]>;
 
@@ -62,14 +62,21 @@ function getTaskCodes(dag: FlowSpec): string[] {
 const DEFAULT_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
-export class TaskFlowEngine {
+export class TaskFlowEngine implements ISseManagerEventHandler {
   private flows = new Map<string, FlowRecord>();
   private flowInstances = new Map<string, Flow>();
-  private sseManager: UnifiedSseManager;
+  private sseManager: SseManager;
+  private objectStore: ObjectStore;
+  private resolverRegistry: ResolverRegistry;
+  private completedFlowTtlMs: number;
+  private cleanupIntervalMs: number;
+  private flowContext: ValueMap;
+  private cleanupTimer: ReturnType<typeof setInterval> | undefined;
+  private loggerInstalled = false;
 
   constructor(
     objectStore: ObjectStore,
-    sseManager: UnifiedSseManager,
+    sseManager: SseManager,
     resolverRegistry: ResolverRegistry,
     options?: TaskFlowEngineOptions
   ) {
@@ -80,6 +87,17 @@ export class TaskFlowEngine {
     this.cleanupIntervalMs = options?.cleanupIntervalMs ?? DEFAULT_CLEANUP_INTERVAL_MS;
     this.flowContext = {};
     this.startCleanupTimer();
+    this.sseManager.registerHandler(this);
+  }
+
+  onClientConnected(sseManager: SseManager, clientId: string): void {
+    for (const record of this.flows.values()) {
+      sseManager.sendToClient(clientId, "task-flow-engine/flow-current", this.summarize(record));
+    }
+  }
+
+  onClientDisconnected(_sseManager: SseManager, _clientId: string): void {
+    // No per-client state to clean up.
   }
 
   setFlowContext(context: ValueMap): void {

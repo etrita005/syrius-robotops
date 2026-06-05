@@ -125,21 +125,47 @@ export function subscribeMemStoreKey(
 ): () => void {
   const eventSource = new EventSource(`/api/sse?key=${encodeURIComponent(key)}`);
 
-  const handleMessage = (event: MessageEvent) => {
+  const handleCurrent = (event: MessageEvent) => {
     try {
       const parsed = JSON.parse(event.data);
-      if (parsed.type !== "ping") {
-        onData(parsed);
-      }
+      const payload = parsed.payload ?? parsed;
+      if (payload.key !== key) return;
+      onData({ key: payload.key, value: payload.value, type: "current", properties: payload.properties });
     } catch {
       // ignore parse errors
     }
   };
 
-  eventSource.addEventListener("message", handleMessage);
+  const handleUpdated = (event: MessageEvent) => {
+    try {
+      const parsed = JSON.parse(event.data);
+      const payload = parsed.payload ?? parsed;
+      if (payload.key !== key) return;
+      onData({ key: payload.key, value: payload.value, type: "update", properties: payload.properties });
+    } catch {
+      // ignore parse errors
+    }
+  };
+
+  const handleDeleted = (event: MessageEvent) => {
+    try {
+      const parsed = JSON.parse(event.data);
+      const payload = parsed.payload ?? parsed;
+      if (payload.key !== key) return;
+      onData({ key: payload.key, value: undefined, type: "deleted" });
+    } catch {
+      // ignore parse errors
+    }
+  };
+
+  eventSource.addEventListener("memstore/entry-current", handleCurrent);
+  eventSource.addEventListener("memstore/entry-updated", handleUpdated);
+  eventSource.addEventListener("memstore/entry-deleted", handleDeleted);
 
   return () => {
-    eventSource.removeEventListener("message", handleMessage);
+    eventSource.removeEventListener("memstore/entry-current", handleCurrent);
+    eventSource.removeEventListener("memstore/entry-updated", handleUpdated);
+    eventSource.removeEventListener("memstore/entry-deleted", handleDeleted);
     eventSource.close();
   };
 }

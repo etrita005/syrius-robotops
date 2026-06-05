@@ -1,9 +1,8 @@
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
-import type { UnifiedSseManager } from "../services/sseManager.js";
-import type { MemStore } from "../memStore/memStore.js";
+import type { SseManager } from "../services/sseManager.js";
 
-export function createSseRoutes(sseManager: UnifiedSseManager, memStore: MemStore): Hono {
+export function createSseRoutes(sseManager: SseManager): Hono {
   const app = new Hono();
 
   app.get("/", (c) => {
@@ -15,17 +14,6 @@ export function createSseRoutes(sseManager: UnifiedSseManager, memStore: MemStor
         sseManager.addClient({ id: clientId, controller: ctrl });
         const encoder = new TextEncoder();
         ctrl.enqueue(encoder.encode(`event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`));
-
-        for (const entry of memStore.listCaches()) {
-          if (entry.hasValue) {
-            const data = JSON.stringify({
-              key: entry.key,
-              value: entry.value,
-              properties: entry.properties,
-            });
-            ctrl.enqueue(encoder.encode(`event: memstore/entry-current\ndata: ${data}\n\n`));
-          }
-        }
 
         const pingInterval = setInterval(() => {
           try {

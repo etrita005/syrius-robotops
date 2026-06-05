@@ -46,9 +46,10 @@
 ## 六、前端实时推送能力需求
 
 - MemStore 自身不实现 SSE，SSE 由调用者通过 CacheEventHandler 的 onValueChanged 和 onDeleted 方法实现
-- MemStore 提供 MemStoreSseManager 辅助类，封装按 Key 维度的订阅/广播逻辑，供调用者使用
-- 基于 Hono 原生 SSE 实现长连接订阅，支持前端按 Key 维度订阅数据更新
-- 后端任务引擎完成数据更新、回调模块刷新缓存后，通过 onValueChanged 事件自动推送最新数据至对应订阅前端
+- SSE 推送统一由 `SseManager`（`src/backend/src/services/sseManager.ts`）负责，详见 `documents/requirements/sse-manager.md`
+- MemStore 不再提供独立的 SSE 辅助类（原 `MemStoreSseManager` 已废弃），调用者应在 CacheEventHandler 实现中调用 `sseManager.broadcast(...)`
+- 基于 Hono 原生 SSE 实现长连接订阅，前端通过统一端点 `GET /api/sse` 订阅所有事件（按事件名命名空间区分模块）
+- 后端任务引擎完成数据更新、回调模块刷新缓存后，通过 onValueChanged 事件自动推送最新数据至所有订阅前端
 
 ## 七、动态资源管理需求
 

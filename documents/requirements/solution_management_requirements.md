@@ -510,7 +510,7 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 - 机器人动态信息（model、robotSn、thingsId 等）由后端通过 SSH 协议从机器人实时获取，存入 mem_store 缓存层。
 - mem_store 缓存 key 格式为 `robot:{solutionId}/{robotId}`，TTL=5 分钟，cron 自动刷新间隔=3 分钟。
 - 缓存 miss 时（首次访问或 TTL 过期），mem_store 自动触发 DAG（SSH 连接 + 命令执行）刷新缓存。
-- 前端首次通过 `GET /api/solutions/:solutionId/robots/info` 获取全量数据，之后为每个机器人订阅 mem_store SSE（`GET /api/sse?key=robot:{solutionId}/{robotId}`）接收实时更新推送。
+- 前端首次通过 `GET /api/solutions/:solutionId/robots/info` 获取全量数据，之后通过统一 SSE 端点 `GET /api/sse` 接收所有机器人 `memstore/entry-current`（连接时初始推送）、`memstore/entry-updated`（运行时更新）、`memstore/entry-deleted`（缓存删除）事件。前端按 key 过滤需要关心的机器人事件。
 - 当后端 SSH 获取失败或缓存尚未就绪时，前端使用 `generateMockRobotInfo()` 生成兜底数据。`enrichRobotFromBackend` 函数优先使用后端返回的 basicInfo，缺失字段用 mock 数据补充。
 - 服务重启后 mem_store 为空，首次访问自动触发 DAG 回填，无需手动恢复。
 - 模拟数据应具有一致性：同一台机器人（相同地址）始终返回相同的信息。
@@ -539,9 +539,9 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 **FR-SOL-027**：MemStore REST API 与 SSE。
 
 - 后端提供 mem_store 只读 RESTful API（`/api/memstore/...`），前端可通过此 API 读取缓存的机器人动态信息。
-- 后端提供 SSE 订阅端点（`/api/sse?key=...`），前端可订阅指定 key 的实时更新推送。
-- 由于 mem_store key 格式 `robot:{solutionId}/{robotId}` 包含 `/` 字符，所有 mem_store REST API 和 SSE 端点均使用 query parameter 传递 key（如 `?key=robot:my-solution/robot-abc123`）。
-- SSE 连接维护心跳（每 5 秒发送 `ping` 事件），连接断开时自动清理订阅。
+- 后端提供统一 SSE 订阅端点（`GET /api/sse`），由共享 `SseManager` 管理（详见 `documents/requirements/sse-manager.md`）。所有模块的事件（含 `memstore/*`、`task-flow-engine/*` 等）通过该端点广播，按事件名命名空间区分。
+- 由于 mem_store key 格式 `robot:{solutionId}/{robotId}` 包含 `/` 字符，所有 mem_store REST API 均使用 query parameter 传递 key（如 `?key=robot:my-solution/robot-abc123`）。
+- SSE 连接维护心跳（每 30 秒发送 `ping` 事件），连接断开时自动清理资源。
 
 ---
 

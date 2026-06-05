@@ -20,8 +20,8 @@ MemStore 是为 RobotOps Studio 提供的单机内存 KV 缓存模块，面向�
           +----------------------------+-----------------------------+
           |                            |                             |
 +---------v---------+      +-----------v-----------+   +-------------v--------+
-|  Cache Core       |      |   MemStoreSseManager  |   |  Scheduler           |
-|  (MemStore class) |      |   (standalone class)  |   |  (Scheduler class)   |
+|  Cache Core       |      |   SseManager          |   |  Scheduler           |
+|  (MemStore class) |      |   (shared transport)  |   |  (Scheduler class)   |
 |  LRU + Metadata   |      |                       |   |  toad-scheduler      |
 |  + Properties     |      |                       |   +----+----------------+
 |  + Context        |      |                       |        |
@@ -71,24 +71,18 @@ class MemStore {
 
 提供 `clearJobsForKey` 方法，在 Key 删除、配置变更、LRU 过期时统一停止相关任务。
 
-### 3.4 SSE 推送管理 (MemStoreSseManager)
+### 3.4 SSE 推送管理
 
-MemStore 自身不包含 SSE 逻辑，SSE 由调用者通过 `CacheEventHandler` 的 `onValueChanged` 和 `onDeleted` 方法实现。MemStore 提供辅助类 `MemStoreSseManager`，封装按 Key 维度的订阅/广播逻辑：
+MemStore 自身不包含 SSE 逻辑，SSE 由调用者通过 `CacheEventHandler` 的 `onValueChanged` 和 `onDeleted` 方法实现。
 
-```typescript
-class MemStoreSseManager {
-  subscribe(key: string, onData: (data: string) => void, memStore: MemStore): () => void
-  broadcast(key: string, data: unknown): void
-}
-```
+SSE 推送统一由 `SseManager`（`src/backend/src/services/sseManager.ts`）负责，详见 `documents/design/sse-manager.md`。原 `MemStoreSseManager` 辅助类已废弃。
 
 核心机制：
-- 每个前端订阅对应一个回调函数，通过 `subscribe` 注册。
-- `broadcast` 遍历该 Key 的所有存活回调，下发 JSON 字符串。
-- 订阅建立时，若当前 Key 已有有效值，立即推送 `type: 'current'` 事件。
-- 调用者在 `onValueChanged` 中调用 `sseManager.broadcast(key, { key, value, type: 'update' })`。
-- 调用者在 `onDeleted` 中调用 `sseManager.broadcast(key, { key, type: 'deleted' })`。
-- 连接存活期间由 Hono `streamSSE` 每 5 秒发送 `ping` 事件。
+- 调用者构造的 `CacheEventHandler` 实现持有 `SseManager` 实例引用。
+- 调用者在 `onValueChanged` 中调用 `sseManager.broadcast("memstore/entry-updated", { key, value, properties })`。
+- 调用者在 `onDeleted` 中调用 `sseManager.broadcast("memstore/entry-deleted", { key })`。
+- 如需在客户端连接时推送当前缓存初始状态，调用者的 handler 应同时实现 `ISseManagerEventHandler.onClientConnected`，在其中遍历 `memStore.listCaches()` 并调用 `sseManager.sendToClient(clientId, "memstore/entry-current", ...)`。
+- 前端通过统一端点 `GET /api/sse` 订阅所有事件，按事件名命名空间区分模块。
 
 ### 3.5 事件接口 (CacheEventHandler)
 
@@ -202,7 +196,7 @@ MemStore 提供 `listCaches(filter?)` 方法，支持按属性 map 过滤缓存�
 | 9 | PUT | `/api/memstore/cache/config` | `updateConfig(key, partial)` | 动态修改配置 |
 | 10 | POST | `/api/memstore/cache/refresh` | `triggerRefresh(key)` | 手动触发刷新 |
 | 11 | POST | `/api/memstore/caches/query` | `listCaches(filter?)` | 列出/过滤缓存 |
-| 12 | GET | `/api/sse` | `sseManager.subscribe(key, onData, memStore)` | SSE 长连接订阅（由 MemStoreSseManager 提供） |
+| 12 | GET | `/api/sse` | 统一 SSE 长连接端点 | 由 `SseManager` 管理，详见 `documents/design/sse-manager.md` |
 
 ### 5.2 HTTP 接口详细定义
 
@@ -283,14 +277,18 @@ MemStore 提供 `listCaches(filter?)` 方法，支持按属性 map 过滤缓存�
 }
 ```
 
-#### GET `/api/sse?key=` — SSE 订阅
+#### GET `/api/sse` — 统一 SSE 订阅端点
 
-SSE 事件格式：
+MemStore 相关事件由 `SseManager` 通过统一端点广播（详见 `documents/design/sse-manager.md`）。事件命名空间：
+
+- `memstore/entry-current`：客户端连接时，对每个已有值的缓存项推送一次（由 `RobotCacheEventHandler.onClientConnected` 发送）
+- `memstore/entry-updated`：缓存值被更新时广播
+- `memstore/entry-deleted`：缓存被删除时广播
+
+事件统一信封格式：
 ```
-data: {"key":"k1","value":{...},"type":"update"}
-
-event: ping
-data: {"type":"ping"}
+event: memstore/entry-updated
+data: {"event":"memstore/entry-updated","payload":{"key":"...","value":{...},"properties":{...}},"timestamp":"..."}
 ```
 
 ### 5.3 函数接口详细定义
@@ -325,10 +323,8 @@ class MemStore {
   listCaches(filter?: Record<string, unknown>): CacheEntry[]
 }
 
-class MemStoreSseManager {
-  subscribe(key: string, onData: (data: string) => void, memStore: MemStore): () => void
-  broadcast(key: string, data: unknown): void
-}
+// SSE 推送由 SseManager 提供，参见 documents/design/sse-manager.md
+// MemStore 不再提供独立的 SSE 辅助类（原 MemStoreSseManager 已废弃）
 ```
 
 ## 6. 关键逻辑
