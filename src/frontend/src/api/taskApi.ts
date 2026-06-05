@@ -6,6 +6,7 @@ export interface CreateFlowInput {
   dag: Record<string, unknown>;
   input: Record<string, unknown>;
   expectedResults?: string[];
+  errorDag?: Record<string, unknown>;
 }
 
 export async function listFlows(
@@ -72,18 +73,22 @@ export function subscribeTaskEvents(
     try {
       const parsed = JSON.parse(event.data);
       if (parsed.type === "ping") return;
-      onEvent(event.type === "message" ? "unknown" : event.type, parsed);
+      const payload = parsed.payload ?? parsed;
+      onEvent(event.type === "message" ? "unknown" : event.type, payload);
     } catch {
       // ignore parse errors
     }
   };
 
+  eventSource.addEventListener("task-flow-engine/flow-current", handleMessage);
   eventSource.addEventListener("task-flow-engine/flow-created", handleMessage);
   eventSource.addEventListener("task-flow-engine/flow-updated", handleMessage);
   eventSource.addEventListener("task-flow-engine/flow-completed", handleMessage);
   eventSource.addEventListener("task-flow-engine/flow-removed", handleMessage);
   eventSource.addEventListener("task-flow-engine/task-updated", handleMessage);
   eventSource.addEventListener("task-flow-engine/task-result", handleMessage);
+  eventSource.addEventListener("task-flow-engine/error-handling-started", handleMessage);
+  eventSource.addEventListener("task-flow-engine/error-handling-completed", handleMessage);
 
   return () => {
     eventSource.close();

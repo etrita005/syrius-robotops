@@ -15,6 +15,16 @@ type SerializedFlowRunStatus = ReturnType<Flow["getSerializableState"]>;
 export type FlowType = "internal" | "user";
 export type FlowState = "PENDING" | "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED" | "STOPPED";
 export type TaskState = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "SKIPPED";
+export type FlowPhase = "main" | "error";
+
+export interface ErrorContext {
+  failedTaskCode: string;
+  errorMessage: string;
+  completedTasks: string[];
+  mainTaskStates: Record<string, TaskState>;
+  mainTaskResults?: Record<string, ValueMap>;
+  mainResults?: ValueMap;
+}
 
 export interface FlowRecord {
   id: string;
@@ -30,6 +40,12 @@ export interface FlowRecord {
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
+  errorDag?: FlowSpec;
+  phase?: FlowPhase;
+  errorContext?: ErrorContext;
+  mainTaskStates?: Record<string, TaskState>;
+  errorTaskStates?: Record<string, TaskState>;
+  serializedErrorRunStatus?: SerializedFlowRunStatus;
 }
 
 export interface FlowSummary {
@@ -44,6 +60,8 @@ export interface FlowSummary {
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
+  errorDag?: FlowSpec;
+  phase?: FlowPhase;
 }
 
 export interface TaskFlowEngineOptions {
@@ -142,6 +160,20 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     });
   }
 
+  private emitErrorHandlingStarted(record: FlowRecord): void {
+    this.sseManager.broadcast("task-flow-engine/error-handling-started", {
+      flowId: record.id,
+      errorContext: record.errorContext,
+    });
+  }
+
+  private emitErrorHandlingCompleted(record: FlowRecord): void {
+    this.sseManager.broadcast("task-flow-engine/error-handling-completed", {
+      flowId: record.id,
+      state: record.state,
+    });
+  }
+
   private cleanupExpiredFlows(): void {
     const now = Date.now();
     const expiredIds: string[] = [];
@@ -195,14 +227,22 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     }
   }
 
+  private validateAllResolvers(dag: FlowSpec, errorDag?: FlowSpec): void {
+    this.validateResolvers(dag);
+    if (errorDag) {
+      this.validateResolvers(errorDag);
+    }
+  }
+
   async createFlow(
     type: FlowType,
     dag: FlowSpec,
     input?: ValueMap,
-    expectedResults?: string[]
+    expectedResults?: string[],
+    errorDag?: FlowSpec
   ): Promise<FlowSummary> {
     this.ensureLogger();
-    this.validateResolvers(dag);
+    this.validateAllResolvers(dag, errorDag);
 
     const id = randomUUID();
 
@@ -215,6 +255,20 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
         const task = tasks[code];
         if (task?.provides?.length && task.resolver && !task.resolver.results) {
           task.resolver.results = { done: task.provides[0] };
+        }
+      }
+    }
+
+    if (errorDag) {
+      const errorTasks = (errorDag as Record<string, unknown>).tasks as
+        | Record<string, { provides?: string[]; resolver?: { results?: Record<string, string> } }>
+        | undefined;
+      if (errorTasks) {
+        for (const code of Object.keys(errorTasks)) {
+          const task = errorTasks[code];
+          if (task?.provides?.length && task.resolver && !task.resolver.results) {
+            task.resolver.results = { done: task.provides[0] };
+          }
         }
       }
     }
@@ -234,6 +288,8 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
       state: "PENDING",
       taskStates,
       createdAt: nowISO(),
+      errorDag,
+      phase: "main",
     };
 
     const flow = new Flow(dag);
@@ -254,7 +310,7 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     if (!record || !flow) return;
 
     record.state = "RUNNING";
-    record.startedAt = nowISO();
+    record.startedAt = record.startedAt ?? nowISO();
     this.saveFlow(record).catch(() => {});
     this.emitFlowUpdated(record);
 
@@ -266,7 +322,11 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
       .start(startParams, expected, resolvers, this.flowContext, { instanceId: id })
       .then((flowResults: ValueMap) => {
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
-          record.state = "COMPLETED";
+          if (record.phase === "error") {
+            record.state = "FAILED";
+          } else {
+            record.state = "COMPLETED";
+          }
         }
         if (flowResults && Object.keys(flowResults).length > 0) {
           record.results = {};
@@ -277,13 +337,112 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
           }
           this.extractTaskResults(id, flowResults);
         }
+        if (record.phase === "error") {
+          this.emitErrorHandlingCompleted(record);
+        }
         this.finalizeFlow(id);
       })
       .catch((err: unknown) => {
         console.error(`[TaskFlowEngine] Flow ${id} failed:`, err instanceof Error ? err.message : String(err));
+        if (record.phase === "main" && record.errorDag) {
+          this.startErrorFlow(id, err);
+          return;
+        }
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "FAILED";
         }
+        if (record.phase === "error") {
+          this.emitErrorHandlingCompleted(record);
+        }
+        this.finalizeFlow(id);
+      });
+  }
+
+  private startErrorFlow(id: string, err: unknown): void {
+    const record = this.flows.get(id);
+    if (!record || !record.errorDag) return;
+
+    const errorMessage = err instanceof Error ? err.message : String(err);
+
+    const failedTaskCode = Object.entries(record.taskStates).find(
+      ([, state]) => state === "FAILED"
+    )?.[0] ?? "unknown";
+
+    const completedTasks = Object.entries(record.taskStates)
+      .filter(([, state]) => state === "COMPLETED")
+      .map(([code]) => code);
+
+    const errorContext: ErrorContext = {
+      failedTaskCode,
+      errorMessage,
+      completedTasks,
+      mainTaskStates: { ...record.taskStates },
+      mainTaskResults: record.taskResults ? { ...record.taskResults } : undefined,
+      mainResults: record.results ? { ...record.results } : undefined,
+    };
+
+    try {
+      record.serializedRunStatus = this.flowInstances.get(id)?.getSerializableState();
+    } catch {
+      // ignore
+    }
+
+    record.mainTaskStates = { ...record.taskStates };
+    record.taskStates = {};
+    for (const code of getTaskCodes(record.errorDag)) {
+      record.taskStates[code] = "PENDING";
+    }
+    record.phase = "error";
+    record.errorContext = errorContext;
+    record.state = "RUNNING";
+
+    const inputWithError = {
+      ...(record.input ?? {}),
+      errorContext,
+    };
+
+    const errorFlow = new Flow(record.errorDag);
+    this.flowInstances.set(id, errorFlow);
+
+    const expected = this.computeExpectedResults({ ...record, dag: record.errorDag });
+    const resolvers = this.resolverRegistry.getAll();
+
+    this.saveFlow(record).catch(() => {});
+    this.emitFlowUpdated(record);
+    this.emitErrorHandlingStarted(record);
+
+    errorFlow
+      .start(inputWithError, expected, resolvers, this.flowContext, { instanceId: id })
+      .then((flowResults: ValueMap) => {
+        if (record.state !== "STOPPED" && record.state !== "PAUSED") {
+          record.state = "FAILED";
+        }
+        if (flowResults && Object.keys(flowResults).length > 0) {
+          record.results = { ...(record.results ?? {}), ...flowResults };
+        }
+        record.errorTaskStates = { ...record.taskStates };
+        record.taskStates = record.mainTaskStates ?? {};
+        try {
+          record.serializedErrorRunStatus = this.flowInstances.get(id)?.getSerializableState();
+        } catch {
+          // ignore
+        }
+        this.emitErrorHandlingCompleted(record);
+        this.finalizeFlow(id);
+      })
+      .catch((errorErr: unknown) => {
+        console.error(`[TaskFlowEngine] Error flow ${id} failed:`, errorErr instanceof Error ? errorErr.message : String(errorErr));
+        if (record.state !== "STOPPED" && record.state !== "PAUSED") {
+          record.state = "FAILED";
+        }
+        record.errorTaskStates = { ...record.taskStates };
+        record.taskStates = record.mainTaskStates ?? {};
+        try {
+          record.serializedErrorRunStatus = this.flowInstances.get(id)?.getSerializableState();
+        } catch {
+          // ignore
+        }
+        this.emitErrorHandlingCompleted(record);
         this.finalizeFlow(id);
       });
   }
@@ -375,20 +534,31 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     const record = this.flows.get(id);
     if (!record) return;
 
+    const currentStates = record.taskStates;
+
     if (record.state === "FAILED" || record.state === "STOPPED") {
-      for (const code of Object.keys(record.taskStates)) {
-        if (record.taskStates[code] === "PENDING") {
-          record.taskStates[code] = "SKIPPED";
+      for (const code of Object.keys(currentStates)) {
+        if (currentStates[code] === "PENDING") {
+          currentStates[code] = "SKIPPED";
         }
       }
     }
 
-    record.finishedAt = nowISO();
+    if (record.phase === "error") {
+      record.errorTaskStates = { ...currentStates };
+      record.taskStates = record.mainTaskStates ?? {};
+    }
+
+    record.finishedAt = record.finishedAt ?? nowISO();
 
     const flow = this.flowInstances.get(id);
     if (flow) {
       try {
-        record.serializedRunStatus = flow.getSerializableState();
+        if (record.phase === "error") {
+          record.serializedErrorRunStatus = flow.getSerializableState();
+        } else {
+          record.serializedRunStatus = flow.getSerializableState();
+        }
       } catch {
         // ignore
       }
@@ -408,7 +578,11 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     await flow.pause();
     record.state = "PAUSED";
     try {
-      record.serializedRunStatus = flow.getSerializableState();
+      if (record.phase === "error") {
+        record.serializedErrorRunStatus = flow.getSerializableState();
+      } else {
+        record.serializedRunStatus = flow.getSerializableState();
+      }
     } catch {
       // ignore
     }
@@ -426,11 +600,18 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     this.saveFlow(record).catch(() => {});
     this.emitFlowUpdated(record);
 
+    const isErrorPhase = record.phase === "error";
+    const currentDag = isErrorPhase ? (record.errorDag ?? record.dag) : record.dag;
+
     flow
       .resume()
       .then((flowResults: ValueMap) => {
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
-          record.state = "COMPLETED";
+          if (isErrorPhase) {
+            record.state = "FAILED";
+          } else {
+            record.state = "COMPLETED";
+          }
         }
         if (flowResults && Object.keys(flowResults).length > 0) {
           record.results = {};
@@ -441,12 +622,18 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
           }
           this.extractTaskResults(id, flowResults);
         }
+        if (isErrorPhase) {
+          this.emitErrorHandlingCompleted(record);
+        }
         this.finalizeFlow(id);
       })
       .catch((err: unknown) => {
         console.error(`[TaskFlowEngine] Flow ${id} failed on resume:`, err instanceof Error ? err.message : String(err));
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "FAILED";
+        }
+        if (isErrorPhase) {
+          this.emitErrorHandlingCompleted(record);
         }
         this.finalizeFlow(id);
       });
@@ -533,7 +720,10 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
       if (!record || !record.id || !record.dag) continue;
 
       try {
-        const flow = new Flow(record.dag, record.serializedRunStatus);
+        const isErrorPhase = record.phase === "error";
+        const dag = isErrorPhase ? (record.errorDag ?? record.dag) : record.dag;
+        const runStatus = isErrorPhase ? record.serializedErrorRunStatus : record.serializedRunStatus;
+        const flow = new Flow(dag, runStatus);
         this.flows.set(record.id, record);
         this.flowInstances.set(record.id, flow);
 
@@ -614,6 +804,8 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
       createdAt: record.createdAt,
       startedAt: record.startedAt,
       finishedAt: record.finishedAt,
+      errorDag: record.errorDag,
+      phase: record.phase,
     };
   }
 }

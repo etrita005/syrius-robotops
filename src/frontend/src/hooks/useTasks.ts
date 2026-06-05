@@ -86,12 +86,14 @@ export function useTasks(solutionId: string | null) {
 
     const unsubSse = subscribeTaskEvents((eventType, data) => {
       if (cancelled) return;
-      const flowId = data.flowId as string | undefined;
+      const flowId = (data.flowId as string) ?? (data.id as string);
       if (!flowId) return;
 
       if (
         eventType === "task-flow-engine/flow-updated" ||
-        eventType === "task-flow-engine/flow-completed"
+        eventType === "task-flow-engine/flow-completed" ||
+        eventType === "task-flow-engine/error-handling-started" ||
+        eventType === "task-flow-engine/error-handling-completed"
       ) {
         if (pendingRef.current.has(flowId)) {
           pendingRef.current.delete(flowId);
@@ -106,11 +108,16 @@ export function useTasks(solutionId: string | null) {
 
         const index = prev.findIndex((f) => f.id === flowId);
         if (index === -1) {
-          const newFlow = data as unknown as FlowSummary;
-          if (newFlow.id && newFlow.type === "user") {
-            const inputSol = newFlow.input?.solutionId;
-            if (String(inputSol ?? "") === solutionId) {
-              return [newFlow, ...prev];
+          if (
+            eventType === "task-flow-engine/flow-created" ||
+            eventType === "task-flow-engine/flow-current"
+          ) {
+            const newFlow = data as unknown as FlowSummary;
+            if (newFlow.id && newFlow.type === "user") {
+              const inputSol = newFlow.input?.solutionId;
+              if (String(inputSol ?? "") === solutionId) {
+                return [newFlow, ...prev];
+              }
             }
           }
           return prev;
@@ -185,6 +192,13 @@ export function useTasks(solutionId: string | null) {
           upgrade: {
             resolver: {
               name: "SshFileTransferTask",
+              params: {
+                robotIp: "robotIp",
+                sshUsername: "sshUsername",
+                sshPassword: "sshPassword",
+                localFilePath: "localFilePath",
+                remoteFilePath: "remoteFilePath",
+              },
               results: { done: "upgrade_result" },
             },
             provides: ["upgrade_result"],

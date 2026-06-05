@@ -13,14 +13,14 @@ export function createTaskFlowRoutes(engine: TaskFlowEngine): Hono {
   app.post("/", async (c) => {
     try {
       const body = await c.req.json();
-      const { type, dag, input, expectedResults } = body;
+      const { type, dag, input, expectedResults, errorDag } = body;
       if (!type || !dag) {
         throw new MissingTypeOrDagError();
       }
       if (type !== "internal" && type !== "user") {
         throw new InvalidFlowTypeError();
       }
-      const summary = await engine.createFlow(type, dag, input, expectedResults);
+      const summary = await engine.createFlow(type, dag, input, expectedResults, errorDag);
       return c.json(summary, 201);
     } catch (err) {
       if (err instanceof AppError) {

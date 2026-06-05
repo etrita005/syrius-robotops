@@ -4,6 +4,8 @@ export type FlowState = "PENDING" | "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED
 
 export type TaskState = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "SKIPPED";
 
+export type FlowPhase = "main" | "error";
+
 export interface FlowSummary {
   id: string;
   type: FlowType;
@@ -16,6 +18,8 @@ export interface FlowSummary {
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
+  errorDag?: Record<string, unknown>;
+  phase?: FlowPhase;
 }
 
 export interface TaskDefinition {

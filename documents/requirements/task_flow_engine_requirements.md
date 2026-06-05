@@ -27,6 +27,9 @@
 | **用户流（User Flow）** | 用户主动创建的任务流，持久化到对象存储，支持重启恢复。 |
 | **SSE** | Server-Sent Events，服务端向客户端推送实时事件的标准协议。 |
 | **TTL** | Time-To-Live，已结束任务流的保留时长，超时后自动清理。 |
+| **异常处理 DAG（ErrorDag）** | 主 DAG 执行失败时触发的异常处理 DAG，用于执行回滚、补偿、告警等操作。可选字段。 |
+| **错误上下文（ErrorContext）** | 主 DAG 失败时自动生成的上下文信息，包含失败任务代码、错误消息、已完成任务列表等，自动注入到 errorDag 中。 |
+| **执行阶段（Phase）** | 标识当前流处于哪个 DAG 的执行阶段，取值为 `main`（主 DAG 执行中）或 `error`（异常处理 DAG 执行中）。 |
 
 ---
 
@@ -125,17 +128,23 @@
     "taskStates": {
       "type": "object",
       "additionalProperties": { "type": "string", "enum": ["PENDING", "RUNNING", "COMPLETED", "FAILED", "SKIPPED"] },
-      "description": "子任务代码到状态的映射"
+      "description": "当前阶段子任务代码到状态的映射"
     },
     "taskResults": {
       "type": "object",
       "additionalProperties": { "type": "object" },
-      "description": "子任务代码到执行结果的映射"
+      "description": "当前阶段子任务代码到执行结果的映射"
     },
     "results": { "type": "object", "description": "流级别输出结果" },
     "serializedRunStatus": { "type": "object", "description": "flowed 引擎序列化状态，用于重启恢复" },
     "createdAt": { "type": "string", "format": "date-time" },
-    "finishedAt": { "type": "string", "format": "date-time", "description": "流进入终态的时间" }
+    "finishedAt": { "type": "string", "format": "date-time", "description": "流进入终态的时间" },
+    "errorDag": { "type": "object", "description": "异常处理 DAG 定义，可选" },
+    "phase": { "type": "string", "enum": ["main", "error"], "description": "当前执行阶段", "default": "main" },
+    "errorContext": { "type": "object", "description": "触发 errorDag 的错误上下文，包含 failedTaskCode、errorMessage 等" },
+    "mainTaskStates": { "type": "object", "description": "主 DAG 阶段子任务状态快照（进入 error 阶段时备份）" },
+    "errorTaskStates": { "type": "object", "description": "errorDAG 阶段子任务状态快照（error 阶段完成时备份）" },
+    "serializedErrorRunStatus": { "type": "object", "description": "errorDAG 引擎序列化状态，用于重启恢复" }
   }
 }
 ```
@@ -158,7 +167,9 @@ API 返回的流摘要信息，包含完整的状态与结果数据：
     "input": { "type": "object" },
     "expectedResults": { "type": "array" },
     "createdAt": { "type": "string" },
-    "finishedAt": { "type": "string" }
+    "finishedAt": { "type": "string" },
+    "errorDag": { "type": "object", "description": "异常处理 DAG 定义（仅当创建时提供）" },
+    "phase": { "type": "string", "enum": ["main", "error"], "description": "当前执行阶段" }
   }
 }
 ```
@@ -201,6 +212,32 @@ API 返回的流摘要信息，包含完整的状态与结果数据：
                     "type": "object",
                     "description": "解析器返回值键到数据槽名称的映射"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "errorDag": {
+      "type": "object",
+      "description": "异常处理 DAG，格式与 dag 一致。当主 DAG 任一子任务失败时触发。可选。",
+      "required": ["tasks"],
+      "properties": {
+        "tasks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "requires": { "type": "array", "items": { "type": "string" } },
+              "provides": { "type": "array", "items": { "type": "string" } },
+              "resolver": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "params": { "type": "object" },
+                  "results": { "type": "object" }
                 }
               }
             }
@@ -265,7 +302,53 @@ API 返回的流摘要信息，包含完整的状态与结果数据：
 - 流成功完成后，系统从流级别数据槽中提取对应名称的值作为 `results`。
 - `results` 存储在 `FlowRecord.results` 中，可通过 `GET /api/flows/:id` 随时查询。
 
-### 6.2 查询任务流
+### 6.1a 异常处理 DAG（ErrorDag）
+
+**FR-TFE-024**：系统应支持可选的异常处理 DAG（errorDag）。
+
+- 调用方在创建流时提供 `errorDag` 字段，与 `dag` 并列。
+- 当主 DAG 中任一子任务失败时，引擎自动停止主 DAG 的剩余任务，切换到 errorDag 执行。
+- errorDag 的执行使用与主 DAG 相同的 `flowed` 引擎实例，共享相同的 SSE 事件通道。
+- 若未提供 `errorDag`，行为与当前一致（主 DAG 失败后直接进入 FAILED 终态）。
+
+**FR-TFE-025**：系统应在进入 errorDag 时自动生成并注入错误上下文（ErrorContext）。
+
+- ErrorContext 包含以下字段，以数据槽的形式自动传递给 errorDag 的各个子任务：
+  - `failedTaskCode`：失败的子任务代码。
+  - `errorMessage`：错误描述信息。
+  - `completedTasks`：主 DAG 中已成功完成的子任务代码列表。
+  - `mainTaskStates`：主 DAG 中所有子任务的最终状态快照。
+  - `mainTaskResults`：主 DAG 中已产生的子任务执行结果。
+  - `mainResults`：主 DAG 中已产生的流级别输出结果。
+- ErrorContext 作为额外的 input 参数注入到 errorDag 中，errorDag 子任务可通过 `resolver.params` 引用这些字段。
+
+**FR-TFE-026**：系统应正确管理执行阶段（phase）。
+
+- 创建流时，`phase` 初始化为 `"main"`。
+- 主 DAG 执行失败且存在 errorDag 时，`phase` 切换为 `"error"`。
+- 无论 errorDag 执行成功或失败，`phase` 保持为 `"error"`，最终流状态为 `FAILED`（整体目标未达成）。
+- `FlowRecord.taskStates` 始终反映当前阶段的任务状态；切换阶段时，引擎自动备份主阶段的任务状态。
+
+**FR-TFE-027**：系统应校验 errorDag 中引用的解析器是否已注册。
+
+- 创建流时，同时校验 `dag` 和 `errorDag` 中引用的解析器名称。
+- 若 errorDag 引用了未注册的解析器，拒绝创建并返回 `RESOLVER_NOT_FOUND` 错误。
+
+**FR-TFE-028**：系统应通过 SSE 推送异常处理阶段的开始与完成事件。
+
+- `task-flow-engine/error-handling-started`：进入 errorDag 执行时广播，携带 `flowId` 和 `errorContext`。
+- `task-flow-engine/error-handling-completed`：errorDag 执行完成时广播，携带 `flowId` 和 `state`。
+
+**FR-TFE-029**：系统应在控制操作（pause/resume/stop）中正确处理 error 阶段。
+
+- 暂停/恢复操作针对当前活跃的 DAG 实例（主 DAG 或 errorDAG）。
+- 停止操作终止当前活跃的 DAG 实例，流整体进入 STOPPED 终态。
+- 删除操作移除整个流记录（含主 DAG 和 errorDAG 的执行结果）。
+
+**FR-TFE-030**：系统应持久化 errorDag 的执行状态并支持重启恢复。
+
+- 用户流在切换阶段和 errorDag 状态变更时持久化 `errorContext`、`errorTaskStates` 等字段。
+- 重启恢复时，若 `phase === "error"` 且 `state === "RUNNING"`，重新启动 errorDag 的执行。
 
 **FR-TFE-006**：系统应支持列举所有任务流。
 
@@ -329,6 +412,8 @@ API 返回的流摘要信息，包含完整的状态与结果数据：
 | `task-flow-engine/task-result` | 子任务完成并产生结果 | `{ flowId, taskName, state, result, timestamp }` |
 | `task-flow-engine/flow-completed` | 流进入终态并包含结果 | `{ flowId, state, results, finishedAt, timestamp }` |
 | `task-flow-engine/flow-removed` | 流被删除或 TTL 清理 | `{ flowId, timestamp }` |
+| `task-flow-engine/error-handling-started` | 进入 errorDag 执行阶段 | `{ flowId, errorContext: ErrorContext, timestamp }` |
+| `task-flow-engine/error-handling-completed` | errorDag 执行完成（无论成功或失败） | `{ flowId, state, timestamp }` |
 
 ### 6.5 子任务结果提取
 
@@ -402,7 +487,7 @@ TaskFlowEngine 的 HTTP API 与内部调用接口一一对应，行为一致。�
 
 | 方法 | 端点 | 请求体 / 查询参数 | 描述 | 对应内部方法 |
 |------|------|-------------------|------|------------|
-| `POST` | `/api/flows` | `{ type, input?, expectedResults?, dag }` | 创建并启动新任务流 | `createFlow()` |
+| `POST` | `/api/flows` | `{ type, input?, expectedResults?, dag, errorDag? }` | 创建并启动新任务流。`errorDag` 为可选的异常处理 DAG | `createFlow()` |
 | `GET` | `/api/flows` | `?type=internal\|user`（可选）<br>`?solutionId=xxx&robotId=yyy`（可选，参数列表过滤） | 列举任务流（含子任务状态） | `listFlows()` |
 | `GET` | `/api/flows/:id` | — | 查询单个任务流详情（含结果） | `getFlow()` |
 | `POST` | `/api/flows/:id/pause` | — | 暂停单个任务流 | `pauseFlow()` |
@@ -508,7 +593,7 @@ graph LR
 |--------|------|---------|
 | 流类型 | 必须为 `internal` 或 `user` | 拒绝并返回 400 |
 | DAG | 必须包含 `tasks` 字段且非空 | 拒绝并返回 400 |
-| 解析器名称 | 必须在注册表中存在 | 拒绝并返回 400 |
+| 解析器名称 | 必须在注册表中存在（dag 和 errorDag 中的所有解析器） | 拒绝并返回 400 |
 | 暂停操作 | 流必须为 `RUNNING` 状态 | 忽略（幂等） |
 | 恢复操作 | 流必须为 `PAUSED` 状态 | 忽略（幂等） |
 | 停止操作 | 流必须为 `RUNNING` 或 `PAUSED` 状态 | 忽略（幂等） |

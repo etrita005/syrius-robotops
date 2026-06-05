@@ -1,6 +1,6 @@
 # 任务流引擎服务 — 测试用例设计文档
 
-> 本文档依据《任务流引擎服务需求规格说明书》和《任务流引擎服务软件设计文档》编写，覆盖所有功能需求（FR-TFE-001 至 FR-TFE-023）、API 规格和错误处理场景。
+> 本文档依据《任务流引擎服务需求规格说明书》和《任务流引擎服务软件设计文档》编写，覆盖所有功能需求（FR-TFE-001 至 FR-TFE-030）、API 规格和错误处理场景。
 
 ---
 
@@ -864,3 +864,97 @@ const dependentDag: FlowSpec = {
   }
 };
 ```
+
+---
+
+## 8. ErrorDag 异常处理测试用例
+
+### TC-ED-001：主 DAG 失败时触发 errorDag 执行（FR-TFE-024）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证主 DAG 失败时自动触发 errorDag 执行 |
+| **前置条件** | 引擎初始化完成，注册了 MockFailingTask 和 MockRecoveryTask |
+| **输入** | `type: "internal"`，DAG 包含 MockFailingTask，errorDag 包含 MockRecoveryTask |
+| **预期结果** | 流状态为 FAILED，phase 为 "error"，SSE 广播 error-handling-started 和 error-handling-completed 事件 |
+| **验证点** | `flow.state === "FAILED"`, `flow.phase === "error"`, SSE 事件存在 |
+
+### TC-ED-002：errorDag 自身失败时的处理（FR-TFE-024）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 errorDag 中的任务失败时流正确处理 |
+| **前置条件** | 引擎初始化完成，errorDag 包含 MockFailingTask |
+| **输入** | `type: "internal"`，主 DAG 失败，errorDag 也失败 |
+| **预期结果** | 流状态为 FAILED，phase 为 "error"，SSE 广播 error-handling-completed |
+| **验证点** | `flow.state === "FAILED"`, `flow.phase === "error"` |
+
+### TC-ED-003：主 DAG 成功时不触发 errorDag（FR-TFE-024）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证主 DAG 正常完成时不会触发 errorDag |
+| **前置条件** | 引擎初始化完成，主 DAG 可成功完成 |
+| **输入** | `type: "internal"`，DAG 为 singleTaskDag（成功），同时提供 errorDag |
+| **预期结果** | 流状态为 COMPLETED，phase 为 "main"，无 error-handling-started 事件 |
+| **验证点** | `flow.state === "COMPLETED"`, `flow.phase === "main"`, SSE 中不存在 error-handling-started |
+
+### TC-ED-004：错误上下文注入到 errorDag（FR-TFE-025）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 ErrorContext 被正确注入到 errorDag 的输入参数中 |
+| **前置条件** | 引擎初始化完成，主 DAG 有 input 参数且会失败 |
+| **输入** | `type: "internal"`，带 robotId 参数，主 DAG 失败 |
+| **预期结果** | ErrorContext 包含 failedTaskCode、errorMessage、completedTasks 等字段 |
+| **验证点** | flow 进入 error 阶段，errorContext 数据完整 |
+
+### TC-ED-005：resolver 接收 errorContext 数据（FR-TFE-025）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 errorDag 中的 resolver 可以通过 params 引用 errorContext |
+| **前置条件** | 引擎初始化完成 |
+| **输入** | 主 DAG 失败，errorDag 的 MockRecoveryTask 可读取 errorContext |
+| **预期结果** | MockRecoveryTask.exec() 接收到包含 failedTaskCode 的 params |
+| **验证点** | 任务返回 { recovered: true, failedTask: "task1" } |
+
+### TC-ED-006：用户流中 errorDag 持久化与恢复（FR-TFE-030）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证包含 errorDag 的用户流在持久化后可正确恢复 |
+| **前置条件** | ObjectStore 可用，errorDag 已执行完成 |
+| **输入** | `type: "user"`，主 DAG 失败触发 errorDag，完成后重建引擎 |
+| **预期结果** | 恢复后的流 state 为 FAILED，phase 为 "error"，errorContext 完整 |
+| **验证点** | 持久化数据包含 errorContext、errorTaskStates 等字段，恢复后字段一致 |
+
+### TC-ED-007：errorDag 中未注册 resolver 校验（FR-TFE-027）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证创建流时校验 errorDag 中的 resolver |
+| **前置条件** | 引擎初始化完成，errorDag 引用未注册的 resolver |
+| **输入** | `type: "internal"`，errorDag 中引用 "NonExistentTask" |
+| **预期结果** | 抛出 "not registered" 错误，拒绝创建 |
+| **验证点** | assert.rejects with /not registered/ |
+
+### TC-ED-008：FlowSummary 包含 errorDag 和 phase 字段（FR-TFE-026）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证创建流后 FlowSummary 正确返回 errorDag 和 phase |
+| **前置条件** | 引擎初始化完成 |
+| **输入** | `type: "internal"`，带 errorDag |
+| **预期结果** | FlowSummary 中 errorDag 字段存在，phase 为 "main" |
+| **验证点** | `summary.errorDag !== undefined`, `summary.phase === "main"` |
+
+### TC-ED-009：SSE error 事件顺序正确（FR-TFE-028）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 error-handling-started 事件在 error-handling-completed 之前 |
+| **前置条件** | 引擎初始化完成 |
+| **输入** | `type: "internal"`，主 DAG 失败触发 errorDag |
+| **预期结果** | SSE 事件列表中 started 事件索引 < completed 事件索引 |
+| **验证点** | `startedIdx < completedIdx` |

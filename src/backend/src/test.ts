@@ -246,6 +246,17 @@ class MockFailingTask implements ITaskResolver {
   }
 }
 
+class MockRecoveryTask implements ITaskResolver {
+  async exec(params: ValueMap): Promise<ValueMap> {
+    const errorCtx = params.errorContext as Record<string, unknown> | undefined;
+    return {
+      done: true,
+      recovered: true,
+      failedTask: errorCtx?.failedTaskCode ?? "unknown",
+    };
+  }
+}
+
 const singleTaskDag: FlowSpec = {
   tasks: {
     task1: {
@@ -269,6 +280,23 @@ const dependentDag: FlowSpec = {
   },
 };
 
+const errorRecoveryDag: FlowSpec = {
+  tasks: {
+    rollback: {
+      provides: ["recoveryResult"],
+      resolver: { name: "MockRecoveryTask", results: { done: "recoveryResult" } },
+    },
+  },
+};
+
+const errorFailingDag: FlowSpec = {
+  tasks: {
+    rollback: {
+      resolver: { name: "MockFailingTask" },
+    },
+  },
+};
+
 function createEngine(ttlMs?: number, cleanupMs?: number) {
   const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
   const sse = new SpySseManager() as unknown as SseManager;
@@ -276,6 +304,7 @@ function createEngine(ttlMs?: number, cleanupMs?: number) {
   registry.register("MockTask1", MockTask1);
   registry.register("MockTask2", MockTask2);
   registry.register("MockFailingTask", MockFailingTask);
+  registry.register("MockRecoveryTask", MockRecoveryTask);
   const engine = new TaskFlowEngine(objStore, sse, registry, {
     completedFlowTtlMs: ttlMs,
     cleanupIntervalMs: cleanupMs,
@@ -900,6 +929,7 @@ describe("TaskFlowEngine - Persistence and Recovery", () => {
     registry2.register("MockTask1", MockTask1);
     registry2.register("MockTask2", MockTask2);
     registry2.register("MockFailingTask", MockFailingTask);
+    registry2.register("MockRecoveryTask", MockRecoveryTask);
     const engine2 = new TaskFlowEngine(
       objStore as unknown as import("./services/objectStore.js").ObjectStore,
       sse as unknown as SseManager,
@@ -931,6 +961,7 @@ describe("TaskFlowEngine - Persistence and Recovery", () => {
     registry2.register("MockTask1", MockTask1);
     registry2.register("MockTask2", MockTask2);
     registry2.register("MockFailingTask", MockFailingTask);
+    registry2.register("MockRecoveryTask", MockRecoveryTask);
     const engine2 = new TaskFlowEngine(
       objStore as unknown as import("./services/objectStore.js").ObjectStore,
       sse as unknown as SseManager,
@@ -954,6 +985,7 @@ describe("TaskFlowEngine - Persistence and Recovery", () => {
     registry2.register("MockTask1", MockTask1);
     registry2.register("MockTask2", MockTask2);
     registry2.register("MockFailingTask", MockFailingTask);
+    registry2.register("MockRecoveryTask", MockRecoveryTask);
     const engine2 = new TaskFlowEngine(
       objStore as unknown as import("./services/objectStore.js").ObjectStore,
       sse as unknown as SseManager,
@@ -1594,6 +1626,175 @@ describe("TaskFlowEngine - Error Handling", () => {
   });
 });
 
+describe("TaskFlowEngine - ErrorDag", () => {
+  it("TC-ED-001: should execute errorDag when main dag fails", async () => {
+    const { engine, sse } = createEngine();
+    const failingDag: FlowSpec = {
+      tasks: {
+        task1: { resolver: { name: "MockFailingTask" } },
+      },
+    };
+    const summary = await engine.createFlow("internal", failingDag, undefined, undefined, errorRecoveryDag);
+    await waitForFlowComplete(engine, summary.id, 15000);
+
+    const flow = engine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "FAILED");
+    assert.equal(flow.taskStates["task1"], "FAILED");
+    assert.equal(flow.phase, "error");
+    assert.ok(flow.errorDag);
+    assert.ok(sse.hasEvent("task-flow-engine/error-handling-started"));
+    assert.ok(sse.hasEvent("task-flow-engine/error-handling-completed"));
+    engine.destroy();
+  });
+
+  it("TC-ED-002: should mark errorDag tasks as SKIPPED when errorDag itself fails", async () => {
+    const { engine, sse } = createEngine();
+    const failingDag: FlowSpec = {
+      tasks: {
+        task1: { resolver: { name: "MockFailingTask" } },
+      },
+    };
+    const summary = await engine.createFlow("internal", failingDag, undefined, undefined, errorFailingDag);
+    await waitForFlowComplete(engine, summary.id, 15000);
+
+    const flow = engine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "FAILED");
+    assert.equal(flow.phase, "error");
+    assert.ok(sse.hasEvent("task-flow-engine/error-handling-completed"));
+    engine.destroy();
+  });
+
+  it("TC-ED-003: should not trigger errorDag when main dag succeeds", async () => {
+    const { engine, sse } = createEngine();
+    const summary = await engine.createFlow("internal", singleTaskDag, undefined, undefined, errorRecoveryDag);
+    await waitForFlowComplete(engine, summary.id);
+
+    const flow = engine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "COMPLETED");
+    assert.equal(flow.phase, "main");
+    assert.equal(sse.hasEvent("task-flow-engine/error-handling-started"), false);
+    engine.destroy();
+  });
+
+  it("TC-ED-004: should inject error context into errorDag", async () => {
+    const { engine } = createEngine();
+    const failingDag: FlowSpec = {
+      tasks: {
+        task1: {
+          provides: ["data1"],
+          resolver: { name: "MockFailingTask", results: { done: "data1" } },
+        },
+      },
+    };
+    const summary = await engine.createFlow("internal", failingDag, { robotId: "r1" }, undefined, errorRecoveryDag);
+    await waitForFlowComplete(engine, summary.id, 15000);
+
+    const flow = engine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "FAILED");
+    assert.equal(flow.phase, "error");
+    engine.destroy();
+  });
+
+  it("TC-ED-005: should pass errorContext to recovery task resolver", async () => {
+    const { engine } = createEngine();
+    const failingDag: FlowSpec = {
+      tasks: {
+        task1: { resolver: { name: "MockFailingTask" } },
+      },
+    };
+    const summary = await engine.createFlow("internal", failingDag, undefined, undefined, errorRecoveryDag);
+    await waitForFlowComplete(engine, summary.id, 15000);
+
+    const flow = engine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "FAILED");
+    assert.equal(flow.phase, "error");
+    engine.destroy();
+  });
+
+  it("TC-ED-006: should persist user flow with errorDag and recover", async () => {
+    const { engine: engine1, objStore, sse } = createEngine();
+    const failingDag: FlowSpec = {
+      tasks: {
+        task1: { resolver: { name: "MockFailingTask" } },
+      },
+    };
+    const summary = await engine1.createFlow("user", failingDag, undefined, undefined, errorRecoveryDag);
+    await waitForFlowComplete(engine1, summary.id, 15000);
+
+    const persisted = await objStore.getJson(`flows/${summary.id}`) as FlowRecord;
+    assert.ok(persisted);
+    assert.equal(persisted.state, "FAILED");
+    assert.equal(persisted.phase, "error");
+    assert.ok(persisted.errorContext);
+    engine1.destroy();
+
+    const registry2 = new ResolverRegistry();
+    registry2.register("MockTask1", MockTask1);
+    registry2.register("MockTask2", MockTask2);
+    registry2.register("MockFailingTask", MockFailingTask);
+    registry2.register("MockRecoveryTask", MockRecoveryTask);
+    const engine2 = new TaskFlowEngine(
+      objStore as unknown as import("./services/objectStore.js").ObjectStore,
+      sse as unknown as SseManager,
+      registry2
+    );
+    await engine2.loadPersistedFlows();
+
+    const flow = engine2.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "FAILED");
+    assert.equal(flow.phase, "error");
+    engine2.destroy();
+  });
+
+  it("TC-ED-007: should reject unregistered resolver in errorDag", async () => {
+    const { engine } = createEngine();
+    const badErrorDag: FlowSpec = {
+      tasks: {
+        rollback: { resolver: { name: "NonExistentTask" } },
+      },
+    };
+    await assert.rejects(
+      () => engine.createFlow("internal", singleTaskDag, undefined, undefined, badErrorDag),
+      /not registered/
+    );
+    engine.destroy();
+  });
+
+  it("TC-ED-008: flowSummary should include errorDag and phase", async () => {
+    const { engine } = createEngine();
+    const summary = await engine.createFlow("internal", singleTaskDag, undefined, undefined, errorRecoveryDag);
+    assert.ok(summary.errorDag);
+    assert.equal(summary.phase, "main");
+    engine.destroy();
+  });
+
+  it("TC-ED-009: should broadcast error-handling events in correct order", async () => {
+    const { engine, sse } = createEngine();
+    const failingDag: FlowSpec = {
+      tasks: {
+        task1: { resolver: { name: "MockFailingTask" } },
+      },
+    };
+    const summary = await engine.createFlow("internal", failingDag, undefined, undefined, errorRecoveryDag);
+    await waitForFlowComplete(engine, summary.id, 15000);
+
+    const startedEvent = sse.findEvent("task-flow-engine/error-handling-started");
+    const completedEvent = sse.findEvent("task-flow-engine/error-handling-completed");
+    assert.ok(startedEvent);
+    assert.ok(completedEvent);
+    const startedIdx = sse.events.indexOf(startedEvent);
+    const completedIdx = sse.events.indexOf(completedEvent);
+    assert.ok(startedIdx < completedIdx, "error-handling-started should be emitted before error-handling-completed");
+    engine.destroy();
+  });
+});
+
 describe("TaskFlowEngine - Routes", () => {
   function setupApp() {
     const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
@@ -1602,6 +1803,7 @@ describe("TaskFlowEngine - Routes", () => {
     registry.register("MockTask1", MockTask1);
     registry.register("MockTask2", MockTask2);
     registry.register("MockFailingTask", MockFailingTask);
+    registry.register("MockRecoveryTask", MockRecoveryTask);
     const engine = new TaskFlowEngine(objStore, sse, registry);
     const app = createHonoApp(engine);
     return { app, engine, objStore: objStore as unknown as InMemoryObjectStore, sse: sse as unknown as SpySseManager };

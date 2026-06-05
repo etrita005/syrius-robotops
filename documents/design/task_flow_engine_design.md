@@ -1,6 +1,9 @@
 # 任务流引擎服务 — 软件设计文档
 
 > 本文档承接《任务流引擎服务需求规格说明书》，对需求中涉及的技术实现进行设计细化。
+>
+> **变更记录**：
+> - v1.1：新增二段式异常处理 DAG（errorDag）设计，支持主流程失败后自动触发补偿/回滚流程。
 
 ---
 
@@ -178,6 +181,12 @@ interface FlowRecord {
   serializedRunStatus?: SerializedFlowRunStatus;
   createdAt: string;
   finishedAt?: string;
+  errorDag?: FlowSpec;
+  phase?: FlowPhase;
+  errorContext?: ErrorContext;
+  mainTaskStates?: Record<string, TaskState>;
+  errorTaskStates?: Record<string, TaskState>;
+  serializedErrorRunStatus?: SerializedFlowRunStatus;
 }
 ```
 
@@ -190,6 +199,13 @@ interface FlowRecord {
 | `taskResults` | 无 | 新增：子任务执行结果 |
 | `results` | 无 | 新增：流级别输出结果 |
 | `finishedAt` | 无 | 新增：终态时间戳 |
+| `errorDag` | 无 | 新增：异常处理 DAG 定义 |
+| `phase` | 无 | 新增：当前执行阶段（main/error） |
+| `errorContext` | 无 | 新增：触发 errorDag 的错误上下文 |
+| `mainTaskStates` | 无 | 新增：主 DAG 阶段任务状态快照 |
+| `errorTaskStates` | 无 | 新增：errorDAG 阶段任务状态快照 |
+| `serializedErrorRunStatus` | 无 | 新增：errorDAG 引擎序列化状态 |
+```
 
 ### 4.4 FlowSummary（增强版）
 
@@ -205,6 +221,8 @@ interface FlowSummary {
   expectedResults?: string[];
   createdAt: string;
   finishedAt?: string;
+  errorDag?: FlowSpec;
+  phase?: FlowPhase;
 }
 ```
 
@@ -215,6 +233,21 @@ interface FlowSummary {
 ### 4.6 SseManager（不变）
 
 现有实现已满足需求，无需修改。
+
+### 4.7 ErrorContext 类型（新增）
+
+```typescript
+type FlowPhase = "main" | "error";
+
+interface ErrorContext {
+  failedTaskCode: string;
+  errorMessage: string;
+  completedTasks: string[];
+  mainTaskStates: Record<string, TaskState>;
+  mainTaskResults?: Record<string, ValueMap>;
+  mainResults?: ValueMap;
+}
+```
 
 ### 4.7 TaskFlowRoutes（新增）
 
@@ -372,6 +405,45 @@ sequenceDiagram
     Routes-->>Client: { success: true }
 ```
 
+### 5.4a 异常处理 DAG（ErrorDag）执行
+
+```mermaid
+sequenceDiagram
+    participant Flowed as Flowed Engine
+    participant Engine as TaskFlowEngine
+    participant ErrorFlow as Error Flow Instance
+    participant SSE as SseManager
+    participant OS as ObjectStore
+
+    Note over Flowed: 主 DAG 中某子任务失败
+    Flowed-->>Engine: flow.start() reject (error)
+    Engine->>Engine: state === "RUNNING" && phase === "main"
+    Engine->>Engine: 检查 record.errorDag 是否存在
+    Engine->>Engine: 生成 ErrorContext (failedTaskCode, errorMessage, completedTasks, ...)
+    Engine->>Engine: 备份 mainTaskStates
+    Engine->>Engine: 初始化 errorDag 的 taskStates
+    Engine->>Engine: phase = "error"
+    Engine->>ErrorFlow: new Flow(record.errorDag)
+    Engine->>SSE: broadcast("task-flow-engine/flow-updated", summary)
+    Engine->>SSE: broadcast("task-flow-engine/error-handling-started", { flowId, errorContext })
+    Engine->>ErrorFlow: flow.start(inputWithError, expected, resolvers, ...)
+
+    alt errorDag 执行成功
+        ErrorFlow-->>Engine: flowResults
+        Engine->>Engine: state = FAILED（整体目标未达成）
+        Engine->>Engine: 保存 errorTaskStates
+        Engine->>Engine: 恢复 mainTaskStates
+    else errorDag 执行失败
+        ErrorFlow-->>Engine: error
+        Engine->>Engine: state = FAILED
+        Engine->>Engine: 保存 errorTaskStates（含 SKIPPED 状态）
+        Engine->>Engine: 恢复 mainTaskStates
+    end
+
+    Engine->>SSE: broadcast("task-flow-engine/error-handling-completed", { flowId, state })
+    Engine->>SSE: broadcast("task-flow-engine/flow-updated", summary)
+    Engine->>Engine: finalizeFlow(id)
+
 ### 5.5 重启恢复
 
 ```mermaid
@@ -467,7 +539,7 @@ TaskFlowEngine 提供两种调用接口：
 
 | 操作 | HTTP 接口 | 内部调用接口 |
 |------|----------|-------------|
-| 创建流 | `POST /api/flows` | `createFlow(type, dag, input?, expectedResults?)` |
+| 创建流 | `POST /api/flows` | `createFlow(type, dag, input?, expectedResults?, errorDag?)` |
 | 列举流 | `GET /api/flows?type=&key=value` | `listFlows(type?, filterParams?)` |
 | 查询流 | `GET /api/flows/:id` | `getFlow(id)` |
 | 暂停流 | `POST /api/flows/:id/pause` | `pauseFlow(id)` |
@@ -524,7 +596,7 @@ class TaskFlowEngine {
 
 | 方法 | 端点 | 请求体 / 查询参数 | 描述 |
 |------|------|-------------------|------|
-| `POST` | `/api/flows` | `{ type, input?, expectedResults?, dag }` | 创建并启动新任务流。`input` 为参数列表（key-value map），设置后只读 |
+| `POST` | `/api/flows` | `{ type, input?, expectedResults?, dag, errorDag? }` | 创建并启动新任务流。`errorDag` 为可选的异常处理 DAG。`input` 为参数列表（key-value map），设置后只读 |
 | `GET` | `/api/flows` | `?type=internal\|user`（可选，类型过滤）<br>`?key1=val1&key2=val2`（可选，参数列表过滤，AND 逻辑） | 列举任务流。除 `type` 外的所有查询参数均作为参数列表过滤条件 |
 | `GET` | `/api/flows/:id` | — | 查询单个任务流详情，含 `input`（参数列表）、`results`、`taskResults` 等 |
 | `POST` | `/api/flows/:id/pause` | — | 暂停单个任务流 |
