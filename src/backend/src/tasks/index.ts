@@ -10,3 +10,4 @@ export { MockGetRobotBasicInfoTask } from "./mockGetRobotBasicInfoTask.js";
 export { UpgradeMovebaseTask } from "./upgradeMovebaseTask.js";
 export { DeleteRemotePathTask } from "./deleteRemotePathTask.js";
 export type { DeleteRemotePathParams } from "./deleteRemotePathTask.js";
+export { TransferMovebaseTask } from "./transferMovebaseTask.js";
