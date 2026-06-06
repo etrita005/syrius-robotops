@@ -6,7 +6,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export class MockUpdateRobotBasicInfoTask extends UpdateRobotBasicInfoTask {
-  override async exec(params: ValueMap, _context?: ValueMap): Promise<ValueMap> {
+  override async exec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {
     console.log(
       `[UpdateRobotBasicInfo:Mock] Simulating robot info update for cacheKey=${params.cacheKey}`
     );
@@ -17,6 +17,6 @@ export class MockUpdateRobotBasicInfoTask extends UpdateRobotBasicInfoTask {
       `[UpdateRobotBasicInfo:Mock] Update completed (mock)`
     );
 
-    return { success: true, updated: true };
+    return super.exec(params, context);
   }
 }

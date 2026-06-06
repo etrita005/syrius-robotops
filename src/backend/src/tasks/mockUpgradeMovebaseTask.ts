@@ -6,11 +6,9 @@ function sleep(ms: number): Promise<void> {
 }
 
 export class MockUpgradeMovebaseTask extends UpgradeMovebaseTask {
-  override async exec(params: ValueMap): Promise<ValueMap> {
-    const command = this.getSshCommand(params);
-
+  override async exec(_params: ValueMap): Promise<ValueMap> {
     console.log(
-      `[UpgradeMovebase:Mock] Simulating upgrade: ${command}`
+      `[UpgradeMovebase:Mock] Simulating upgrade`
     );
 
     await sleep(5000);
@@ -20,6 +18,7 @@ export class MockUpgradeMovebaseTask extends UpgradeMovebaseTask {
     );
 
     return {
+      done: true,
       success: true,
       stdout: "",
       stderr: "",

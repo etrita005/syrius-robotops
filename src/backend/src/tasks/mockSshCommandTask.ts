@@ -20,6 +20,7 @@ export class MockSshCommandTask extends SshCommandTask {
     );
 
     return {
+      done: true,
       success: true,
       stdout: "",
       stderr: "",

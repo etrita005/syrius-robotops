@@ -18,6 +18,7 @@ export class MockDeleteMovebaseTask extends DeleteMovebaseTask {
     );
 
     return {
+      done: true,
       success: true,
       stdout: "",
       stderr: "",

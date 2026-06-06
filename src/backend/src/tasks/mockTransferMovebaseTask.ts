@@ -20,6 +20,7 @@ export class MockTransferMovebaseTask extends TransferMovebaseTask {
     );
 
     return {
+      done: true,
       success: true,
       bytesTransferred: 0,
       localChecksum: "",
