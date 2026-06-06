@@ -1,8 +1,16 @@
 import type { ValueMap, ITaskResolver } from "flowed";
 import { Client } from "ssh2";
 import { createLogger } from "../logger/index.js";
+import { SSH_USERNAME, SSH_PASSWORD } from "../config.js";
 
 const log = createLogger("SshCommand");
+
+const MAX_LOG_OUTPUT_LENGTH = 4096;
+
+function truncateForLog(s: string): string {
+  if (s.length <= MAX_LOG_OUTPUT_LENGTH) return s;
+  return s.slice(0, MAX_LOG_OUTPUT_LENGTH) + `... [truncated, ${s.length} total]`;
+}
 
 export interface SshCommandParams {
   robotIp: string;
@@ -13,6 +21,7 @@ export interface SshCommandParams {
   sshUsername: string;
   sshPassword: string;
   sshCommand: string;
+  sudo?: boolean;
 }
 
 export interface SshCommandResult {
@@ -86,33 +95,27 @@ export class SshCommandTask implements ITaskResolver {
     return _params.sshCommand as string;
   }
 
-  /**
-   * Wrap a shell command so any inner `sudo` invocations read the password
-   * from stdin instead of a TTY. The password is fed via a here-string and
-   * sudo is invoked with `-S` (read from stdin) and `-p ''` (empty prompt).
-   *
-   * The given `command` should already contain `sudo -S` (or `sudo -S -p ''`)
-   * where elevated privileges are required. Example:
-   *   wrapWithSudoPassword("sudo -S -p '' /opt/install.sh", "secret")
-   *
-   * Special shell characters in the password are safely escaped for use
-   * inside a single-quoted string.
-   */
-  protected wrapWithSudoPassword(command: string, password: string): string {
-    const escaped = password.replace(/'/g, "'\\''");
-    return `echo '${escaped}' | ${command}`;
-  }
-
   protected buildParams(params: ValueMap): SshCommandParams {
+    const sshPassword = (params.sshPassword as string) ?? SSH_PASSWORD;
+    const rawCommand = this.getSshCommand(params);
+    const sudo = (params.sudo as boolean) ?? false;
+    const sshCommand = sudo
+      ? rawCommand
+          .split('&&')
+          .map((p) => `echo "${sshPassword}" | sudo -S -p '' ${p.trim()}`)
+          .join(' && ')
+      : rawCommand;
+
     return {
       robotIp: params.robotIp as string,
       robotPort: (params.robotPort as number) ?? 22,
       robotMdnsDomain: params.robotMdnsDomain as string | undefined,
       timeout: (params.timeout as number) ?? 10000,
       retryCount: (params.retryCount as number) ?? 3,
-      sshUsername: params.sshUsername as string,
-      sshPassword: params.sshPassword as string,
-      sshCommand: this.getSshCommand(params),
+      sshUsername: (params.sshUsername as string) ?? SSH_USERNAME,
+      sshPassword,
+      sshCommand,
+      sudo,
     };
   }
 
@@ -145,8 +148,17 @@ export class SshCommandTask implements ITaskResolver {
           );
         }
 
-        log.info({ host, port }, 'Command succeeded');
+        log.info({ host, port, exitCode: result.exitCode }, 'Command succeeded');
+
+        if (result.stdout) {
+          log.debug({ host, port, stdout: truncateForLog(result.stdout) }, 'stdout');
+        }
+        if (result.stderr) {
+          log.warn({ host, port, stderr: truncateForLog(result.stderr) }, 'stderr');
+        }
+
         return {
+          done: true,
           success: true,
           stdout: result.stdout,
           stderr: result.stderr,

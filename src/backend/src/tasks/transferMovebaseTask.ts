@@ -12,7 +12,7 @@ const REMOTE_TARGET_PATH = "/mnt/sdcard/offlineota/alpha2_movebase_offline_packa
 export class TransferMovebaseTask extends SshFileTransferTask {
   protected override buildParams(params: ValueMap): SshFileTransferParams {
     return {
-      ...super.buildParams(params),
+      ...super.buildParams({ ...params, sudo: true }),
       remoteFilePath: REMOTE_TARGET_PATH,
     };
   }

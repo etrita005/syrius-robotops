@@ -398,6 +398,12 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
       // ignore
     }
 
+    for (const code of Object.keys(record.taskStates)) {
+      if (record.taskStates[code] === "PENDING") {
+        record.taskStates[code] = "SKIPPED";
+      }
+    }
+
     record.mainTaskStates = { ...record.taskStates };
     record.taskStates = {};
     for (const code of getTaskCodes(record.errorDag)) {
@@ -766,9 +772,17 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
   private async saveFlow(record: FlowRecord): Promise<void> {
     if (record.type === "internal") return;
     const flow = this.flowInstances.get(record.id);
+    let serializedRunStatus = record.serializedRunStatus;
+    if (flow) {
+      try {
+        serializedRunStatus = flow.getSerializableState();
+      } catch {
+        // flow in Running state does not support serialization
+      }
+    }
     const payload: FlowRecord = {
       ...record,
-      serializedRunStatus: flow ? flow.getSerializableState() : record.serializedRunStatus,
+      serializedRunStatus,
     };
     await this.objectStore.putJson(`flows/${record.id}`, payload);
   }

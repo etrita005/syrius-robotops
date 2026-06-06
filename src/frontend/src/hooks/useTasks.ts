@@ -31,9 +31,11 @@ export function useTasks(solutionId: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [robotMap, setRobotMap] = useState<Map<string, string>>(new Map());
+  const robotDataRef = useRef<StoredRobotData[]>([]);
   const [tick, setTick] = useState(0);
   const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
   const pendingRef = useRef<Set<string>>(new Set());
+  const createdFlowIdsRef = useRef<Set<string>>(new Set());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -69,6 +71,7 @@ export function useTasks(solutionId: string | null) {
             map.set(r.id, r.alias);
           }
           setRobotMap(map);
+          robotDataRef.current = robotData;
           setFlows(flowData);
         }
       } catch (err) {
@@ -103,14 +106,16 @@ export function useTasks(solutionId: string | null) {
 
       setFlows((prev) => {
         if (eventType === "task-flow-engine/flow-removed") {
+          createdFlowIdsRef.current.delete(flowId);
           return prev.filter((f) => f.id !== flowId);
         }
 
         const index = prev.findIndex((f) => f.id === flowId);
         if (index === -1) {
           if (
-            eventType === "task-flow-engine/flow-created" ||
-            eventType === "task-flow-engine/flow-current"
+            (eventType === "task-flow-engine/flow-created" ||
+              eventType === "task-flow-engine/flow-current") &&
+            !createdFlowIdsRef.current.has(flowId)
           ) {
             const newFlow = data as unknown as FlowSummary;
             if (newFlow.id && newFlow.type === "user") {
@@ -122,6 +127,7 @@ export function useTasks(solutionId: string | null) {
           }
           return prev;
         }
+        createdFlowIdsRef.current.delete(flowId);
         const updated = { ...prev[index], ...(data as Partial<FlowSummary>) };
         const next = [...prev];
         next[index] = updated;
@@ -180,10 +186,16 @@ export function useTasks(solutionId: string | null) {
     ): Promise<TaskDefinition> => {
       if (!solutionId) throw new Error("No active solution");
 
+      const robotAddr = robotDataRef.current.find((r) => r.id === robotIds[0]);
+      const robotIp = robotAddr?.address;
+      const robotPort = robotAddr?.port ?? 22;
+
       const input: Record<string, unknown> = {
         solutionId,
         robotIds,
         taskName: taskType.name,
+        robotIp,
+        robotPort,
         ...params,
       };
 
@@ -195,12 +207,12 @@ export function useTasks(solutionId: string | null) {
         dag = {
           tasks: {
             transfer: {
+              requires: ["robotIp", "robotPort", "artifactId"],
               resolver: {
                 name: "TransferMovebaseTask",
                 params: {
                   robotIp: "robotIp",
-                  sshUsername: "sshUsername",
-                  sshPassword: "sshPassword",
+                  robotPort: "robotPort",
                   artifactId: "artifactId",
                 },
                 results: { done: "transfer_done" },
@@ -208,26 +220,24 @@ export function useTasks(solutionId: string | null) {
               provides: ["transfer_done"],
             },
             upgrade: {
-              requires: ["transfer_done"],
+              requires: ["robotIp", "robotPort", "transfer_done"],
               resolver: {
                 name: "UpgradeMovebaseTask",
                 params: {
                   robotIp: "robotIp",
-                  sshUsername: "sshUsername",
-                  sshPassword: "sshPassword",
+                  robotPort: "robotPort",
                 },
                 results: { done: "upgrade_done" },
               },
               provides: ["upgrade_done"],
             },
             cleanup: {
-              requires: ["upgrade_done"],
+              requires: ["robotIp", "robotPort", "upgrade_done"],
               resolver: {
                 name: "DeleteMovebaseTask",
                 params: {
                   robotIp: "robotIp",
-                  sshUsername: "sshUsername",
-                  sshPassword: "sshPassword",
+                  robotPort: "robotPort",
                 },
                 results: { done: "cleanup_done" },
               },
@@ -239,12 +249,12 @@ export function useTasks(solutionId: string | null) {
         errorDag = {
           tasks: {
             error_cleanup: {
+              requires: ["robotIp", "robotPort"],
               resolver: {
                 name: "DeleteMovebaseTask",
                 params: {
                   robotIp: "robotIp",
-                  sshUsername: "sshUsername",
-                  sshPassword: "sshPassword",
+                  robotPort: "robotPort",
                 },
                 results: { done: "error_cleanup_done" },
               },
@@ -258,12 +268,12 @@ export function useTasks(solutionId: string | null) {
         dag = {
           tasks: {
             upgrade: {
+              requires: ["robotIp", "robotPort", "localFilePath", "remoteFilePath"],
               resolver: {
                 name: "SshFileTransferTask",
                 params: {
                   robotIp: "robotIp",
-                  sshUsername: "sshUsername",
-                  sshPassword: "sshPassword",
+                  robotPort: "robotPort",
                   localFilePath: "localFilePath",
                   remoteFilePath: "remoteFilePath",
                 },
@@ -286,7 +296,13 @@ export function useTasks(solutionId: string | null) {
         errorDag,
       });
 
-      setFlows((prev) => [summary, ...prev]);
+      setFlows((prev) => {
+        const exists = prev.some((f) => f.id === summary.id);
+        if (exists) return prev;
+        return [summary, ...prev];
+      });
+
+      createdFlowIdsRef.current.add(summary.id);
 
       const taskDef: TaskDefinition = {
         id: summary.id,

@@ -5,6 +5,7 @@ import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
 import { posix as pathPosix } from "node:path";
 import { createLogger } from "../logger/index.js";
+import { SSH_USERNAME, SSH_PASSWORD } from "../config.js";
 
 const log = createLogger("SshFileTransfer");
 
@@ -22,12 +23,16 @@ export interface SshFileTransferParams {
   localFilePath: string;
   remoteFilePath: string;
 
+  // --- Sudo ---
+  sudo?: boolean;
+
   // --- Verification ---
   verifyChecksum?: boolean;
   checksumAlgorithm?: "sha256" | "md5";
 }
 
 export interface SshFileTransferResult {
+  done: boolean;
   success: boolean;
   bytesTransferred: number;
   localChecksum: string;
@@ -96,7 +101,10 @@ function connectSsh(
 function ensureRemoteParentDir(
   conn: Client,
   remotePath: string,
-  timeout: number
+  timeout: number,
+  username: string,
+  sshPassword: string,
+  sudo: boolean
 ): Promise<void> {
   const parentDir = pathPosix.dirname(remotePath);
   if (!parentDir || parentDir === "." || parentDir === "/") {
@@ -104,7 +112,9 @@ function ensureRemoteParentDir(
   }
 
   return new Promise((resolve, reject) => {
-    const command = `mkdir -p "${parentDir}"`;
+    const command = sudo
+      ? `echo "${sshPassword}" | sudo -S -p '' mkdir -p "${parentDir}" && echo "${sshPassword}" | sudo -S -p '' chown -R ${username}:${username} "${parentDir}"`
+      : `mkdir -p "${parentDir}"`;
 
     const timer = setTimeout(() => {
       reject(new Error(`Remote mkdir command timed out after ${timeout}ms`));
@@ -119,6 +129,10 @@ function ensureRemoteParentDir(
 
       let stderr = "";
 
+      stream.on("data", () => {
+        // drain stdout to avoid stream buffering blocking the close event
+      });
+
       stream.stderr.on("data", (data: Buffer) => {
         stderr += data.toString("utf-8");
       });
@@ -128,7 +142,7 @@ function ensureRemoteParentDir(
         if (code !== 0) {
           reject(
             new Error(
-              `Remote mkdir -p failed (exit code ${code}) for "${parentDir}": ${stderr.trim()}`
+              `Remote mkdir failed (exit code ${code}) for "${parentDir}": ${stderr.trim()}`
             )
           );
           return;
@@ -251,10 +265,11 @@ export class SshFileTransferTask implements ITaskResolver {
       robotMdnsDomain: params.robotMdnsDomain as string | undefined,
       timeout: (params.timeout as number) ?? 30000,
       retryCount: (params.retryCount as number) ?? 3,
-      sshUsername: params.sshUsername as string,
-      sshPassword: params.sshPassword as string,
+      sshUsername: (params.sshUsername as string) ?? SSH_USERNAME,
+      sshPassword: (params.sshPassword as string) ?? SSH_PASSWORD,
       localFilePath: params.localFilePath as string,
       remoteFilePath: params.remoteFilePath as string,
+      sudo: (params.sudo as boolean) ?? false,
       verifyChecksum: (params.verifyChecksum as boolean) ?? true,
       checksumAlgorithm: (params.checksumAlgorithm as "sha256" | "md5") ?? "sha256",
     };
@@ -313,7 +328,10 @@ export class SshFileTransferTask implements ITaskResolver {
         await ensureRemoteParentDir(
           conn,
           transferParams.remoteFilePath,
-          timeout
+          timeout,
+          transferParams.sshUsername,
+          transferParams.sshPassword,
+          transferParams.sudo ?? false
         );
 
         log.info({ localFilePath: transferParams.localFilePath, remoteFilePath: transferParams.remoteFilePath }, 'Transferring');
@@ -349,6 +367,7 @@ export class SshFileTransferTask implements ITaskResolver {
         conn.end();
 
         const result: SshFileTransferResult = {
+          done: true,
           success: true,
           bytesTransferred,
           localChecksum,
