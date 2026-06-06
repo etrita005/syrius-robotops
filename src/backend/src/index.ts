@@ -18,7 +18,7 @@ import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
-import { SshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask } from "./tasks/index.js";
+import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
 
@@ -74,10 +74,13 @@ function registerTasks(
 }
 
 registerTasks(resolverRegistry, mock, [
-  { name: "SshCommandTask", real: SshCommandTask },
+  { name: "SshCommandTask", real: SshCommandTask, mock: MockSshCommandTask },
   { name: "GetRobotBasicInfoTask", real: GetRobotBasicInfoTask, mock: MockGetRobotBasicInfoTask },
-  { name: "UpdateRobotBasicInfoTask", real: UpdateRobotBasicInfoTask },
+  { name: "UpdateRobotBasicInfoTask", real: UpdateRobotBasicInfoTask, mock: MockUpdateRobotBasicInfoTask },
   { name: "SshFileTransferTask", real: SshFileTransferTask, mock: MockSshFileTransferTask },
+  { name: "UpgradeMovebaseTask", real: UpgradeMovebaseTask, mock: MockUpgradeMovebaseTask },
+  { name: "TransferMovebaseTask", real: TransferMovebaseTask, mock: MockTransferMovebaseTask },
+  { name: "DeleteMovebaseTask", real: DeleteMovebaseTask, mock: MockDeleteMovebaseTask },
 ]);
 
 const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
@@ -89,7 +92,7 @@ const robotService = new RobotService(objectStore, taskFlowEngine, sseManager, m
   sshPassword: SSH_PASSWORD,
 });
 
-taskFlowEngine.setFlowContext({ memStore: memStoreInstance });
+taskFlowEngine.setFlowContext({ memStore: memStoreInstance, artifactService });
 
 solutionService.onSolutionRemove((solutionId: string) => {
   robotService.removeSolutionCache(solutionId);

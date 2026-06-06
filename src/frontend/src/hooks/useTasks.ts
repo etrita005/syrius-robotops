@@ -187,30 +187,103 @@ export function useTasks(solutionId: string | null) {
         ...params,
       };
 
-      const dag = {
-        tasks: {
-          upgrade: {
-            resolver: {
-              name: "SshFileTransferTask",
-              params: {
-                robotIp: "robotIp",
-                sshUsername: "sshUsername",
-                sshPassword: "sshPassword",
-                localFilePath: "localFilePath",
-                remoteFilePath: "remoteFilePath",
+      let dag: Record<string, unknown>;
+      let expectedResults: string[];
+      let errorDag: Record<string, unknown> | undefined;
+
+      if (taskType.type === "upgrade-movebase") {
+        dag = {
+          tasks: {
+            transfer: {
+              resolver: {
+                name: "TransferMovebaseTask",
+                params: {
+                  robotIp: "robotIp",
+                  sshUsername: "sshUsername",
+                  sshPassword: "sshPassword",
+                  artifactId: "artifactId",
+                },
+                results: { done: "transfer_done" },
               },
-              results: { done: "upgrade_result" },
+              provides: ["transfer_done"],
             },
-            provides: ["upgrade_result"],
+            upgrade: {
+              requires: ["transfer_done"],
+              resolver: {
+                name: "UpgradeMovebaseTask",
+                params: {
+                  robotIp: "robotIp",
+                  sshUsername: "sshUsername",
+                  sshPassword: "sshPassword",
+                },
+                results: { done: "upgrade_done" },
+              },
+              provides: ["upgrade_done"],
+            },
+            cleanup: {
+              requires: ["upgrade_done"],
+              resolver: {
+                name: "DeleteMovebaseTask",
+                params: {
+                  robotIp: "robotIp",
+                  sshUsername: "sshUsername",
+                  sshPassword: "sshPassword",
+                },
+                results: { done: "cleanup_done" },
+              },
+              provides: ["cleanup_done"],
+            },
           },
-        },
-      };
+        };
+
+        errorDag = {
+          tasks: {
+            error_cleanup: {
+              resolver: {
+                name: "DeleteMovebaseTask",
+                params: {
+                  robotIp: "robotIp",
+                  sshUsername: "sshUsername",
+                  sshPassword: "sshPassword",
+                },
+                results: { done: "error_cleanup_done" },
+              },
+              provides: ["error_cleanup_done"],
+            },
+          },
+        };
+
+        expectedResults = ["cleanup_done"];
+      } else {
+        dag = {
+          tasks: {
+            upgrade: {
+              resolver: {
+                name: "SshFileTransferTask",
+                params: {
+                  robotIp: "robotIp",
+                  sshUsername: "sshUsername",
+                  sshPassword: "sshPassword",
+                  localFilePath: "localFilePath",
+                  remoteFilePath: "remoteFilePath",
+                },
+                results: { done: "upgrade_result" },
+              },
+              provides: ["upgrade_result"],
+            },
+          },
+        };
+
+        expectedResults = ["upgrade_result"];
+        errorDag = undefined;
+      }
 
       const summary = await createFlow({
         type: "user",
         dag,
         input,
-        expectedResults: ["upgrade_result"],
+        expectedResults,
+        errorDag,
       });
 
       setFlows((prev) => [summary, ...prev]);
