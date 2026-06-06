@@ -83,6 +83,23 @@ export class SshCommandTask implements ITaskResolver {
     return _params.sshCommand as string;
   }
 
+  /**
+   * Wrap a shell command so any inner `sudo` invocations read the password
+   * from stdin instead of a TTY. The password is fed via a here-string and
+   * sudo is invoked with `-S` (read from stdin) and `-p ''` (empty prompt).
+   *
+   * The given `command` should already contain `sudo -S` (or `sudo -S -p ''`)
+   * where elevated privileges are required. Example:
+   *   wrapWithSudoPassword("sudo -S -p '' /opt/install.sh", "secret")
+   *
+   * Special shell characters in the password are safely escaped for use
+   * inside a single-quoted string.
+   */
+  protected wrapWithSudoPassword(command: string, password: string): string {
+    const escaped = password.replace(/'/g, "'\\''");
+    return `echo '${escaped}' | ${command}`;
+  }
+
   protected buildParams(params: ValueMap): SshCommandParams {
     return {
       robotIp: params.robotIp as string,

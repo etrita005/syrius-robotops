@@ -7,3 +7,6 @@ export { GetRobotBasicInfoTask } from "./getRobotBasicInfoTask.js";
 export type { RobotBasicInfo } from "./getRobotBasicInfoTask.js";
 export { UpdateRobotBasicInfoTask } from "./updateRobotBasicInfoTask.js";
 export { MockGetRobotBasicInfoTask } from "./mockGetRobotBasicInfoTask.js";
+export { UpgradeMovebaseTask } from "./upgradeMovebaseTask.js";
+export { DeleteRemotePathTask } from "./deleteRemotePathTask.js";
+export type { DeleteRemotePathParams } from "./deleteRemotePathTask.js";

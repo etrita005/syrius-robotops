@@ -3,6 +3,7 @@ import { Client, type SFTPWrapper } from "ssh2";
 import { stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
+import { posix as pathPosix } from "node:path";
 
 export interface SshFileTransferParams {
   // --- Connection ---
@@ -89,12 +90,58 @@ function connectSsh(
   });
 }
 
+function ensureRemoteParentDir(
+  conn: Client,
+  remotePath: string,
+  timeout: number
+): Promise<void> {
+  const parentDir = pathPosix.dirname(remotePath);
+  if (!parentDir || parentDir === "." || parentDir === "/") {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const command = `mkdir -p "${parentDir}"`;
+
+    const timer = setTimeout(() => {
+      reject(new Error(`Remote mkdir command timed out after ${timeout}ms`));
+    }, timeout);
+
+    conn.exec(command, (err, stream) => {
+      if (err) {
+        clearTimeout(timer);
+        reject(err);
+        return;
+      }
+
+      let stderr = "";
+
+      stream.stderr.on("data", (data: Buffer) => {
+        stderr += data.toString("utf-8");
+      });
+
+      stream.on("close", (code: number | null) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+          reject(
+            new Error(
+              `Remote mkdir -p failed (exit code ${code}) for "${parentDir}": ${stderr.trim()}`
+            )
+          );
+          return;
+        }
+        console.log(`[SshFileTransfer] Ensured remote directory: ${parentDir}`);
+        resolve();
+      });
+    });
+  });
+}
+
 function transferFile(
   conn: Client,
   localPath: string,
   remotePath: string
-): Promise<number> {
-  return new Promise((resolve, reject) => {
+): Promise<number> {  return new Promise((resolve, reject) => {
     conn.sftp((err: Error | undefined, sftp: SFTPWrapper) => {
       if (err) {
         reject(err);
@@ -269,6 +316,16 @@ export class SshFileTransferTask implements ITaskResolver {
           port,
           transferParams.sshUsername,
           transferParams.sshPassword,
+          timeout
+        );
+
+        console.log(
+          `[SshFileTransfer] Ensuring remote parent directory for ${transferParams.remoteFilePath}`
+        );
+
+        await ensureRemoteParentDir(
+          conn,
+          transferParams.remoteFilePath,
           timeout
         );
 
