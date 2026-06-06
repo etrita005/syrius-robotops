@@ -38,7 +38,8 @@ RobotOps Studio (Robot Commissioning & Operations Studio) is a field robot manag
 ### Backend
 
 - **Runtime**: Node.js (ES6 + TypeScript)
-- **Framework**: Express.js or similar
+- **Framework**: Express.js or similar (actually Hono)
+- **Logging**: Pino (structured JSON logging, pino-pretty in development)
 - **Architecture**: REST API service
 
 ### Project Structure
@@ -84,6 +85,17 @@ syrius-robotops/
 
 - **TypeScript**: All code MUST be written in TypeScript, not plain JavaScript
 - **Module System**: Use ES6 module syntax (`import`/`export`), not CommonJS (`require`/`module.exports`)
+
+### Backend Logging
+
+- **Framework**: Pino (src/backend/src/logger/index.ts)
+- **FORBIDDEN**: Do NOT use `console.log`, `console.error`, `console.warn` in backend production code. All logging MUST go through the Pino logging framework.
+- **Module-level loggers**: Use `createLogger("ModuleName")` from `src/logger/index.js` to create a child logger with the `module` field. Module name should use PascalCase matching the component.
+- **Structured context**: Pass contextual data as the first argument object (e.g., `log.info({ robotSn, version }, 'Upgrading')`) instead of string interpolation. This enables structured log parsing and export.
+- **Message convention**: Log messages should be brief descriptive phrases in English, not full sentences.
+- **Levels**: `trace` (verbose debug), `debug` (development detail), `info` (normal operations), `warn` (recoverable issues), `error` (errors needing attention), `fatal` (unrecoverable).
+- **Development**: pino-pretty is configured for development output. Production outputs raw JSON.
+- **Sensitive data**: Never log passwords, tokens, or secrets in any log field.
 
 - **FORBIDDEN**: All logs, comments MUST be in English only
 - **FORBIDDEN**: Use of half-width characters in logs and comments is prohibited

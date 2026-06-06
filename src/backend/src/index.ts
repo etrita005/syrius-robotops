@@ -21,6 +21,9 @@ import type { TaskResolverClass } from "flowed";
 import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
+import { createLogger } from "./logger/index.js";
+
+const log = createLogger("App");
 
 function parseArgs(): { dataDir: string; port: number; mock: boolean } {
   const args = process.argv.slice(2);
@@ -105,6 +108,16 @@ const app = new Hono();
 
 app.use("*", cors());
 
+app.use("*", async (c, next) => {
+  const start = Date.now();
+  await next();
+  const duration = Date.now() - start;
+  const status = c.res.status;
+  const method = c.req.method;
+  const path = c.req.path;
+  log.info({ method, path, status, durationMs: duration }, 'HTTP request');
+});
+
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 
 app.route("/api/objects", createObjectStoreRoutes(objectStore, dataDir));
@@ -120,16 +133,15 @@ app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine));
 
 app.onError((err, _c) => {
   if (err instanceof AppError) {
+    log.warn({ code: err.code, message: err.message, statusCode: err.statusCode }, 'Application error');
     return _c.json({ error: err.code, message: err.message }, err.statusCode);
   }
-  console.error(`Unhandled error: ${err.message}`);
+  log.error({ err: err.message }, 'Unhandled error');
   return _c.json({ error: "INTERNAL_ERROR", message: "An unexpected error occurred." }, 500);
 });
 
-console.log(`RobotOps Backend API running at http://localhost:${port}`);
-console.log(`Data directory: ${dataDir}`);
-console.log(`SSH credentials: ${SSH_USERNAME} / ${SSH_PASSWORD ? "***" : "(none)"}`);
+log.info({ port, dataDir }, "RobotOps Backend API starting");
 if (mock) {
-  console.log("Mock mode enabled");
+  log.info("Mock mode enabled");
 }
 serve({ fetch: app.fetch, port });

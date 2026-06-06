@@ -1,5 +1,8 @@
 import type { ValueMap, ITaskResolver } from "flowed";
 import { Client } from "ssh2";
+import { createLogger } from "../logger/index.js";
+
+const log = createLogger("SshCommand");
 
 export interface SshCommandParams {
   robotIp: string;
@@ -121,7 +124,7 @@ export class SshCommandTask implements ITaskResolver {
     const timeout = sshParams.timeout!;
     const command = sshParams.sshCommand;
 
-    console.log(`[SSH] Connecting to ${sshParams.sshUsername}@${host}:${port}`);
+    log.info({ host, port, username: sshParams.sshUsername }, 'Connecting');
 
     let lastError: Error | undefined;
 
@@ -142,7 +145,7 @@ export class SshCommandTask implements ITaskResolver {
           );
         }
 
-        console.log(`[SSH] Command succeeded on ${host}:${port}`);
+        log.info({ host, port }, 'Command succeeded');
         return {
           success: true,
           stdout: result.stdout,
@@ -151,7 +154,7 @@ export class SshCommandTask implements ITaskResolver {
         };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        console.error(`[SSH] Attempt ${attempt}/${maxRetries} to ${host}:${port} failed: ${lastError.message}`);
+        log.error({ host, port, attempt, maxRetries, err: lastError.message }, 'Command attempt failed');
         if (attempt < maxRetries) {
           await sleep(1000 * attempt);
         }

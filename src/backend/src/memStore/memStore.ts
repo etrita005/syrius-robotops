@@ -2,6 +2,7 @@ import { LRUCache } from 'lru-cache';
 import type { CacheValuePayload, CacheConfig, CacheEntry, CacheEventHandler, CreateCacheOptions } from './types.js';
 import { noopHandler } from './types.js';
 import { Scheduler } from './scheduler.js';
+import { logger } from '../logger/index.js';
 
 export class MemStore {
   private cache: LRUCache<string, CacheValuePayload>;
@@ -233,13 +234,13 @@ export class MemStore {
     if (config.preExpireWarningMs && config.preExpireWarningMs > 0) {
       const warningDelay = expireAt - Date.now() - config.preExpireWarningMs;
       this.scheduler.scheduleWarning(key, warningDelay, async () => {
-        console.log(`[MemStore] Pre-expire warning for key: ${key}`);
+        logger.info({ key }, 'Pre-expire warning');
         this.triggerRefresh(key);
       });
     }
     if (config.cron) {
       this.scheduler.scheduleCron(key, config.cron, async () => {
-        console.log(`[MemStore] Periodic refresh for key: ${key}`);
+        logger.info({ key }, 'Periodic refresh');
         this.triggerRefresh(key);
       });
     }
@@ -253,14 +254,14 @@ export class MemStore {
       this.propertiesStore.delete(key);
       this.contextStore.delete(key);
       this.refreshing.delete(key);
-      console.log(`[MemStore] Expired and fully cleaned key: ${key}`);
+      logger.info({ key }, 'Expired and fully cleaned');
       if (entry) {
         this.handler.onDeleted(this, entry);
       }
     } else if (reason === 'delete') {
-      console.log(`[MemStore] Deleted key: ${key}`);
+      logger.info({ key }, 'Deleted');
     } else if (reason === 'evict') {
-      console.log(`[MemStore] Evicted value for key: ${key}, keeping meta and jobs`);
+      logger.info({ key }, 'Evicted value, keeping meta and jobs');
     } else if (reason === 'set') {
       this.scheduler.clearJobsForKey(key);
     }

@@ -9,6 +9,9 @@ import { randomUUID } from "node:crypto";
 import type { ObjectStore } from "../objectStore.js";
 import type { ResolverRegistry } from "./resolverRegistry.js";
 import type { SseManager, ISseManagerEventHandler } from "../sseManager.js";
+import { createLogger } from "../../logger/index.js";
+
+const log = createLogger("TaskFlowEngine");
 
 type SerializedFlowRunStatus = ReturnType<Flow["getSerializableState"]>;
 
@@ -199,6 +202,10 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
       }
       this.emitFlowRemoved(id);
     }
+
+    if (expiredIds.length > 0) {
+      log.info({ count: expiredIds.length }, 'Expired flows cleaned up');
+    }
   }
 
   destroy(): void {
@@ -299,6 +306,8 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     await this.saveFlow(record);
     this.emitFlowCreated(record);
 
+    log.info({ flowId: id, type, taskCount: taskCodes.length, hasErrorDag: !!errorDag }, 'Flow created');
+
     this.startFlow(id);
 
     return this.summarize(record);
@@ -311,8 +320,10 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
 
     record.state = "RUNNING";
     record.startedAt = record.startedAt ?? nowISO();
-    this.saveFlow(record).catch(() => {});
+    this.saveFlow(record).catch((err: unknown) => { log.warn({ flowId: record.id, err }, 'Failed to persist flow on start'); });
     this.emitFlowUpdated(record);
+
+    log.info({ flowId: id, type: record.type, phase: record.phase }, 'Flow started');
 
     const startParams = record.input ?? {};
     const expected = this.computeExpectedResults(record);
@@ -343,7 +354,7 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
         this.finalizeFlow(id);
       })
       .catch((err: unknown) => {
-        console.error(`[TaskFlowEngine] Flow ${id} failed:`, err instanceof Error ? err.message : String(err));
+        log.error({ flowId: id, err: err instanceof Error ? err.message : String(err) }, 'Flow failed');
         if (record.phase === "main" && record.errorDag) {
           this.startErrorFlow(id, err);
           return;
@@ -407,9 +418,11 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     const expected = this.computeExpectedResults({ ...record, dag: record.errorDag });
     const resolvers = this.resolverRegistry.getAll();
 
-    this.saveFlow(record).catch(() => {});
+    this.saveFlow(record).catch((err: unknown) => { log.warn({ flowId: record.id, err }, 'Failed to persist flow on error phase'); });
     this.emitFlowUpdated(record);
     this.emitErrorHandlingStarted(record);
+
+    log.warn({ flowId: id, failedTaskCode, errorMessage }, 'Error handling phase started');
 
     errorFlow
       .start(inputWithError, expected, resolvers, this.flowContext, { instanceId: id })
@@ -431,7 +444,7 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
         this.finalizeFlow(id);
       })
       .catch((errorErr: unknown) => {
-        console.error(`[TaskFlowEngine] Error flow ${id} failed:`, errorErr instanceof Error ? errorErr.message : String(errorErr));
+        log.error({ flowId: id, err: errorErr instanceof Error ? errorErr.message : String(errorErr) }, 'Error flow failed');
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "FAILED";
         }
@@ -564,9 +577,11 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
       }
     }
 
-    this.saveFlow(record).catch(() => {});
+    this.saveFlow(record).catch((err: unknown) => { log.warn({ flowId: record.id, err }, 'Failed to persist flow on finalize'); });
     this.emitFlowUpdated(record);
     this.emitFlowCompleted(record);
+
+    log.info({ flowId: record.id, state: record.state, phase: record.phase }, 'Flow finished');
   }
 
   async pauseFlow(id: string): Promise<void> {
@@ -588,6 +603,8 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     }
     await this.saveFlow(record);
     this.emitFlowUpdated(record);
+
+    log.info({ flowId: id }, 'Flow paused');
   }
 
   async resumeFlow(id: string): Promise<void> {
@@ -597,8 +614,10 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     if (record.state !== "PAUSED") return;
 
     record.state = "RUNNING";
-    this.saveFlow(record).catch(() => {});
+    this.saveFlow(record).catch((err: unknown) => { log.warn({ flowId: record.id, err }, 'Failed to persist flow on resume'); });
     this.emitFlowUpdated(record);
+
+    log.info({ flowId: id, phase: record.phase }, 'Flow resumed');
 
     const isErrorPhase = record.phase === "error";
     const currentDag = isErrorPhase ? (record.errorDag ?? record.dag) : record.dag;
@@ -628,7 +647,7 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
         this.finalizeFlow(id);
       })
       .catch((err: unknown) => {
-        console.error(`[TaskFlowEngine] Flow ${id} failed on resume:`, err instanceof Error ? err.message : String(err));
+        log.error({ flowId: id, err: err instanceof Error ? err.message : String(err) }, 'Flow failed on resume');
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "FAILED";
         }
@@ -649,6 +668,9 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
 
     await flow.stop();
     record.state = "STOPPED";
+
+    log.info({ flowId: id }, 'Flow stopped');
+
     this.finalizeFlow(id);
   }
 
@@ -666,6 +688,8 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     if (record.type === "user") {
       await this.objectStore.deletePath(`flows/${id}`).catch(() => {});
     }
+
+    log.info({ flowId: id, type: record.type }, 'Flow deleted');
 
     this.emitFlowRemoved(id);
   }
@@ -727,12 +751,14 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
         this.flows.set(record.id, record);
         this.flowInstances.set(record.id, flow);
 
+        log.info({ flowId: record.id, state: record.state, type: record.type }, 'Flow loaded from persistence');
+
         if (record.state === "RUNNING") {
           this.ensureLogger();
           this.startFlow(record.id);
         }
       } catch (err) {
-        console.error(`Failed to load flow ${child.name}:`, err);
+        log.error({ flowFileName: child.name, err: err instanceof Error ? err.message : String(err) }, 'Failed to load flow');
       }
     }
   }
@@ -757,6 +783,7 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
       const taskCode = (entry.extra?.task as { code?: string } | undefined)?.code;
       if (taskCode) {
         record.taskStates[taskCode] = "RUNNING";
+        log.debug({ flowId, taskCode }, 'Task started');
         this.emitTaskUpdated(flowId, taskCode, "RUNNING");
       }
     } else if (entry.eventType === "Task.Finished") {
@@ -768,6 +795,8 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
         if (!isError) {
           this.extractTaskResultOnFinish(flowId, taskCode);
         }
+
+        log.debug({ flowId, taskCode, state: record.taskStates[taskCode] }, 'Task finished');
 
         this.emitTaskUpdated(flowId, taskCode, record.taskStates[taskCode]);
 
@@ -786,7 +815,7 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
           // ignore
         }
       }
-      this.saveFlow(record).catch(() => {});
+      this.saveFlow(record).catch((err: unknown) => { log.warn({ flowId: record.id, err }, 'Failed to persist flow on task event'); });
       this.emitFlowUpdated(record);
     }
   }

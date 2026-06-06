@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import type { SseManager } from "../services/sseManager.js";
+import { createLogger } from "../logger/index.js";
+
+const log = createLogger("SseRoute");
 
 export function createSseRoutes(sseManager: SseManager): Hono {
   const app = new Hono();
@@ -12,6 +15,7 @@ export function createSseRoutes(sseManager: SseManager): Hono {
       start(ctrl) {
         clientId = randomUUID();
         sseManager.addClient({ id: clientId, controller: ctrl });
+        log.info({ clientId }, 'SSE connection established');
         const encoder = new TextEncoder();
         ctrl.enqueue(encoder.encode(`event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`));
 

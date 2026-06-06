@@ -1,5 +1,8 @@
 import type { ValueMap } from "flowed";
 import { UpdateRobotBasicInfoTask } from "./updateRobotBasicInfoTask.js";
+import { createLogger } from "../logger/index.js";
+
+const log = createLogger("UpdateRobotBasicInfo");
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -7,15 +10,11 @@ function sleep(ms: number): Promise<void> {
 
 export class MockUpdateRobotBasicInfoTask extends UpdateRobotBasicInfoTask {
   override async exec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {
-    console.log(
-      `[UpdateRobotBasicInfo:Mock] Simulating robot info update for cacheKey=${params.cacheKey}`
-    );
+    log.info({ cacheKey: params.cacheKey }, 'Simulating robot info update (mock)');
 
     await sleep(500);
 
-    console.log(
-      `[UpdateRobotBasicInfo:Mock] Update completed (mock)`
-    );
+    log.info('Update completed (mock)');
 
     return super.exec(params, context);
   }

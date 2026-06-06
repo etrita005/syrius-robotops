@@ -1,5 +1,8 @@
 import type { ValueMap } from "flowed";
 import { SshCommandTask } from "./sshCommandTask.js";
+import { createLogger } from "../logger/index.js";
+
+const log = createLogger("GetRobotBasicInfo");
 
 const ROBOT_INFO_COMMAND =
   "MODEL=$(tr -d '\\0' < /sys/robotInfo/Model 2>/dev/null | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//; s/[[:space:]]*$//');" +
@@ -39,12 +42,12 @@ export class GetRobotBasicInfoTask extends SshCommandTask {
     const stdout = (result.stdout as string) ?? "";
     const stderr = (result.stderr as string) ?? "";
     if (stderr) {
-      console.log(`[GetRobotBasicInfo] stderr: ${stderr.trim()}`);
+      log.info({ stderr: stderr.trim() }, 'stderr output');
     }
 
     const robotInfo = this.parseRobotInfo(stdout);
 
-    console.log(`[GetRobotBasicInfo] Parsed model=${robotInfo.model}, sn=${robotInfo.robotSn}`);
+    log.info({ model: robotInfo.model, robotSn: robotInfo.robotSn }, 'Parsed robot info');
 
     return {
       success: true,

@@ -3,6 +3,9 @@ import { SshFileTransferTask, type SshFileTransferParams } from "./sshFileTransf
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createLogger } from "../logger/index.js";
+
+const log = createLogger("TransferMovebase");
 
 const REMOTE_TARGET_PATH = "/mnt/sdcard/offlineota/alpha2_movebase_offline_package.zip";
 
@@ -24,7 +27,7 @@ export class TransferMovebaseTask extends SshFileTransferTask {
 
       try {
         const localFilePath = await artifactService.download(artifactId, tmpDir);
-        console.log(`[TransferMovebase] Resolved artifact ${artifactId} to ${localFilePath}`);
+        log.info({ artifactId, localFilePath }, 'Resolved artifact');
 
         const augmentedParams = { ...params, localFilePath };
         const result = await super.exec(augmentedParams);

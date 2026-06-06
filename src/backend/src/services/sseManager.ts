@@ -1,3 +1,7 @@
+import { createLogger } from '../logger/index.js';
+
+const log = createLogger("SseManager");
+
 export interface SseClient {
   id: string;
   controller: ReadableStreamDefaultController;
@@ -33,13 +37,14 @@ export class SseManager {
 
   addClient(client: SseClient): void {
     this.clients.set(client.id, client);
+    log.info({ clientId: client.id, clientCount: this.clients.size }, 'SSE client connected');
     for (const handler of this.handlers) {
       try {
         handler.onClientConnected(this, client.id);
       } catch (err) {
-        console.error(
-          `[SseManager] Handler onClientConnected failed for client ${client.id}:`,
-          err instanceof Error ? err.message : String(err)
+        log.error(
+          { clientId: client.id, err: createErrorMessage(err) },
+          'Handler onClientConnected failed'
         );
       }
     }
@@ -48,13 +53,14 @@ export class SseManager {
   removeClient(id: string): void {
     if (!this.clients.has(id)) return;
     this.clients.delete(id);
+    log.info({ clientId: id, clientCount: this.clients.size }, 'SSE client disconnected');
     for (const handler of this.handlers) {
       try {
         handler.onClientDisconnected(this, id);
       } catch (err) {
-        console.error(
-          `[SseManager] Handler onClientDisconnected failed for client ${id}:`,
-          err instanceof Error ? err.message : String(err)
+        log.error(
+          { clientId: id, err: createErrorMessage(err) },
+          'Handler onClientDisconnected failed'
         );
       }
     }
@@ -83,6 +89,7 @@ export class SseManager {
     try {
       const encoder = new TextEncoder();
       client.controller.enqueue(encoder.encode(data));
+      log.debug({ event, clientId }, 'SSE notification sent');
       return true;
     } catch {
       this.removeClient(clientId);
@@ -120,9 +127,14 @@ export class SseManager {
     for (const id of failedClientIds) {
       this.removeClient(id);
     }
+    log.debug({ event, clientCount: this.clients.size, failedCount: failedClientIds.length }, 'SSE broadcast');
   }
 
   getClientCount(): number {
     return this.clients.size;
   }
+}
+
+function createErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

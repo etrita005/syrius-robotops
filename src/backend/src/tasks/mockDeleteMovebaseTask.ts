@@ -1,5 +1,8 @@
 import type { ValueMap } from "flowed";
 import { DeleteMovebaseTask } from "./deleteMovebaseTask.js";
+import { createLogger } from "../logger/index.js";
+
+const log = createLogger("DeleteMovebase");
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -7,15 +10,11 @@ function sleep(ms: number): Promise<void> {
 
 export class MockDeleteMovebaseTask extends DeleteMovebaseTask {
   override async exec(_params: ValueMap): Promise<ValueMap> {
-    console.log(
-      `[DeleteMovebase:Mock] Simulating cleanup`
-    );
+    log.info('Simulating cleanup (mock)');
 
     await sleep(1000);
 
-    console.log(
-      `[DeleteMovebase:Mock] Cleanup completed (mock)`
-    );
+    log.info('Cleanup completed (mock)');
 
     return {
       done: true,

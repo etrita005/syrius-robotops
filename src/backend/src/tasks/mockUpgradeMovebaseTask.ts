@@ -1,5 +1,8 @@
 import type { ValueMap } from "flowed";
 import { UpgradeMovebaseTask } from "./upgradeMovebaseTask.js";
+import { createLogger } from "../logger/index.js";
+
+const log = createLogger("UpgradeMovebase");
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -7,15 +10,11 @@ function sleep(ms: number): Promise<void> {
 
 export class MockUpgradeMovebaseTask extends UpgradeMovebaseTask {
   override async exec(_params: ValueMap): Promise<ValueMap> {
-    console.log(
-      `[UpgradeMovebase:Mock] Simulating upgrade`
-    );
+    log.info('Simulating upgrade (mock)');
 
     await sleep(5000);
 
-    console.log(
-      `[UpgradeMovebase:Mock] Upgrade completed (mock)`
-    );
+    log.info('Upgrade completed (mock)');
 
     return {
       done: true,

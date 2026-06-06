@@ -1,4 +1,5 @@
 import { ToadScheduler, SimpleIntervalJob, AsyncTask } from 'toad-scheduler';
+import { logger } from '../logger/index.js';
 
 export class Scheduler {
   private scheduler = new ToadScheduler();
@@ -11,7 +12,7 @@ export class Scheduler {
     const task = new AsyncTask(
       id,
       callback,
-      (err: Error) => console.error(`[MemStore] Cron task error for ${key}:`, err.message)
+      (err: Error) => logger.error({ key, err: err.message }, 'Cron task error')
     );
     const job = new SimpleIntervalJob({ seconds }, task, { id, preventOverrun: true });
     this.scheduler.addSimpleIntervalJob(job);
@@ -25,12 +26,12 @@ export class Scheduler {
       this.timeoutMap.delete(id);
     }
     if (delayMs <= 0) {
-      callback().catch((err: Error) => console.error(`[MemStore] Warning immediate error for ${key}:`, err.message));
+      callback().catch((err: Error) => logger.error({ key, err: err.message }, 'Warning immediate error'));
       return;
     }
     const timeout = setTimeout(() => {
       this.timeoutMap.delete(id);
-      callback().catch((err: Error) => console.error(`[MemStore] Warning task error for ${key}:`, err.message));
+      callback().catch((err: Error) => logger.error({ key, err: err.message }, 'Warning task error'));
     }, delayMs);
     this.timeoutMap.set(id, timeout);
   }
@@ -70,7 +71,7 @@ export class Scheduler {
       const n = parseInt(parts[0].slice(2), 10);
       if (!isNaN(n) && n > 0) return n;
     }
-    console.warn(`[MemStore] Unsupported cron format "${cron}", defaulting to 180s interval`);
+    logger.warn({ cron }, 'Unsupported cron format, defaulting to 180s interval');
     return 180;
   }
 }

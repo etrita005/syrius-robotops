@@ -16,6 +16,7 @@ import { MemStore } from "../memStore/index.js";
 import type { CacheEntry, CacheEventHandler, IMemStore } from "../memStore/index.js";
 import { TaskFlowEngine } from "./taskFlowEngine/index.js";
 import type { SseManager, ISseManagerEventHandler } from "./sseManager.js";
+import { logger } from "../logger/index.js";
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
 const DEFAULT_SSH_USERNAME = "root";
@@ -146,7 +147,7 @@ export class RobotCacheEventHandler implements CacheEventHandler, ISseManagerEve
   private executeRefreshFlow(store: IMemStore, entry: CacheEntry): void {
     const taskFlowSpec = entry.properties.taskFlowSpec;
     if (!taskFlowSpec) {
-      console.warn(`[RobotCacheEventHandler] No taskFlowSpec in properties for key: ${entry.key}`);
+      logger.warn({ key: entry.key }, 'No taskFlowSpec in properties');
       store.clearRefreshing(entry.key);
       return;
     }
@@ -156,21 +157,20 @@ export class RobotCacheEventHandler implements CacheEventHandler, ISseManagerEve
       entry.properties.robotId as string
     ).then((robotAddr) => {
       if (!robotAddr) {
-        console.warn(`[RobotCacheEventHandler] Robot not found for key: ${entry.key}`);
+        logger.warn({ key: entry.key }, 'Robot not found');
         store.clearRefreshing(entry.key);
         return;
       }
 
       const spec = this.buildSpec(entry.key, robotAddr, taskFlowSpec as Record<string, unknown>);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       this.engine
         .createFlow("internal", spec as any)
         .catch((err: unknown) => {
-          console.error(`[RobotCacheEventHandler] Failed to create refresh flow for key ${entry.key}:`, err instanceof Error ? err.message : String(err));
+          logger.error({ key: entry.key, err: err instanceof Error ? err.message : String(err) }, 'Failed to create refresh flow');
         })
         .finally(() => store.clearRefreshing(entry.key));
     }).catch((err: unknown) => {
-      console.error(`[RobotCacheEventHandler] Error getting robot address for key ${entry.key}:`, err instanceof Error ? err.message : String(err));
+      logger.error({ key: entry.key, err: err instanceof Error ? err.message : String(err) }, 'Error getting robot address');
       store.clearRefreshing(entry.key);
     });
   }

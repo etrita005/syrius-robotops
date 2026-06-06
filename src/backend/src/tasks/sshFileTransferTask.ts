@@ -4,6 +4,9 @@ import { stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
 import { posix as pathPosix } from "node:path";
+import { createLogger } from "../logger/index.js";
+
+const log = createLogger("SshFileTransfer");
 
 export interface SshFileTransferParams {
   // --- Connection ---
@@ -130,7 +133,7 @@ function ensureRemoteParentDir(
           );
           return;
         }
-        console.log(`[SshFileTransfer] Ensured remote directory: ${parentDir}`);
+        log.info({ parentDir }, 'Ensured remote directory');
         resolve();
       });
     });
@@ -161,9 +164,7 @@ function transferFile(
             // Log progress every 2 seconds
             if (now - lastProgressLog > 2000) {
               const percent = fileSize > 0 ? ((totalTransferred / fileSize) * 100).toFixed(1) : "?";
-              console.log(
-                `[SshFileTransfer] Progress: ${totalTransferred}/${fileSize} bytes (${percent}%)`
-              );
+              log.info({ totalTransferred, fileSize, percent }, 'Transfer progress');
               lastProgressLog = now;
             }
           },
@@ -173,9 +174,7 @@ function transferFile(
             reject(sftpErr);
             return;
           }
-          console.log(
-            `[SshFileTransfer] Transfer completed: ${bytesTransferred} bytes`
-          );
+          log.info({ bytesTransferred }, 'Transfer completed');
           resolve(bytesTransferred);
         }
       );
@@ -280,29 +279,19 @@ export class SshFileTransferTask implements ITaskResolver {
       );
     }
 
-    console.log(
-      `[SshFileTransfer] Local file: ${transferParams.localFilePath} (${localFileSize} bytes)`
-    );
+    log.info({ localFilePath: transferParams.localFilePath, localFileSize }, 'Local file');
 
-    // Compute local checksum
     let localChecksum = "";
     if (transferParams.verifyChecksum !== false) {
-      console.log(
-        `[SshFileTransfer] Computing local ${algorithm} checksum for ${transferParams.localFilePath}`
-      );
+      log.info({ localFilePath: transferParams.localFilePath, algorithm }, 'Computing local checksum');
       localChecksum = await computeLocalChecksum(
         transferParams.localFilePath,
         algorithm
       );
-      console.log(
-        `[SshFileTransfer] Local checksum: ${localChecksum}`
-      );
+      log.info({ localChecksum, algorithm }, 'Local checksum computed');
     }
 
-    // Transfer with retry
-    console.log(
-      `[SshFileTransfer] Connecting to ${transferParams.sshUsername}@${host}:${port}`
-    );
+    log.info({ host, port, username: transferParams.sshUsername }, 'Connecting');
 
     let lastError: Error | undefined;
     let bytesTransferred = 0;
@@ -319,9 +308,7 @@ export class SshFileTransferTask implements ITaskResolver {
           timeout
         );
 
-        console.log(
-          `[SshFileTransfer] Ensuring remote parent directory for ${transferParams.remoteFilePath}`
-        );
+        log.info({ remoteFilePath: transferParams.remoteFilePath }, 'Ensuring remote parent directory');
 
         await ensureRemoteParentDir(
           conn,
@@ -329,9 +316,7 @@ export class SshFileTransferTask implements ITaskResolver {
           timeout
         );
 
-        console.log(
-          `[SshFileTransfer] Transferring ${transferParams.localFilePath} -> ${transferParams.remoteFilePath}`
-        );
+        log.info({ localFilePath: transferParams.localFilePath, remoteFilePath: transferParams.remoteFilePath }, 'Transferring');
 
         bytesTransferred = await transferFile(
           conn,
@@ -339,11 +324,8 @@ export class SshFileTransferTask implements ITaskResolver {
           transferParams.remoteFilePath
         );
 
-        // Verify integrity if requested
         if (transferParams.verifyChecksum !== false) {
-          console.log(
-            `[SshFileTransfer] Verifying remote checksum (${algorithm})`
-          );
+          log.info({ algorithm }, 'Verifying remote checksum');
 
           const remoteChecksum = await execRemoteChecksum(
             conn,
@@ -352,9 +334,7 @@ export class SshFileTransferTask implements ITaskResolver {
             timeout
           );
 
-          console.log(
-            `[SshFileTransfer] Remote checksum: ${remoteChecksum}`
-          );
+          log.info({ remoteChecksum }, 'Remote checksum');
 
           if (localChecksum !== remoteChecksum) {
             conn.end();
@@ -363,9 +343,7 @@ export class SshFileTransferTask implements ITaskResolver {
             );
           }
 
-          console.log(
-            `[SshFileTransfer] Integrity check passed: ${localChecksum}`
-          );
+          log.info({ localChecksum }, 'Integrity check passed');
         }
 
         conn.end();
@@ -382,9 +360,7 @@ export class SshFileTransferTask implements ITaskResolver {
       } catch (err) {
         conn?.end();
         lastError = err instanceof Error ? err : new Error(String(err));
-        console.error(
-          `[SshFileTransfer] Attempt ${attempt}/${maxRetries} failed: ${lastError.message}`
-        );
+        log.error({ attempt, maxRetries, err: lastError.message }, 'Transfer attempt failed');
         if (attempt < maxRetries) {
           await sleep(1000 * attempt);
         }
