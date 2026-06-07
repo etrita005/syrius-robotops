@@ -22,6 +22,7 @@ import {
   type TaskDefinition,
   type TaskTypeDescriptor,
 } from "../types/task.js";
+import { getDagConfig } from "../types/taskDag.js";
 
 const POLL_INTERVAL_MS = 10_000;
 const TICK_INTERVAL_MS = 1_000;
@@ -199,94 +200,10 @@ export function useTasks(solutionId: string | null) {
         ...params,
       };
 
-      let dag: Record<string, unknown>;
-      let expectedResults: string[];
-      let errorDag: Record<string, unknown> | undefined;
-
-      if (taskType.type === "upgrade-movebase") {
-        dag = {
-          tasks: {
-            transfer: {
-              requires: ["robotIp", "robotPort", "artifactId"],
-              resolver: {
-                name: "TransferMovebaseTask",
-                params: {
-                  robotIp: "robotIp",
-                  robotPort: "robotPort",
-                  artifactId: "artifactId",
-                },
-                results: { done: "transfer_done" },
-              },
-              provides: ["transfer_done"],
-            },
-            upgrade: {
-              requires: ["robotIp", "robotPort", "transfer_done"],
-              resolver: {
-                name: "UpgradeMovebaseTask",
-                params: {
-                  robotIp: "robotIp",
-                  robotPort: "robotPort",
-                },
-                results: { done: "upgrade_done" },
-              },
-              provides: ["upgrade_done"],
-            },
-            cleanup: {
-              requires: ["robotIp", "robotPort", "upgrade_done"],
-              resolver: {
-                name: "DeleteMovebaseTask",
-                params: {
-                  robotIp: "robotIp",
-                  robotPort: "robotPort",
-                },
-                results: { done: "cleanup_done" },
-              },
-              provides: ["cleanup_done"],
-            },
-          },
-        };
-
-        errorDag = {
-          tasks: {
-            error_cleanup: {
-              requires: ["robotIp", "robotPort"],
-              resolver: {
-                name: "DeleteMovebaseTask",
-                params: {
-                  robotIp: "robotIp",
-                  robotPort: "robotPort",
-                },
-                results: { done: "error_cleanup_done" },
-              },
-              provides: ["error_cleanup_done"],
-            },
-          },
-        };
-
-        expectedResults = ["cleanup_done"];
-      } else {
-        dag = {
-          tasks: {
-            upgrade: {
-              requires: ["robotIp", "robotPort", "localFilePath", "remoteFilePath"],
-              resolver: {
-                name: "SshFileTransferTask",
-                params: {
-                  robotIp: "robotIp",
-                  robotPort: "robotPort",
-                  localFilePath: "localFilePath",
-                  remoteFilePath: "remoteFilePath",
-                },
-                results: { done: "upgrade_result" },
-              },
-              provides: ["upgrade_result"],
-            },
-          },
-        };
-
-        expectedResults = ["upgrade_result"];
-        errorDag = undefined;
-      }
+      const dagConfig = getDagConfig(taskType.type);
+      const dag = dagConfig.dag as unknown as Record<string, unknown>;
+      const { expectedResults } = dagConfig;
+      const errorDag = dagConfig.errorDag as unknown as Record<string, unknown> | undefined;
 
       const summary = await createFlow({
         type: "user",
