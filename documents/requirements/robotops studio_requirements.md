@@ -243,6 +243,24 @@ Robot Commissioning & Operations Studio
 - 导出现场操作报告
 - 导出错误日志与诊断信息
 
+#### 5.1.8 系统日志（System Logs）
+
+系统应提供一个与 Solutions、Artifacts 同级的顶层模块，用于查看与下载 RobotOps Studio 后端服务自身的运行日志（基于 Pino 写入磁盘的滚动日志文件）。
+
+关键能力：
+- 日志文件列表查看（含文件名、大小、修改时间、覆盖时间范围、活跃文件标识）
+- 按时间段查询日志条目，默认显示最近 30 分钟；用户可自定义任意时间段
+- 按等级（trace/debug/info/warn/error/fatal）、模块（PascalCase 模块名）、关键字筛选
+- 时间段打包下载（zip，含 manifest.json）
+- 单个日志文件原文直接下载
+
+明确非目标：本模块只读不写，不接管 Pino 的日志保留/清理/滚动策略；不收集前端日志；不引入鉴权；不做实时跟随（列入未来扩展）。
+
+详细需求、设计、测试用例分别见：
+- `documents/requirements/system_logs_requirements.md`
+- `documents/design/system_logs_design.md`
+- `documents/test/system_logs_test_cases.md`
+
 ### 5.2 暂不纳入本期范围（可后续规划）
 
 - 机器人业务运行监控大屏

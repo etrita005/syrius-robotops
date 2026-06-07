@@ -15,10 +15,12 @@ SOL_DIR = os.path.join(BASE_DIR, "solution-management")
 ROBOTS_DIR = os.path.join(SOL_DIR, "robots")
 TASKS_DIR = os.path.join(SOL_DIR, "tasks")
 ARTIFACT_DIR = os.path.join(BASE_DIR, "artifact-management")
+SYSTEM_LOGS_DIR = os.path.join(BASE_DIR, "system-logs")
 os.makedirs(SOL_DIR, exist_ok=True)
 os.makedirs(ROBOTS_DIR, exist_ok=True)
 os.makedirs(TASKS_DIR, exist_ok=True)
 os.makedirs(ARTIFACT_DIR, exist_ok=True)
+os.makedirs(SYSTEM_LOGS_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -68,11 +70,15 @@ def draw_card(draw, bbox, title, desc, tags, corrupted=False):
     draw_button(draw, (x2-140, y1+14, x2-70, y1+42), "Open")
     draw_button(draw, (x2-60, y1+14, x2-16, y1+42), "Delete", bg="#fa4d56", fg="white")
 
-def draw_common_header(draw, W):
+def draw_common_header(draw, W, active="solutions"):
     draw.rectangle([0, 0, W, 56], fill="#161616")
     draw.text((20, 18), "RobotOps Studio", fill="white", font=FONT_LG)
-    draw.text((280, 22), "Solutions", fill="#8d8d8d", font=FONT_MD)
-    draw.text((380, 22), "Artifacts", fill="#8d8d8d", font=FONT_MD)
+    items = [("solutions", "Solutions", 280),
+             ("artifacts", "Artifacts", 380),
+             ("system-logs", "System Logs", 480)]
+    for key, label, x in items:
+        color = "white" if key == active else "#8d8d8d"
+        draw.text((x, 22), label, fill=color, font=FONT_MD)
     draw.text((W-140, 22), "v1.0.0", fill="#8d8d8d", font=FONT_SM)
 
 def draw_active_solution_bar(draw, W):
@@ -803,6 +809,248 @@ def page_delete_task_confirm():
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
+# System Logs: 01 — Main View (file list + query toolbar + entry table)
+# ---------------------------------------------------------------------------
+def page_system_logs_main():
+    W, H = 1400, 900
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+
+    draw_common_header(draw, W, active="system-logs")
+
+    # Page title
+    draw.text((40, 80), "System Logs", fill="#161616", font=FONT_LG)
+    draw.text((40, 110), "Backend service runtime logs (read-only view of pino-roll output)",
+              fill="#525252", font=FONT_SM)
+
+    # Left panel: log files
+    panel_x1, panel_y1 = 20, 150
+    panel_x2, panel_y2 = 380, H - 20
+    draw.rectangle([panel_x1, panel_y1, panel_x2, panel_y2], fill="white", outline="#e0e0e0", width=1)
+    draw.text((panel_x1 + 16, panel_y1 + 12), "Log Files", fill="#161616", font=FONT_MD)
+
+    files = [
+        ("app.3.log", "412 MB", "12:45:02", True),
+        ("app.2.log", "500 MB", "10:32:11", False),
+        ("app.1.log", "500 MB", "08:11:50", False),
+    ]
+    fy = panel_y1 + 48
+    for name, size, mtime, active in files:
+        draw.rectangle([panel_x1 + 8, fy, panel_x2 - 8, fy + 76],
+                       fill="#fafafa", outline="#e0e0e0", width=1)
+        draw.text((panel_x1 + 20, fy + 10), name, fill="#0f62fe", font=FONT_MD)
+        if active:
+            draw.rounded_rectangle([panel_x1 + 130, fy + 10, panel_x1 + 200, fy + 28],
+                                   radius=4, fill="#42be65")
+            draw.text((panel_x1 + 138, fy + 12), "ACTIVE", fill="white", font=FONT_SM)
+        draw.text((panel_x1 + 20, fy + 36), f"{size}  ·  modified {mtime}",
+                  fill="#525252", font=FONT_SM)
+        draw_button(draw, (panel_x2 - 100, fy + 40, panel_x2 - 16, fy + 68), "Download")
+        fy += 88
+
+    # Right panel: toolbar + entry table
+    tool_x1, tool_y1 = 400, 150
+    tool_x2 = W - 20
+    draw.rectangle([tool_x1, tool_y1, tool_x2, tool_y1 + 110], fill="white", outline="#e0e0e0", width=1)
+
+    # Time range
+    draw.text((tool_x1 + 16, tool_y1 + 12), "Time range", fill="#161616", font=FONT_SM)
+    draw_input(draw, (tool_x1 + 16, tool_y1 + 32, tool_x1 + 260, tool_y1 + 60),
+               placeholder="Last 30 minutes  ▾")
+    draw_input(draw, (tool_x1 + 268, tool_y1 + 32, tool_x1 + 460, tool_y1 + 60),
+               placeholder="2026-06-07 12:15:02")
+    draw.text((tool_x1 + 466, tool_y1 + 38), "→", fill="#525252", font=FONT_MD)
+    draw_input(draw, (tool_x1 + 484, tool_y1 + 32, tool_x1 + 676, tool_y1 + 60),
+               placeholder="2026-06-07 12:45:02")
+
+    # Levels & modules
+    draw.text((tool_x1 + 16, tool_y1 + 70), "Levels", fill="#161616", font=FONT_SM)
+    draw_input(draw, (tool_x1 + 16, tool_y1 + 86, tool_x1 + 260, tool_y1 + 108),
+               placeholder="info, warn, error  ▾")
+
+    draw.text((tool_x1 + 268, tool_y1 + 70), "Modules", fill="#161616", font=FONT_SM)
+    draw_input(draw, (tool_x1 + 268, tool_y1 + 86, tool_x1 + 560, tool_y1 + 108),
+               placeholder="All modules  ▾")
+
+    draw.text((tool_x1 + 568, tool_y1 + 70), "Search msg", fill="#161616", font=FONT_SM)
+    draw_input(draw, (tool_x1 + 568, tool_y1 + 86, tool_x1 + 820, tool_y1 + 108),
+               placeholder="keyword...")
+
+    # Download zip button (top-right of toolbar)
+    draw_button(draw, (tool_x2 - 200, tool_y1 + 16, tool_x2 - 16, tool_y1 + 50),
+                "↓ Download zip", bg="#0f62fe", fg="white")
+    draw_button(draw, (tool_x2 - 200, tool_y1 + 58, tool_x2 - 16, tool_y1 + 92),
+                "Refresh")
+
+    # Entry table
+    table_y1 = tool_y1 + 124
+    table_y2 = panel_y2
+    draw.rectangle([tool_x1, table_y1, tool_x2, table_y2], fill="white", outline="#e0e0e0", width=1)
+
+    # Table header
+    cols = [("Time", tool_x1 + 16, 200),
+            ("Level", tool_x1 + 220, 70),
+            ("Module", tool_x1 + 296, 160),
+            ("Message", tool_x1 + 460, tool_x2 - tool_x1 - 470)]
+    draw.rectangle([tool_x1, table_y1, tool_x2, table_y1 + 32], fill="#f4f4f4")
+    for label, x, _w in cols:
+        draw.text((x, table_y1 + 9), label, fill="#161616", font=FONT_MD)
+
+    # Sample rows
+    rows = [
+        ("12:44:58.123", "info",  "#198038", "TaskFlowEngine",  "Robot upgrade started  { robotSn: 'R-001', taskId: 'tf-42' }"),
+        ("12:44:57.011", "info",  "#198038", "SshCommand",      "ssh exec  { host: '192.168.1.10', cmd: 'systemctl status mc' }"),
+        ("12:44:55.882", "warn",  "#f1c21b", "SshFileTransfer", "retry attempt  { attempt: 2, max: 3 }"),
+        ("12:44:54.220", "error", "#da1e28", "SshCommand",      "ssh failed  { host: '192.168.1.10', err: 'ETIMEDOUT' }"),
+        ("12:44:53.001", "info",  "#198038", "App",             "HTTP  { method: 'GET', path: '/api/solutions', status: 200, durationMs: 12 }"),
+        ("12:44:52.778", "debug", "#525252", "MemStore",        "cache evict  { key: 'robot:R-002', reason: 'ttl' }"),
+        ("12:44:50.110", "info",  "#198038", "SseManager",      "client connected  { id: 'c-7', total: 3 }"),
+        ("12:44:48.992", "error", "#da1e28", "TaskFlowEngine",  "task failed  { taskId: 'tf-41', err: 'upgrade aborted' }"),
+        ("12:44:47.330", "info",  "#198038", "App",             "HTTP  { method: 'POST', path: '/api/flows', status: 201, durationMs: 87 }"),
+        ("12:44:46.001", "info",  "#198038", "RobotService",    "robot list refreshed  { count: 12 }"),
+    ]
+    ry = table_y1 + 36
+    for time, lvl, lvl_color, mod, msg in rows:
+        draw.text((cols[0][1], ry), time, fill="#161616", font=FONT_SM)
+        # level badge
+        bw = len(lvl)*8 + 16
+        draw.rounded_rectangle([cols[1][1], ry - 2, cols[1][1] + bw, ry + 16],
+                               radius=8, fill=lvl_color)
+        draw.text((cols[1][1] + 8, ry), lvl, fill="white", font=FONT_SM)
+        draw.text((cols[2][1], ry), mod, fill="#0f62fe", font=FONT_SM)
+        # truncate msg
+        max_chars = (cols[3][2]) // 7
+        shown = msg if len(msg) <= max_chars else msg[:max_chars-1] + "…"
+        draw.text((cols[3][1], ry), shown, fill="#161616", font=FONT_SM)
+        draw.line([(tool_x1, ry + 22), (tool_x2, ry + 22)], fill="#e8e8e8", width=1)
+        ry += 30
+
+    # Footer status
+    footer_y = table_y2 - 26
+    draw.rectangle([tool_x1, footer_y, tool_x2, table_y2], fill="#f4f4f4")
+    draw.text((tool_x1 + 16, footer_y + 6),
+              "Showing 10 of 487 entries  ·  Scroll down to load more  ·  0 parse errors",
+              fill="#525252", font=FONT_SM)
+
+    path = os.path.join(SYSTEM_LOGS_DIR, "01_main_view.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# System Logs: 02 — Entry Detail Drawer
+# ---------------------------------------------------------------------------
+def page_system_logs_entry_detail():
+    W, H = 1400, 900
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_system_logs_main()
+    base = Image.open(os.path.join(SYSTEM_LOGS_DIR, "01_main_view.png"))
+    img.paste(base, (0, 0))
+
+    # Drawer overlay on right side
+    drawer_w = 520
+    dx1 = W - drawer_w
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, W, H], fill="#00000040")
+    draw.rectangle([dx1, 0, W, H], fill="white", outline="#c6c6c6", width=1)
+
+    draw.text((dx1 + 24, 24), "Log Entry Detail", fill="#161616", font=FONT_LG)
+    draw_button(draw, (W - 80, 20, W - 24, 52), "✕")
+
+    # Field rows
+    fields = [
+        ("time",      "2026-06-07T12:44:54.220Z"),
+        ("level",     "error"),
+        ("module",    "SshCommand"),
+        ("msg",       "ssh failed"),
+        ("host",      "192.168.1.10"),
+        ("port",      "22"),
+        ("cmd",       "systemctl status megacosm"),
+        ("err",       "ETIMEDOUT"),
+        ("durationMs", "30002"),
+        ("attempt",   "3"),
+        ("robotSn",   "R-001"),
+    ]
+    fy = 80
+    for k, v in fields:
+        draw.text((dx1 + 24, fy), k, fill="#525252", font=FONT_SM)
+        draw.text((dx1 + 180, fy), v, fill="#161616", font=FONT_MD)
+        fy += 30
+
+    # Raw JSON section
+    draw.text((dx1 + 24, fy + 16), "Raw JSON", fill="#525252", font=FONT_SM)
+    box_y1 = fy + 38
+    box_y2 = box_y1 + 220
+    draw.rectangle([dx1 + 24, box_y1, W - 24, box_y2], fill="#262626")
+    raw = ('{"time":"2026-06-07T12:44:54.220Z","level":50,\n'
+           ' "module":"SshCommand","msg":"ssh failed",\n'
+           ' "host":"192.168.1.10","port":22,\n'
+           ' "cmd":"systemctl status megacosm",\n'
+           ' "err":"ETIMEDOUT","durationMs":30002,\n'
+           ' "attempt":3,"robotSn":"R-001"}')
+    ry = box_y1 + 10
+    for line in raw.split("\n"):
+        draw.text((dx1 + 36, ry), line, fill="#42be65", font=FONT_SM)
+        ry += 18
+
+    draw_button(draw, (dx1 + 24, box_y2 + 16, dx1 + 160, box_y2 + 48), "Copy JSON")
+
+    path = os.path.join(SYSTEM_LOGS_DIR, "02_entry_detail_drawer.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# System Logs: 03 — Bundle Download Confirmation
+# ---------------------------------------------------------------------------
+def page_system_logs_bundle_download():
+    W, H = 1400, 900
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_system_logs_main()
+    base = Image.open(os.path.join(SYSTEM_LOGS_DIR, "01_main_view.png"))
+    img.paste(base, (0, 0))
+
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 400, 240, 600, 420
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+
+    draw.text((mx + 24, my + 20), "Download log bundle (zip)", fill="#161616", font=FONT_LG)
+    draw.text((mx + 24, my + 60),
+              "The selected time range will be packaged into a zip file.",
+              fill="#525252", font=FONT_MD)
+    draw.text((mx + 24, my + 84),
+              "Matching log files are included as-is, alongside manifest.json.",
+              fill="#525252", font=FONT_MD)
+
+    draw.text((mx + 24, my + 124), "From", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 142, mx + mw - 24, my + 174),
+               placeholder="2026-06-07 12:15:02")
+    draw.text((mx + 24, my + 184), "To", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 202, mx + mw - 24, my + 234),
+               placeholder="2026-06-07 12:45:02")
+
+    # Preview
+    draw.text((mx + 24, my + 254), "Files to be included (3)", fill="#161616", font=FONT_MD)
+    preview = [
+        "app.3.log     412 MB     covers 12:30:00 — 12:45:02",
+        "app.2.log     500 MB     covers 10:32:11 — 12:30:00",
+        "manifest.json (auto-generated)",
+    ]
+    py = my + 280
+    for line in preview:
+        draw.text((mx + 40, py), "•  " + line, fill="#525252", font=FONT_SM)
+        py += 22
+
+    draw_button(draw, (mx + mw - 220, my + mh - 60, mx + mw - 130, my + mh - 28), "Cancel")
+    draw_button(draw, (mx + mw - 120, my + mh - 60, mx + mw - 24, my + mh - 28),
+                "Download", bg="#0f62fe", fg="white")
+
+    path = os.path.join(SYSTEM_LOGS_DIR, "03_bundle_download.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
@@ -831,5 +1079,10 @@ if __name__ == "__main__":
     page_artifact_selector()
     page_artifact_detail()
     page_delete_artifact_modal()
+
+    # System Logs
+    page_system_logs_main()
+    page_system_logs_entry_detail()
+    page_system_logs_bundle_download()
 
     print(f"\nAll UI sketches generated in {BASE_DIR}")

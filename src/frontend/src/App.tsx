@@ -22,8 +22,9 @@ import { RecentSolutionsDropdown } from "./components/common/RecentSolutionsDrop
 import { useRecentSolutions } from "./hooks/useRecentSolutions.js";
 import RobotsView from "./components/robots/RobotsView.js";
 import TasksView from "./components/tasks/TasksView.js";
+import { SystemLogsView } from "./components/system-logs/SystemLogsView.js";
 
-type TopView = "solutions" | "artifacts";
+type TopView = "solutions" | "artifacts" | "system-logs";
 type SolutionSubView = "robots" | "tasks";
 
 export default function App() {
@@ -149,6 +150,15 @@ export default function App() {
           >
             Artifacts
           </HeaderMenuItem>
+          <HeaderMenuItem
+            onClick={() => {
+              setCurrentView("system-logs");
+              if (inWorkspace) setInWorkspace(false);
+            }}
+            isActive={currentView === "system-logs"}
+          >
+            System Logs
+          </HeaderMenuItem>
         </HeaderNavigation>
         <HeaderGlobalBar>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0 0.5rem" }}>
@@ -191,6 +201,7 @@ export default function App() {
               />
             </div>
           )}
+          {currentView === "system-logs" && <SystemLogsView />}
         </Content>
       )}
     </Theme>

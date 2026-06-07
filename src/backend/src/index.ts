@@ -14,12 +14,14 @@ import { createRobotRoutes } from "./routes/robotRoutes.js";
 import { createMemStoreRoutes } from "./routes/memStoreRoutes.js";
 import { createTaskFlowRoutes } from "./routes/taskFlowRoutes.js";
 import { createSseRoutes } from "./routes/sseRoutes.js";
+import { createSystemLogRoutes } from "./routes/systemLogRoutes.js";
 import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
 import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
+import { SystemLogService } from "./services/systemLogService.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
 import { createLogger } from "./logger/index.js";
 
@@ -119,6 +121,14 @@ app.use("*", async (c, next) => {
 });
 
 app.get("/api/health", (c) => c.json({ status: "ok" }));
+
+const logsDir = join(process.cwd(), "logs");
+const systemLogService = new SystemLogService({
+  logsDir,
+  studioVersion: "1.0.0",
+});
+
+app.route("/api/system-logs", createSystemLogRoutes(systemLogService));
 
 app.route("/api/objects", createObjectStoreRoutes(objectStore, dataDir));
 app.route("/api/artifacts", createArtifactRoutes(artifactService));
