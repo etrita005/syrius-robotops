@@ -5,13 +5,6 @@ import { SSH_USERNAME, SSH_PASSWORD } from "../config.js";
 
 const log = createLogger("SshCommand");
 
-const MAX_LOG_OUTPUT_LENGTH = 4096;
-
-function truncateForLog(s: string): string {
-  if (s.length <= MAX_LOG_OUTPUT_LENGTH) return s;
-  return s.slice(0, MAX_LOG_OUTPUT_LENGTH) + `... [truncated, ${s.length} total]`;
-}
-
 export interface SshCommandParams {
   robotIp: string;
   robotPort?: number;
@@ -77,11 +70,15 @@ function executeSshCommand(
           }, commandTimeout);
 
           stream.on("data", (data: Buffer) => {
-            stdout += data.toString("utf-8");
+            const text = data.toString("utf-8");
+            stdout += text;
+            log.info({ host, port, stream: "stdout" }, text.trimEnd());
           });
 
           stream.stderr.on("data", (data: Buffer) => {
-            stderr += data.toString("utf-8");
+            const text = data.toString("utf-8");
+            stderr += text;
+            log.info({ host, port, stream: "stderr" }, text.trimEnd());
           });
 
           stream.on("close", (code: number | null) => {
@@ -158,18 +155,11 @@ export class SshCommandTask implements ITaskResolver {
 
         if (result.exitCode !== 0) {
           throw new Error(
-            `SSH command exited with code ${result.exitCode}: ${result.stderr}`
+            `SSH command exited with code ${result.exitCode}. Output logged above.`
           );
         }
 
-        log.info({ host, port, exitCode: result.exitCode }, 'Command succeeded');
-
-        if (result.stdout) {
-          log.debug({ host, port, stdout: truncateForLog(result.stdout) }, 'stdout');
-        }
-        if (result.stderr) {
-          log.warn({ host, port, stderr: truncateForLog(result.stderr) }, 'stderr');
-        }
+        log.info({ host, port, exitCode: result.exitCode, stdoutLen: result.stdout.length, stderrLen: result.stderr.length }, 'Command succeeded');
 
         return {
           done: true,
