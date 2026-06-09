@@ -24,6 +24,10 @@ export function createStaticRoutes(staticAssetService: StaticAssetService): Hono
   const app = new Hono();
 
   app.get("*", async (c) => {
+    if (!staticAssetService.isAvailable()) {
+      return c.notFound();
+    }
+
     const normalizedPath = staticAssetService.normalizeRequestPath(c.req.path);
     if (normalizedPath && staticAssetService.hasAsset(normalizedPath)) {
       const info = staticAssetService.getAssetInfo(normalizedPath);
@@ -51,6 +55,10 @@ export function createStaticRoutes(staticAssetService: StaticAssetService): Hono
   });
 
   app.on(["HEAD"], "*", async (c) => {
+    if (!staticAssetService.isAvailable()) {
+      return c.notFound();
+    }
+
     const normalizedPath = staticAssetService.normalizeRequestPath(c.req.path);
     if (normalizedPath && staticAssetService.hasAsset(normalizedPath)) {
       const info = staticAssetService.getAssetInfo(normalizedPath);

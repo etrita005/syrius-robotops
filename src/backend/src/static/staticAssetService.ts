@@ -21,15 +21,23 @@ export class StaticAssetService {
 
   static async create(staticRoot: string): Promise<StaticAssetService> {
     const service = new StaticAssetService(staticRoot);
-    const manifestRaw = await readFile(join(staticRoot, "asset-manifest.json"), "utf8");
-    const manifest = JSON.parse(manifestRaw) as AssetManifest;
-    for (const file of manifest.files) {
-      service.assets.set(file.path, file);
-    }
-    if (!service.assets.has("index.html")) {
-      throw new Error("Static asset index missing");
+    try {
+      const manifestRaw = await readFile(join(staticRoot, "asset-manifest.json"), "utf8");
+      const manifest = JSON.parse(manifestRaw) as AssetManifest;
+      for (const file of manifest.files) {
+        service.assets.set(file.path, file);
+      }
+      if (!service.assets.has("index.html")) {
+        throw new Error("Static asset index missing");
+      }
+    } catch {
+      // Static assets not available, running in API-only mode
     }
     return service;
+  }
+
+  isAvailable(): boolean {
+    return this.assets.size > 0;
   }
 
   normalizeRequestPath(requestPath: string): string | null {

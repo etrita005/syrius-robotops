@@ -44,6 +44,11 @@ const log = createLogger("App");
 log.info({ configPath: runtimePaths.configPath, configLoaded, dataDir: config.database.path, logsDir: config.logs.dir }, "Configuration loaded");
 
 const staticAssetService = await StaticAssetService.create(runtimePaths.staticRoot);
+if (staticAssetService.isAvailable()) {
+  log.info({ staticRoot: runtimePaths.staticRoot }, "Static assets loaded");
+} else {
+  log.warn({ staticRoot: runtimePaths.staticRoot }, "Static assets not found, running in API-only mode");
+}
 if (cliOverrides.healthCheck) {
   log.info({ staticRoot: runtimePaths.staticRoot }, "Health check passed");
   process.exit(0);
