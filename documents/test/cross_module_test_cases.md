@@ -49,3 +49,43 @@
 | Input | `POST /api/objects/clone` to clone the solution |
 | Expected Result | Cloned solution contains copies of all robot `StoredRobotData` objects |
 | Verification | `GET /api/objects/list/v1/solutions/{newId}/robots` returns same robot count as source |
+
+## TC-CROSS-006: Multi-robot upgrade creates N taskFlows
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A solution with 3 robots (each with unique IP/port). TaskFlowEngine initialized with UpgradeMovebase task resolvers registered. |
+| Input | Frontend creates an "upgrade-movebase" task with `robotIds: ["r1", "r2", "r3"]` |
+| Expected Result | 3 separate user taskFlows are created. Each flow has `input.robotIds` as a single-element array, and `input.robotIp`/`input.robotPort` matching the respective robot. |
+| Verification | `listFlows("user", { solutionId })` returns 3 flows. Each flow's `input.robotIds.length === 1`. Each flow's `input.robotIp` corresponds to the correct robot. |
+
+## TC-CROSS-007: Single-robot upgrade creates 1 taskFlow
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A solution with 1 robot. |
+| Input | Frontend creates an "upgrade-bup" task with `robotIds: ["r1"]` |
+| Expected Result | 1 user taskFlow is created with `input.robotIds: ["r1"]`. |
+| Verification | `listFlows("user", { solutionId })` returns 1 flow. |
+
+## TC-CROSS-008: Multi-robot task shows N rows in task list
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | Created upgrade tasks for 3 robots. |
+| Input | Frontend loads the task list for the solution. |
+| Expected Result | Task list shows 3 rows, each with the corresponding robot alias. |
+| Verification | Each task row displays a single robot alias matching the respective robot. |
+
+## TC-CROSS-009: Missing robot in createTask is skipped
+
+| Item | Value |
+|------|-------|
+| Priority | Medium |
+| Precondition | Create task with robotIds including a robot ID that no longer exists in the solution. |
+| Input | `robotIds: ["r1", "r2-gone"]` where r2-gone is not in robotData |
+| Expected Result | Only 1 taskFlow is created (for r1). Robots not found in robotData are silently skipped. |
+| Verification | `listFlows` returns 1 flow for r1 only. |

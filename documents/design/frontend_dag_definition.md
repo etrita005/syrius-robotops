@@ -136,6 +136,8 @@ const dagConfig = getDagConfig(taskType.type);
 // dagConfig.errorDag      → DagDefinition | undefined (异常处理)
 ```
 
+每个 DAG 配置定义的是**单机器人**的执行流程（如 transfer → upgrade → cleanup）。当用户选择 N 个机器人时，前端依次为每个机器人创建独立的 taskFlow，每个 taskFlow 携带该机器人专属的 `robotIp`/`robotPort`。N 个机器人 → N 个 taskFlow → N 条任务记录。
+
 `getDagConfig` 对未注册的任务类型返回默认配置（`SSH_FILE_TRANSFER_DAG`），确保向后兼容。
 
 ---

@@ -251,12 +251,12 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
     taskType: TaskTypeDescriptor,
     params: Record<string, string>
   ) => {
-    await createTask(robotIds, taskType, params);
+    const createdTasks = await createTask(robotIds, taskType, params);
     setCreateModalOpen(false);
     setNotification({
       kind: "success",
-      title: "Task created",
-      subtitle: `${taskType.name} started for ${robotIds.length} robot(s).`,
+      title: "Tasks created",
+      subtitle: `${createdTasks.length} ${taskType.name} task(s) for ${robotIds.length} robot(s).`,
     });
   };
 

@@ -155,23 +155,37 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 
 > **设计说明**：`solutionId`、`robotIds`、`taskName` 等业务元数据不扩展为 `FlowRecord` 的顶层字段，而是通过 `input` ValueMap 传递。`TaskFlowEngine` 保持为通用执行引擎，不感知业务层 solution/robot 概念。业务过滤和展示由上层服务或前端基于 `input` 中的元数据完成。
 
-**任务输入参数示例**：
+**任务输入参数示例**（每个机器人创建独立 taskFlow）：
 
-- **升级 BUP**：
+- **升级 BUP（选择 2 个机器人，创建 2 个 taskFlow）**：
   ```json
+  // Flow 1 (robot-001)
   {
     "solutionId": "customer-a-site-3f2a",
-    "robotIds": ["robot-001", "robot-002"],
+    "robotIds": ["robot-001"],
     "taskName": "Upgrade BUP",
+    "robotIp": "192.168.1.101",
+    "robotPort": 22,
+    "artifactId": "artifact-bup-001"
+  }
+  // Flow 2 (robot-002)
+  {
+    "solutionId": "customer-a-site-3f2a",
+    "robotIds": ["robot-002"],
+    "taskName": "Upgrade BUP",
+    "robotIp": "192.168.1.102",
+    "robotPort": 22,
     "artifactId": "artifact-bup-001"
   }
   ```
-- **升级 Movebase**：
+- **升级 Movebase（选择 1 个机器人，创建 1 个 taskFlow）**：
   ```json
   {
     "solutionId": "customer-a-site-3f2a",
     "robotIds": ["robot-003"],
     "taskName": "Upgrade Movebase",
+    "robotIp": "192.168.1.103",
+    "robotPort": 22,
     "artifactId": "artifact-movebase-001"
   }
   ```
@@ -394,30 +408,33 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 
 - 任务类型为 `user`，仅显示 `user` 类型任务，不显示 `internal` 类型任务。
 - 创建任务时，用户选择目标机器人（单个或多个，必须属于当前解决方案已添加的机器人）。
+- **多机器人处理**：当选择 N 个机器人时，前端为每个机器人创建独立的 taskFlow（N 个机器人 → N 个 taskFlow），每个 taskFlow 仅携带单个目标机器人的 `robotIp`/`robotPort`。这样每个机器人的升级进度独立追踪，互不影响。
 - 创建任务时，用户选择任务类型：当前支持 **Upgrade BUP** 和 **Upgrade Movebase**。
 - 不同任务类型需要不同的输入参数：
   - **Upgrade BUP**：用户需选择一个已在 Artifacts Manage 模块中添加的资源文件（`artifactId`）。
   - **Upgrade Movebase**：用户需选择一个已在 Artifacts Manage 模块中添加的资源文件（`artifactId`）。
-- 系统通过 `POST /api/solutions/{solutionId}/tasks` 创建任务，后端组装 DAG 并调用 `TaskFlowEngine.createFlow("user", dag, input)`。
-- `input` 中必须包含以下元数据字段：
+- 系统通过 `POST /api/flows` 创建每个任务，前端组装 DAG 并逐个调用 `TaskFlowEngine.createFlow("user", dag, input)`。
+- 每个 taskFlow 的 `input` 中必须包含以下元数据字段：
   - `solutionId`：当前解决方案 ID。
-  - `robotIds`：所选机器人 ID 数组。
+  - `robotIds`：单个机器人 ID 数组（如 `[robot-001]`）。
+  - `robotIp`：目标机器人的 IP 地址。
+  - `robotPort`：目标机器人的 SSH 端口。
   - `taskName`：任务显示名称（如 `Upgrade BUP`）。
   - `artifactId`：所选制品 ID（任务业务参数）。
-- 创建成功后，任务出现在当前解决方案的 Tasks 列表中。
+- 创建成功后，N 个任务出现在当前解决方案的 Tasks 列表中（每个机器人一行）。
 
 **FR-SOL-029**：系统应展示当前解决方案下正在执行的 tasks 列表。
 
-- 系统通过 `GET /api/solutions/{solutionId}/tasks` 获取任务列表，后端调用 `TaskFlowEngine.listFlows("user", { solutionId })`，利用 `filterParams` 对 `input.solutionId` 做字符串精确匹配过滤。
+- 系统通过 `GET /api/flows?type=user&solutionId={solutionId}` 获取任务列表，后端调用 `TaskFlowEngine.listFlows("user", { solutionId })`，利用 `filterParams` 对 `input.solutionId` 做字符串精确匹配过滤。
 - 列表仅展示 `type = "user"` 且 `input.solutionId` 匹配当前解决方案的任务。
-- `robotIds` 不过滤，由前端从 `input.robotIds` 读取并关联当前解决方案的机器人缓存解析别名。
+- 每个 task（taskFlow）对应一个机器人：`input.robotIds` 为单元素数组（如 `["robot-001"]`），前端从中解析出目标机器人别名。
 - 列表展示字段（核心信息）：
-  - `robotAliases`：关联机器人的别名列表（前端从 `input.robotIds` 关联当前解决方案机器人缓存解析）。
+  - `robotAliases`：关联机器人的别名列表（前端从 `input.robotIds` 关联当前解决方案机器人缓存解析，通常为单个机器人名）。
   - `taskName`：任务显示名称（前端从 `input.taskName` 读取）。
   - `state`：任务执行状态（PENDING / RUNNING / PAUSED / COMPLETED / FAILED / STOPPED）。
-  - `resultSummary`：任务执行结果汇总（前端基于 `taskStates` 计算，例如 `"2 completed, 1 failed"` 或 `"In progress"`）。
+  - `resultSummary`：任务执行结果汇总（前端基于 `taskStates` 计算，例如 `"2 completed, 1 failed"` 或 `"In progress"`，反映该 taskFlow 内部子任务状态）。
   - `elapsedTime`：任务已执行时长（前端从 `startedAt` 到当前时间或 `finishedAt` 计算）。
-- 搜索、排序、分页均由前端完成：前端获取当前解决方案的全量 `user` 任务列表后，在内存中按 `robotAliases`、`taskName` 子串搜索，按 `createdAt`、`state`、`taskName`、`elapsedTime` 排序，并按 10/25/50 条每页进行内存分页。因单解决方案下并行 `user` 任务量有限，此方案可简化后端实现。
+- 搜索、排序、分页均由前端完成：前端获取当前解决方案的全量 `user` 任务列表后，在内存中按 `robotAliases`、`taskName` 子串搜索，按 `createdAt` 降序排序，并按 10/25/50 条每页进行内存分页。
 - 后端 `TaskFlowEngine.listFlows()` 扩展支持可选的分页参数接口（见 FR-SOL-032），当前阶段前端不传 `pagination`，由后端返回全量数组。
 - 空状态时提示用户创建任务。
 

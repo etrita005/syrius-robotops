@@ -184,48 +184,52 @@ export function useTasks(solutionId: string | null) {
       robotIds: string[],
       taskType: TaskTypeDescriptor,
       params: Record<string, string>
-    ): Promise<TaskDefinition> => {
+    ): Promise<TaskDefinition[]> => {
       if (!solutionId) throw new Error("No active solution");
-
-      const robotAddr = robotDataRef.current.find((r) => r.id === robotIds[0]);
-      const robotIp = robotAddr?.address;
-      const robotPort = robotAddr?.port ?? 22;
-
-      const input: Record<string, unknown> = {
-        solutionId,
-        robotIds,
-        taskName: taskType.name,
-        robotIp,
-        robotPort,
-        ...params,
-      };
 
       const dagConfig = getDagConfig(taskType.type);
       const dag = dagConfig.dag as unknown as Record<string, unknown>;
       const { expectedResults } = dagConfig;
       const errorDag = dagConfig.errorDag as unknown as Record<string, unknown> | undefined;
 
-      const summary = await createFlow({
-        type: "user",
-        dag,
-        input,
-        expectedResults,
-        errorDag,
-      });
+      const summaries: FlowSummary[] = [];
+
+      for (const robotId of robotIds) {
+        const robotAddr = robotDataRef.current.find((r) => r.id === robotId);
+        if (!robotAddr) continue;
+
+        const input: Record<string, unknown> = {
+          solutionId,
+          robotIds: [robotId],
+          taskName: taskType.name,
+          robotIp: robotAddr.address,
+          robotPort: robotAddr.port ?? 22,
+          ...params,
+        };
+
+        const summary = await createFlow({
+          type: "user",
+          dag,
+          input,
+          expectedResults,
+          errorDag,
+        });
+
+        summaries.push(summary);
+        createdFlowIdsRef.current.add(summary.id);
+      }
 
       setFlows((prev) => {
-        const exists = prev.some((f) => f.id === summary.id);
-        if (exists) return prev;
-        return [summary, ...prev];
+        const newIds = new Set(summaries.map((s) => s.id));
+        const filtered = prev.filter((f) => !newIds.has(f.id));
+        return [...summaries, ...filtered];
       });
 
-      createdFlowIdsRef.current.add(summary.id);
-
-      const taskDef: TaskDefinition = {
+      return summaries.map((summary) => ({
         id: summary.id,
         type: summary.type,
         state: summary.state,
-        robotAliases: resolveRobotAliases(robotIds, robotMap),
+        robotAliases: resolveRobotAliases(summary.input?.robotIds, robotMap),
         taskName: taskType.name,
         resultSummary: computeResultSummary(summary.taskStates),
         elapsedTime: computeElapsedTime(summary.startedAt, summary.finishedAt),
@@ -234,9 +238,7 @@ export function useTasks(solutionId: string | null) {
         finishedAt: summary.finishedAt,
         taskStates: summary.taskStates,
         input: summary.input,
-      };
-
-      return taskDef;
+      }));
     },
     [solutionId, robotMap]
   );
