@@ -66,21 +66,25 @@ syrius-robotops/
 
 - **Node.js** >= 18
 - **npm** >= 9
-- OS: Windows / Linux
+- OS: Windows / macOS / Linux
 
 ## Quick Start
 
 ### 1. Install Dependencies
 
-```bash
-# Backend (includes embedded Object Store)
-cd src/backend
-npm install
+Use the `src` workspace as the unified frontend/backend dependency entry:
 
-# Frontend
-cd ../frontend
+```bash
+cd src
 npm install
 ```
+
+This installs dependencies for both workspaces:
+
+- `src/frontend`
+- `src/backend`
+
+Legacy per-package installs under `src/frontend` or `src/backend` are no longer recommended for product packaging.
 
 ### 2. Start the Backend API
 
@@ -113,6 +117,123 @@ cd src/frontend
 npm run dev
 # → Frontend running at http://localhost:5173
 # → Proxies /api/* requests to backend at http://localhost:30001
+```
+
+## Building and Packaging
+
+RobotOps Studio supports a product packaging workflow from `src/package.json`. The workflow builds the Vite frontend, prepares the frontend static assets for backend embedding, compiles the TypeScript backend, and then invokes `pkg` to create platform binaries.
+
+### Build Frontend and Backend
+
+From the repository root:
+
+```bash
+npm --prefix src run build:frontend
+npm --prefix src run prepare:assets
+npm --prefix src run build:backend
+```
+
+Equivalent commands from `src/`:
+
+```bash
+cd src
+npm run build:frontend
+npm run prepare:assets
+npm run build:backend
+```
+
+Build outputs:
+
+```text
+src/frontend/dist/          # Vite static output
+src/backend/dist-static/    # frontend assets prepared for pkg embedding
+src/backend/dist/           # backend TypeScript output
+```
+
+### Full Packaging Command
+
+From the repository root:
+
+```bash
+npm --prefix src run package:all
+```
+
+Equivalent command from `src/`:
+
+```bash
+cd src
+npm run package:all
+```
+
+The packaging pipeline runs:
+
+1. `build:frontend` — build React/Vite static assets into `src/frontend/dist`.
+2. `prepare:assets` — copy frontend `dist` into `src/backend/dist-static` and generate `asset-manifest.json`.
+3. `build:backend` — compile backend TypeScript into `src/backend/dist`.
+4. `package:pkg` — package backend with embedded frontend assets using `pkg`.
+5. `compress` — optionally compress generated binaries when UPX is available.
+6. `verify` — organize and verify release outputs.
+
+Expected release layout:
+
+```text
+release/
+├── windows-amd64/
+│   ├── robotops-studio.exe
+│   └── config.example.json
+├── macos-amd64/
+│   ├── robotops-studio
+│   └── config.example.json
+├── macos-arm64/
+│   ├── robotops-studio
+│   └── config.example.json
+├── linux-amd64/
+│   ├── robotops-studio
+│   └── config.example.json
+└── linux-arm64/
+    ├── robotops-studio
+    └── config.example.json
+```
+
+### Packaging Notes
+
+- The frontend is still built to `src/frontend/dist` first.
+- Runtime delivery does not require `src/frontend/dist`; assets are embedded into the backend binary through `src/backend/dist-static` and `pkg` assets.
+- External runtime configuration is provided by an optional `config.json` placed next to the executable. Use `config.example.json` as the template.
+- The default local URL is `http://127.0.0.1:30001`.
+- Current `pkg` targets are Node 18 based: Windows amd64, macOS amd64, macOS arm64, Linux amd64, and Linux arm64.
+- First-time `pkg` execution may take a long time if base binaries are not available in the local cache. In that case `pkg` may try to build Node.js from source. CI should pre-cache pkg base binaries or use platform-specific runners.
+- The `compress` step uses UPX only when available. Set `PACKAGE_COMPRESS=off` to skip compression or `PACKAGE_COMPRESS=on` to fail if compression is unavailable.
+
+### Runtime Health Check
+
+After building frontend assets and backend code, a lightweight runtime check can be executed without starting the HTTP server:
+
+```bash
+cd src/backend
+node dist/index.js --health-check
+```
+
+The check validates configuration loading and embedded static asset availability.
+
+### Running a Packaged Binary
+
+Copy the platform binary to an empty directory. Optionally copy `config.example.json` to `config.json` and edit the port, data directory, log directory, or mock mode.
+
+```bash
+./robotops-studio
+```
+
+Then open:
+
+```text
+http://127.0.0.1:30001
+```
+
+Windows example:
+
+```powershell
+.\robotops-studio.exe
 ```
 
 ## Running Tests

@@ -159,7 +159,7 @@ export function peekTimestamps(filePath: string): PeekResult {
 }
 
 export function listLogFiles(logsDir: string): LogFileInfo[] {
-  let entries: ReturnType<typeof readdirSync>;
+  let entries: import("node:fs").Dirent[];
   try {
     entries = readdirSync(logsDir, { withFileTypes: true });
   } catch {

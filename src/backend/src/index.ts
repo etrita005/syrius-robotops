@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { cors } from "hono/cors";
-import { join } from "node:path";
 import { ObjectStore } from "./services/objectStore.js";
 import { ChecksumService } from "./services/checksumService.js";
 import { ArtifactService } from "./services/artifactService.js";
@@ -23,35 +22,34 @@ import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobot
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
-import { createLogger } from "./logger/index.js";
+import { configureLogger, createLogger } from "./logger/index.js";
+import { loadAppConfig, parseCliArgs, resolveRuntimePaths } from "./runtime/appConfig.js";
+import { StaticAssetService } from "./static/staticAssetService.js";
+import { createStaticRoutes } from "./static/staticRoutes.js";
 
-const log = createLogger("App");
+const startupLog = createLogger("App");
 
-function parseArgs(): { dataDir: string; port: number; mock: boolean } {
-  const args = process.argv.slice(2);
-  let dataDir = join(process.cwd(), "data");
-  let port = 30001;
-  let mock = false;
+const cliOverrides = parseCliArgs();
+const runtimePaths = resolveRuntimePaths();
 
-  for (let i = 0; i < args.length; i++) {
-    if ((args[i] === "--port" || args[i] === "-p") && i + 1 < args.length) {
-      const p = parseInt(args[++i], 10);
-      if (!isNaN(p) && p > 0 && p <= 65535) {
-        port = p;
-      }
-    } else if ((args[i] === "--data-dir" || args[i] === "-d") && i + 1 < args.length) {
-      dataDir = args[++i];
-    } else if (args[i] === "--mock" || args[i] === "-m") {
-      mock = true;
-    }
-  }
-
-  return { dataDir, port, mock };
+if (cliOverrides.version) {
+  process.stdout.write("1.0.0\n");
+  process.exit(0);
 }
 
-const { dataDir, port, mock } = parseArgs();
+const { config, configLoaded } = await loadAppConfig(runtimePaths, cliOverrides);
+configureLogger({ level: config.logs.level, logsDir: config.logs.dir });
+const log = createLogger("App");
 
-store.configure(dataDir);
+log.info({ configPath: runtimePaths.configPath, configLoaded, dataDir: config.database.path, logsDir: config.logs.dir }, "Configuration loaded");
+
+const staticAssetService = await StaticAssetService.create(runtimePaths.staticRoot);
+if (cliOverrides.healthCheck) {
+  log.info({ staticRoot: runtimePaths.staticRoot }, "Health check passed");
+  process.exit(0);
+}
+
+store.configure(config.database.path);
 
 const objectStore = new ObjectStore();
 const checksumService = new ChecksumService();
@@ -78,7 +76,7 @@ function registerTasks(
   }
 }
 
-registerTasks(resolverRegistry, mock, [
+registerTasks(resolverRegistry, config.runtime.mock, [
   { name: "SshCommandTask", real: SshCommandTask, mock: MockSshCommandTask },
   { name: "GetRobotBasicInfoTask", real: GetRobotBasicInfoTask, mock: MockGetRobotBasicInfoTask },
   { name: "UpdateRobotBasicInfoTask", real: UpdateRobotBasicInfoTask, mock: MockUpdateRobotBasicInfoTask },
@@ -117,20 +115,19 @@ app.use("*", async (c, next) => {
   const status = c.res.status;
   const method = c.req.method;
   const path = c.req.path;
-  log.info({ method, path, status, durationMs: duration }, 'HTTP request');
+  log.info({ method, path, status, durationMs: duration }, "HTTP request");
 });
 
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 
-const logsDir = join(process.cwd(), "logs");
 const systemLogService = new SystemLogService({
-  logsDir,
+  logsDir: config.logs.dir,
   studioVersion: "1.0.0",
 });
 
 app.route("/api/system-logs", createSystemLogRoutes(systemLogService));
 
-app.route("/api/objects", createObjectStoreRoutes(objectStore, dataDir));
+app.route("/api/objects", createObjectStoreRoutes(objectStore, config.database.path));
 app.route("/api/artifacts", createArtifactRoutes(artifactService));
 app.route("/api/solutions", createSolutionRoutes(solutionService));
 app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
@@ -140,18 +137,45 @@ app.route("/api/sse", createSseRoutes(sseManager));
 await taskFlowEngine.loadPersistedFlows();
 
 app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine));
+app.route("/", createStaticRoutes(staticAssetService));
 
-app.onError((err, _c) => {
-  if (err instanceof AppError) {
-    log.warn({ code: err.code, message: err.message, statusCode: err.statusCode }, 'Application error');
-    return _c.json({ error: err.code, message: err.message }, err.statusCode);
+app.notFound((c) => {
+  if (c.req.path.startsWith("/api/")) {
+    return c.json({ error: "NOT_FOUND", message: "API route not found." }, 404);
   }
-  log.error({ err: err.message }, 'Unhandled error');
-  return _c.json({ error: "INTERNAL_ERROR", message: "An unexpected error occurred." }, 500);
+  return c.text("Not found", 404);
 });
 
-log.info({ port, dataDir }, "RobotOps Backend API starting");
-if (mock) {
+app.onError((err, c) => {
+  if (err instanceof AppError) {
+    log.warn({ code: err.code, message: err.message, statusCode: err.statusCode }, "Application error");
+    return c.json({ error: err.code, message: err.message }, err.statusCode);
+  }
+  log.error({ err: err.message }, "Unhandled error");
+  return c.json({ error: "INTERNAL_ERROR", message: "An unexpected error occurred." }, 500);
+});
+
+if (config.runtime.mock) {
   log.info("Mock mode enabled");
 }
-serve({ fetch: app.fetch, port });
+if (config.server.host === "0.0.0.0") {
+  log.warn({ host: config.server.host }, "Server exposed on all interfaces");
+}
+
+try {
+  const server = serve({ fetch: app.fetch, hostname: config.server.host, port: config.server.port });
+  server.on("listening", () => {
+    log.info({ host: config.server.host, port: config.server.port, url: `http://${config.server.host}:${config.server.port}` }, "RobotOps Studio started");
+  });
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      log.error({ host: config.server.host, port: config.server.port, code: err.code }, "Port already in use");
+      process.exit(1);
+    }
+    log.error({ err: err.message, code: err.code }, "Server start failed");
+    process.exit(1);
+  });
+} catch (err) {
+  startupLog.error({ err: err instanceof Error ? err.message : String(err) }, "Startup failed");
+  process.exit(1);
+}

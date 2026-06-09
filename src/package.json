@@ -1,0 +1,24 @@
+{
+  "name": "robotops-src",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "build:frontend": "npm --workspace frontend run build",
+    "prepare:assets": "tsx scripts/prepare-frontend-assets.ts",
+    "build:backend": "npm --workspace backend run build",
+    "package:pkg": "npm --workspace backend run package:pkg",
+    "compress": "tsx scripts/compress-binaries.ts",
+    "verify": "tsx scripts/verify-release.ts",
+    "package:all": "npm run build:frontend && npm run prepare:assets && npm run build:backend && npm run package:pkg && npm run compress && npm run verify"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

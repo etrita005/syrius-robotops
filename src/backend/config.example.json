@@ -1,0 +1,19 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 30001
+  },
+  "database": {
+    "path": "./data"
+  },
+  "security": {
+    "secret": "change-me-before-use"
+  },
+  "logs": {
+    "level": "info",
+    "dir": "./logs"
+  },
+  "runtime": {
+    "mock": false
+  }
+}

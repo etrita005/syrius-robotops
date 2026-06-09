@@ -142,7 +142,7 @@ export function createSystemLogRoutes(service: SystemLogService): Hono {
       c.header("Content-Type", "application/zip");
       c.header("Content-Disposition", `attachment; filename="${result.fileName}"`);
 
-      return c.body(result.stream);
+      return c.body(result.stream as unknown as ReadableStream);
     } catch (err) {
       if (err instanceof AppError) {
         return c.json({ error: err.code, message: err.message }, err.statusCode);
