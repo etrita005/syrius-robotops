@@ -1,7 +1,7 @@
 import pino from "pino";
 import type { Logger as PinoLogger, TransportTargetOptions } from "pino";
 import { pathToFileURL } from "node:url";
-import { mkdirSync, createWriteStream } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import "pino-pretty";
@@ -24,35 +24,40 @@ function createRootLogger(options: LoggerOptions = {}): Logger {
   const level = options.level ?? process.env.LOG_LEVEL ?? (isDev ? "debug" : "info");
   const logsDir = options.logsDir ?? "./logs";
 
+  mkdirSync(logsDir, { recursive: true });
+  const logFile = join(logsDir, "app.log");
+
+  const transports: TransportTargetOptions[] = [];
+
   if (isDev) {
-    return pino({
-      name: "robotops",
-      level,
-      timestamp: pino.stdTimeFunctions.isoTime,
-      transport: {
-        targets: [
-          {
-            target: pathToFileURL(require.resolve("pino-pretty")).href,
-            level: "debug",
-            options: {
-              colorize: true,
-              translateTime: "SYS:HH:MM:ss.l",
-              ignore: "pid,hostname",
-            },
-          },
-        ] as TransportTargetOptions[],
+    transports.push({
+      target: pathToFileURL(require.resolve("pino-pretty")).href,
+      level: "debug",
+      options: {
+        colorize: true,
+        translateTime: "SYS:HH:MM:ss.l",
+        ignore: "pid,hostname",
       },
     });
   }
 
-  mkdirSync(logsDir, { recursive: true });
-  const logFile = join(logsDir, "app.log");
-  const dest = pino.destination(logFile);
+  transports.push({
+    target: "pino/file",
+    level,
+    options: {
+      destination: logFile,
+      mkdir: true,
+    },
+  });
+
   return pino({
     name: "robotops",
     level,
     timestamp: pino.stdTimeFunctions.isoTime,
-  }, dest);
+    transport: {
+      targets: transports,
+    },
+  });
 }
 
 export const logger: Logger = new Proxy({} as Logger, {

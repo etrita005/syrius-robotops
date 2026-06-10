@@ -70,7 +70,7 @@ export const RESERVED_PINO_FIELDS = new Set([
   "time", "level", "module", "msg", "name", "pid", "hostname", "v",
 ]);
 
-export const SAFE_FILE_NAME_RE = /^app\.\d+\.log$/;
+export const SAFE_FILE_NAME_RE = /^app(?:\.\d+)?\.log$/;
 
 export const KNOWN_MODULES = [
   "App",
