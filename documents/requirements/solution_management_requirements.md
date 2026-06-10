@@ -407,13 +407,15 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 **FR-SOL-028**：系统应支持在当前激活解决方案下创建任务。
 
 - 任务类型为 `user`，仅显示 `user` 类型任务，不显示 `internal` 类型任务。
-- 创建任务时，用户选择目标机器人（单个或多个，必须属于当前解决方案已添加的机器人）。
+- 创建任务时，**用户必须先选择任务类型**，系统根据所选任务类型决定后续步骤：
+  - **任务类型决定机器人选择模式**：每种任务类型在结构化数据中声明 `robotSelection.mode`，取值为 `"single"`（仅允许选择一台机器人）或 `"multiple"`（允许选择多台机器人）。
+  - 用户随后选择目标机器人（单个或多个，必须属于当前解决方案已添加的机器人）。
 - **多机器人处理**：当选择 N 个机器人时，前端为每个机器人创建独立的 taskFlow（N 个机器人 → N 个 taskFlow），每个 taskFlow 仅携带单个目标机器人的 `robotIp`/`robotPort`。这样每个机器人的升级进度独立追踪，互不影响。
-- 创建任务时，用户选择任务类型：当前支持 **Upgrade BUP** 和 **Upgrade Movebase**。
-- 不同任务类型需要不同的输入参数：
-  - **Upgrade BUP**：用户需选择一个已在 Artifacts Manage 模块中添加的资源文件（`artifactId`）。
-  - **Upgrade Movebase**：用户需选择一个已在 Artifacts Manage 模块中添加的资源文件（`artifactId`）。
-- 系统通过 `POST /api/flows` 创建每个任务，前端组装 DAG 并逐个调用 `TaskFlowEngine.createFlow("user", dag, input)`。
+- 任务类型、DAG、任务参数模板等元数据集中存储在前端结构化数据文件（Task Registry）中，前端通过标准解析函数读取并自动生成界面，无需为每种新任务类型硬编码界面逻辑。
+- 当前支持的任务类型：
+  - **Upgrade BUP**：可多选机器人，需选择 Artifact 资源文件（`artifactId`）。
+  - **Upgrade Movebase**：仅单选机器人，需选择 Artifact 资源文件（`artifactId`）。
+- 系统通过 `POST /api/flows` 创建每个任务，前端从 Task Registry 中获取对应任务类型的 DAG 并逐个调用 `TaskFlowEngine.createFlow("user", dag, input)`。
 - 每个 taskFlow 的 `input` 中必须包含以下元数据字段：
   - `solutionId`：当前解决方案 ID。
   - `robotIds`：单个机器人 ID 数组（如 `[robot-001]`）。
@@ -422,6 +424,20 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
   - `taskName`：任务显示名称（如 `Upgrade BUP`）。
   - `artifactId`：所选制品 ID（任务业务参数）。
 - 创建成功后，N 个任务出现在当前解决方案的 Tasks 列表中（每个机器人一行）。
+
+**FR-SOL-028a**：任务类型注册表（Task Registry）。
+
+- 所有支持的任务类型必须以结构化 JSON 形式集中定义在一个注册表文件中，字段包括：
+  - `type`：任务类型唯一标识（如 `"upgrade-bup"`）。
+  - `name`：显示名称（如 `"Upgrade BUP"`）。
+  - `description`：任务描述。
+  - `robotSelection`：机器人选择配置，包含 `mode`（`"single"` 或 `"multiple"`）和可选的 `description`。
+  - `dag`：主 DAG 定义（`DagDefinition`）。
+  - `expectedResults`：期望输出数据槽名称列表。
+  - `errorDag`：可选的异常处理 DAG 定义。
+  - `params`：任务参数模板（`Record<string, TaskParamDescriptor>`），支持 `"artifact"`、`"text"`、`"number"`、`"select"` 类型。
+- 前端提供 `parseTaskRegistry(data)` 标准解析函数对注册表数据进行运行时校验，以及 `getTaskTypeDefinition(type)` 按类型查询定义。
+- 新增任务类型时，仅需在注册表中追加一条记录，前端界面（任务类型选择、机器人选择、参数表单）将自动适配，无需修改前端组件代码。
 
 **FR-SOL-029**：系统应展示当前解决方案下正在执行的 tasks 列表。
 
@@ -799,14 +815,18 @@ graph LR
 
 **UI-TASK-004**：状态列使用颜色标签区分：RUNNING（蓝色）、PAUSED（黄色）、COMPLETED（绿色）、FAILED（红色）、STOPPED（灰色）、PENDING（浅灰）。
 
-**UI-TASK-005**：Create Task 流程使用分步模态框（Step Modal）：
-- Step 1 — 选择机器人：展示当前解决方案下的机器人列表（带复选框），支持搜索，至少选择一个机器人；列表头部提供 "Select All" 复选框，可一键全选/取消全选当前过滤后的所有机器人。
-- Step 2 — 选择任务类型：展示可选任务类型列表（Upgrade BUP、Upgrade Movebase 等），单选；列表上方提供搜索框，支持按任务类型名称子串过滤。
-- Step 3 — 配置参数：根据所选任务类型**动态渲染**对应的参数输入界面。参数表单不可硬编码，必须由任务类型定义驱动。当前两种任务示例：
-  - Upgrade BUP：提供 Artifact 选择器（调用 Artifacts Manage 模块接口列出可用资源文件，用户单选确认）。
-  - Upgrade Movebase：提供 Artifact 选择器（同上）。
-  - 未来新增任务类型时，Step 3 应自动渲染该类型对应的参数表单，无需修改前端代码。
-- Step 4 — 确认并创建：展示摘要（目标机器人、任务类型、参数），提供 "Create" 和 "Back" 按钮。
+**UI-TASK-005**：Create Task 流程使用分步模态框（Step Modal），**必须先选择任务类型，再选择机器人**：
+- Step 1 — 选择任务类型：展示可选任务类型列表（从 Task Registry 读取），单选；列表上方提供搜索框，支持按任务类型名称子串过滤；每个任务类型卡片显示其名称、描述以及机器人选择模式（Single / Multiple）。
+- Step 2 — 选择机器人：根据 Step 1 所选任务类型的 `robotSelection.mode` 动态决定界面：
+  - 若 `mode === "multiple"`：展示当前解决方案下的机器人列表（带复选框），支持搜索，至少选择一个机器人；列表头部提供 "Select All" 复选框，可一键全选/取消全选当前过滤后的所有机器人。
+  - 若 `mode === "single"`：展示当前解决方案下的机器人列表（带单选按钮），支持搜索，必须且只能选择一台机器人；不提供 "Select All"。
+- Step 3 — 配置参数：根据所选任务类型的 `params` 定义**动态渲染**对应的参数输入界面。参数表单不可硬编码，必须由任务类型定义驱动。当前支持的参数控件：
+  - `artifact`：内嵌 Artifact 选择器列表（搜索 + 单选）。
+  - `text`：文本输入框。
+  - `number`：数字输入框。
+  - `select`：下拉选择框（选项来自 `params[key].options`）。
+  - 未来新增任务类型或参数类型时，Step 3 应通过解析 Task Registry 自动渲染，无需修改前端组件代码。
+- Step 4 — 确认并创建：展示摘要（任务类型、目标机器人、参数），提供 "Create" 和 "Back" 按钮。
 
 **UI-TASK-006**：Artifact 选择器以内嵌列表或弹窗形式展示，列包括：文件名、类型、大小、创建时间，支持搜索和单选。
 

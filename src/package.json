@@ -17,7 +17,7 @@
     "package:all": "npm run build:frontend && npm run prepare:assets && npm run build:backend && npm run package:pkg && npm run compress && npm run verify"
   },
   "devDependencies": {
-    "pkg": "^5.8.1",
+    "@yao-pkg/pkg": "^6.20.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   }

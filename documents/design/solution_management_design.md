@@ -983,6 +983,48 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
   - **Hardware Versions**: `mainControlHardwareVersion`, MCU / actuator / sensor hardware versions as key-value lists.
 - **Actions**: Bottom "Save" primary button (saves alias/address changes; address is parsed from `<host>:<port>` format into separate `address` and `port` fields), "Close" secondary button.
 
+### 9.10 Task Registry（前端任务类型注册表）
+
+- **位置**：`src/frontend/src/data/taskRegistry.ts`。
+- **职责**：集中存储所有任务类型的结构化定义，包括 DAG、机器人选择模式、参数模板等。前端通过 `parseTaskRegistry()` 进行校验，通过 `getTaskTypeDefinition()` 查询。
+- **Schema**：
+  ```typescript
+  interface TaskTypeDefinition {
+    type: string;
+    name: string;
+    description: string;
+    robotSelection: { mode: "single" | "multiple"; description?: string };
+    dag: DagDefinition;
+    expectedResults: string[];
+    errorDag?: DagDefinition;
+    params: Record<string, TaskParamDescriptor>;
+  }
+  ```
+- **扩展性**：新增任务类型时，仅需在 `TASK_REGISTRY` 中追加记录，Create Task Modal 会自动渲染新的任务类型卡片、机器人选择界面和参数表单，无需修改组件代码。
+
+### 9.11 Create Task Flow（创建任务模态框）
+
+- **Step 1 — 选择任务类型**：
+  - 从 Task Registry 读取全部任务类型，以卡片列表展示。
+  - 每张卡片显示名称、描述、机器人选择模式标签（Single / Multiple）。
+  - 提供搜索框，支持按名称子串过滤。
+  - 用户单选一项后进入下一步。
+- **Step 2 — 选择机器人**：
+  - 根据已选任务类型的 `robotSelection.mode` 动态切换交互方式：
+    - `multiple`：复选框列表，支持 "Select All"，至少选一个。
+    - `single`：单选按钮列表，必须且只能选一个。
+  - 提供搜索框，按 alias / address 过滤。
+- **Step 3 — 配置参数**：
+  - 根据已选任务类型的 `params` 定义自动生成表单：
+    - `artifact` → 内嵌 Artifact 列表（搜索 + 单选）。
+    - `text` → Carbon `TextInput`。
+    - `number` → Carbon `TextInput`（`type="number"`）。
+    - `select` → Carbon `Select` + `SelectItem`（选项来自 `options`）。
+  - 必填项标红星号，未填完禁止进入下一步。
+- **Step 4 — 确认并创建**：
+  - 展示摘要：任务类型、目标机器人（别名列表）、参数值。
+  - 点击 "Create" 后，前端遍历所选机器人，逐个调用 `POST /api/flows`，DAG 取自 Task Registry。
+
 ---
 
 ## 10. 非功能需求与性能设计

@@ -10,7 +10,7 @@ coverage/
 
 # Runtime data
 config.json
-data/
+/data/
 logs/
 
 # Environment and secrets

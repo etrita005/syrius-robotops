@@ -29,158 +29,165 @@ import { createStaticRoutes } from "./static/staticRoutes.js";
 
 const startupLog = createLogger("App");
 
-const cliOverrides = parseCliArgs();
-const runtimePaths = resolveRuntimePaths();
+async function main(): Promise<void> {
+  const cliOverrides = parseCliArgs();
+  const runtimePaths = resolveRuntimePaths();
 
-if (cliOverrides.version) {
-  process.stdout.write("1.0.0\n");
-  process.exit(0);
-}
-
-const { config, configLoaded } = await loadAppConfig(runtimePaths, cliOverrides);
-configureLogger({ level: config.logs.level, logsDir: config.logs.dir });
-const log = createLogger("App");
-
-log.info({ configPath: runtimePaths.configPath, configLoaded, dataDir: config.database.path, logsDir: config.logs.dir }, "Configuration loaded");
-
-const staticAssetService = await StaticAssetService.create(runtimePaths.staticRoot);
-if (staticAssetService.isAvailable()) {
-  log.info({ staticRoot: runtimePaths.staticRoot }, "Static assets loaded");
-} else {
-  log.warn({ staticRoot: runtimePaths.staticRoot }, "Static assets not found, running in API-only mode");
-}
-if (cliOverrides.healthCheck) {
-  log.info({ staticRoot: runtimePaths.staticRoot }, "Health check passed");
-  process.exit(0);
-}
-
-store.configure(config.database.path);
-
-const objectStore = new ObjectStore();
-const checksumService = new ChecksumService();
-const artifactService = new ArtifactService(objectStore, checksumService);
-const solutionService = new SolutionService(objectStore);
-
-const sseManager = new SseManager();
-const resolverRegistry = new ResolverRegistry();
-
-type TaskRegEntry = {
-  name: string;
-  real: TaskResolverClass;
-  mock?: TaskResolverClass;
-};
-
-function registerTasks(
-  registry: ResolverRegistry,
-  mockMode: boolean,
-  entries: TaskRegEntry[]
-): void {
-  for (const entry of entries) {
-    const cls = mockMode && entry.mock ? entry.mock : entry.real;
-    registry.register(entry.name, cls);
+  if (cliOverrides.version) {
+    process.stdout.write("1.0.0\n");
+    process.exit(0);
   }
-}
 
-registerTasks(resolverRegistry, config.runtime.mock, [
-  { name: "SshCommandTask", real: SshCommandTask, mock: MockSshCommandTask },
-  { name: "GetRobotBasicInfoTask", real: GetRobotBasicInfoTask, mock: MockGetRobotBasicInfoTask },
-  { name: "UpdateRobotBasicInfoTask", real: UpdateRobotBasicInfoTask, mock: MockUpdateRobotBasicInfoTask },
-  { name: "SshFileTransferTask", real: SshFileTransferTask, mock: MockSshFileTransferTask },
-  { name: "UpgradeMovebaseTask", real: UpgradeMovebaseTask, mock: MockUpgradeMovebaseTask },
-  { name: "TransferMovebaseTask", real: TransferMovebaseTask, mock: MockTransferMovebaseTask },
-  { name: "DeleteMovebaseTask", real: DeleteMovebaseTask, mock: MockDeleteMovebaseTask },
-]);
+  const { config, configLoaded } = await loadAppConfig(runtimePaths, cliOverrides);
+  configureLogger({ level: config.logs.level, logsDir: config.logs.dir });
+  const log = createLogger("App");
 
-const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
+  log.info({ configPath: runtimePaths.configPath, configLoaded, dataDir: config.database.path, logsDir: config.logs.dir }, "Configuration loaded");
 
-const memStoreInstance = new MemStore();
-
-const robotService = new RobotService(objectStore, taskFlowEngine, sseManager, memStoreInstance, {
-  sshUsername: SSH_USERNAME,
-  sshPassword: SSH_PASSWORD,
-});
-
-taskFlowEngine.setFlowContext({ memStore: memStoreInstance, artifactService });
-
-solutionService.onSolutionRemove((solutionId: string) => {
-  robotService.removeSolutionCache(solutionId);
-});
-solutionService.onSolutionClose((solutionId: string) => {
-  robotService.removeSolutionCache(solutionId);
-});
-
-const app = new Hono();
-
-app.use("*", cors());
-
-app.use("*", async (c, next) => {
-  const start = Date.now();
-  await next();
-  const duration = Date.now() - start;
-  const status = c.res.status;
-  const method = c.req.method;
-  const path = c.req.path;
-  log.info({ method, path, status, durationMs: duration }, "HTTP request");
-});
-
-app.get("/api/health", (c) => c.json({ status: "ok" }));
-
-const systemLogService = new SystemLogService({
-  logsDir: config.logs.dir,
-  studioVersion: "1.0.0",
-});
-
-app.route("/api/system-logs", createSystemLogRoutes(systemLogService));
-
-app.route("/api/objects", createObjectStoreRoutes(objectStore, config.database.path));
-app.route("/api/artifacts", createArtifactRoutes(artifactService));
-app.route("/api/solutions", createSolutionRoutes(solutionService));
-app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
-app.route("/api/memstore", createMemStoreRoutes(memStoreInstance));
-app.route("/api/sse", createSseRoutes(sseManager));
-
-await taskFlowEngine.loadPersistedFlows();
-
-app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine));
-app.route("/", createStaticRoutes(staticAssetService));
-
-app.notFound((c) => {
-  if (c.req.path.startsWith("/api/")) {
-    return c.json({ error: "NOT_FOUND", message: "API route not found." }, 404);
+  const staticAssetService = await StaticAssetService.create(runtimePaths.staticRoot);
+  if (staticAssetService.isAvailable()) {
+    log.info({ staticRoot: runtimePaths.staticRoot }, "Static assets loaded");
+  } else {
+    log.warn({ staticRoot: runtimePaths.staticRoot }, "Static assets not found, running in API-only mode");
   }
-  return c.text("Not found", 404);
-});
-
-app.onError((err, c) => {
-  if (err instanceof AppError) {
-    log.warn({ code: err.code, message: err.message, statusCode: err.statusCode }, "Application error");
-    return c.json({ error: err.code, message: err.message }, err.statusCode);
+  if (cliOverrides.healthCheck) {
+    log.info({ staticRoot: runtimePaths.staticRoot }, "Health check passed");
+    process.exit(0);
   }
-  log.error({ err: err.message }, "Unhandled error");
-  return c.json({ error: "INTERNAL_ERROR", message: "An unexpected error occurred." }, 500);
-});
 
-if (config.runtime.mock) {
-  log.info("Mock mode enabled");
-}
-if (config.server.host === "0.0.0.0") {
-  log.warn({ host: config.server.host }, "Server exposed on all interfaces");
-}
+  store.configure(config.database.path);
 
-try {
-  const server = serve({ fetch: app.fetch, hostname: config.server.host, port: config.server.port });
-  server.on("listening", () => {
-    log.info({ host: config.server.host, port: config.server.port, url: `http://${config.server.host}:${config.server.port}` }, "RobotOps Studio started");
-  });
-  server.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE") {
-      log.error({ host: config.server.host, port: config.server.port, code: err.code }, "Port already in use");
-      process.exit(1);
+  const objectStore = new ObjectStore();
+  const checksumService = new ChecksumService();
+  const artifactService = new ArtifactService(objectStore, checksumService);
+  const solutionService = new SolutionService(objectStore);
+
+  const sseManager = new SseManager();
+  const resolverRegistry = new ResolverRegistry();
+
+  type TaskRegEntry = {
+    name: string;
+    real: TaskResolverClass;
+    mock?: TaskResolverClass;
+  };
+
+  function registerTasks(
+    registry: ResolverRegistry,
+    mockMode: boolean,
+    entries: TaskRegEntry[]
+  ): void {
+    for (const entry of entries) {
+      const cls = mockMode && entry.mock ? entry.mock : entry.real;
+      registry.register(entry.name, cls);
     }
-    log.error({ err: err.message, code: err.code }, "Server start failed");
-    process.exit(1);
+  }
+
+  registerTasks(resolverRegistry, config.runtime.mock, [
+    { name: "SshCommandTask", real: SshCommandTask, mock: MockSshCommandTask },
+    { name: "GetRobotBasicInfoTask", real: GetRobotBasicInfoTask, mock: MockGetRobotBasicInfoTask },
+    { name: "UpdateRobotBasicInfoTask", real: UpdateRobotBasicInfoTask, mock: MockUpdateRobotBasicInfoTask },
+    { name: "SshFileTransferTask", real: SshFileTransferTask, mock: MockSshFileTransferTask },
+    { name: "UpgradeMovebaseTask", real: UpgradeMovebaseTask, mock: MockUpgradeMovebaseTask },
+    { name: "TransferMovebaseTask", real: TransferMovebaseTask, mock: MockTransferMovebaseTask },
+    { name: "DeleteMovebaseTask", real: DeleteMovebaseTask, mock: MockDeleteMovebaseTask },
+  ]);
+
+  const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
+
+  const memStoreInstance = new MemStore();
+
+  const robotService = new RobotService(objectStore, taskFlowEngine, sseManager, memStoreInstance, {
+    sshUsername: SSH_USERNAME,
+    sshPassword: SSH_PASSWORD,
   });
-} catch (err) {
+
+  taskFlowEngine.setFlowContext({ memStore: memStoreInstance, artifactService });
+
+  solutionService.onSolutionRemove((solutionId: string) => {
+    robotService.removeSolutionCache(solutionId);
+  });
+  solutionService.onSolutionClose((solutionId: string) => {
+    robotService.removeSolutionCache(solutionId);
+  });
+
+  const app = new Hono();
+
+  app.use("*", cors());
+
+  app.use("*", async (c, next) => {
+    const start = Date.now();
+    await next();
+    const duration = Date.now() - start;
+    const status = c.res.status;
+    const method = c.req.method;
+    const path = c.req.path;
+    log.info({ method, path, status, durationMs: duration }, "HTTP request");
+  });
+
+  app.get("/api/health", (c) => c.json({ status: "ok" }));
+
+  const systemLogService = new SystemLogService({
+    logsDir: config.logs.dir,
+    studioVersion: "1.0.0",
+  });
+
+  app.route("/api/system-logs", createSystemLogRoutes(systemLogService));
+
+  app.route("/api/objects", createObjectStoreRoutes(objectStore, config.database.path));
+  app.route("/api/artifacts", createArtifactRoutes(artifactService));
+  app.route("/api/solutions", createSolutionRoutes(solutionService));
+  app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
+  app.route("/api/memstore", createMemStoreRoutes(memStoreInstance));
+  app.route("/api/sse", createSseRoutes(sseManager));
+
+  await taskFlowEngine.loadPersistedFlows();
+
+  app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine));
+  app.route("/", createStaticRoutes(staticAssetService));
+
+  app.notFound((c) => {
+    if (c.req.path.startsWith("/api/")) {
+      return c.json({ error: "NOT_FOUND", message: "API route not found." }, 404);
+    }
+    return c.text("Not found", 404);
+  });
+
+  app.onError((err, c) => {
+    if (err instanceof AppError) {
+      log.warn({ code: err.code, message: err.message, statusCode: err.statusCode }, "Application error");
+      return c.json({ error: err.code, message: err.message }, err.statusCode);
+    }
+    log.error({ err: err.message }, "Unhandled error");
+    return c.json({ error: "INTERNAL_ERROR", message: "An unexpected error occurred." }, 500);
+  });
+
+  if (config.runtime.mock) {
+    log.info("Mock mode enabled");
+  }
+  if (config.server.host === "0.0.0.0") {
+    log.warn({ host: config.server.host }, "Server exposed on all interfaces");
+  }
+
+  try {
+    const server = serve({ fetch: app.fetch, hostname: config.server.host, port: config.server.port });
+    server.on("listening", () => {
+      log.info({ host: config.server.host, port: config.server.port, url: `http://${config.server.host}:${config.server.port}` }, "RobotOps Studio started");
+    });
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        log.error({ host: config.server.host, port: config.server.port, code: err.code }, "Port already in use");
+        process.exit(1);
+      }
+      log.error({ err: err.message, code: err.code }, "Server start failed");
+      process.exit(1);
+    });
+  } catch (err) {
+    startupLog.error({ err: err instanceof Error ? err.message : String(err) }, "Startup failed");
+    process.exit(1);
+  }
+}
+
+main().catch(err => {
   startupLog.error({ err: err instanceof Error ? err.message : String(err) }, "Startup failed");
   process.exit(1);
-}
+});

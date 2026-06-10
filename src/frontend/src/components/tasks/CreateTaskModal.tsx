@@ -4,8 +4,10 @@ import {
   Button,
   TextInput,
   InlineLoading,
+  Select,
+  SelectItem,
 } from "@carbon/react";
-import type { TaskTypeDescriptor } from "../../types/task.js";
+import type { TaskTypeDefinition } from "../../data/taskRegistry.js";
 import type { StoredRobotData } from "../../types/robot.js";
 import { formatAddressDisplay } from "../../types/robot.js";
 import type { ArtifactMeta } from "../../types/artifact.js";
@@ -15,16 +17,16 @@ import { listRobots } from "../../api/robotApi.js";
 interface CreateTaskModalProps {
   open: boolean;
   solutionId: string;
-  taskTypes: TaskTypeDescriptor[];
+  taskTypes: TaskTypeDefinition[];
   onClose: () => void;
   onCreate: (
     robotIds: string[],
-    taskType: TaskTypeDescriptor,
+    taskType: TaskTypeDefinition,
     params: Record<string, string>
   ) => Promise<void>;
 }
 
-const STEPS = ["Robots", "Type", "Params", "Confirm"];
+const STEPS = ["Type", "Robots", "Params", "Confirm"];
 
 export default function CreateTaskModal({
   open,
@@ -38,7 +40,7 @@ export default function CreateTaskModal({
   const [robotsLoading, setRobotsLoading] = useState(false);
   const [robotSearch, setRobotSearch] = useState("");
   const [selectedRobotIds, setSelectedRobotIds] = useState<Set<string>>(new Set());
-  const [selectedTaskType, setSelectedTaskType] = useState<TaskTypeDescriptor | null>(null);
+  const [selectedTaskType, setSelectedTaskType] = useState<TaskTypeDefinition | null>(null);
   const [taskTypeSearch, setTaskTypeSearch] = useState("");
   const [params, setParams] = useState<Record<string, string>>({});
   const [artifacts, setArtifacts] = useState<ArtifactMeta[]>([]);
@@ -88,7 +90,8 @@ export default function CreateTaskModal({
     const term = taskTypeSearch.toLowerCase();
     if (!term) return taskTypes;
     return taskTypes.filter(
-      (t) => t.name.toLowerCase().includes(term) || t.type.toLowerCase().includes(term)
+      (t) =>
+        t.name.toLowerCase().includes(term) || t.type.toLowerCase().includes(term)
     );
   }, [taskTypes, taskTypeSearch]);
 
@@ -103,10 +106,16 @@ export default function CreateTaskModal({
     );
   }, [artifacts, artifactSearch]);
 
+  const robotSelectionMode = selectedTaskType?.robotSelection.mode ?? "multiple";
+
   const allRobotsSelected =
     filteredRobots.length > 0 && filteredRobots.every((r) => selectedRobotIds.has(r.id));
 
   const toggleRobot = (robotId: string) => {
+    if (robotSelectionMode === "single") {
+      setSelectedRobotIds(new Set([robotId]));
+      return;
+    }
     const next = new Set(selectedRobotIds);
     if (next.has(robotId)) next.delete(robotId);
     else next.add(robotId);
@@ -114,6 +123,7 @@ export default function CreateTaskModal({
   };
 
   const toggleAllRobots = (checked: boolean) => {
+    if (robotSelectionMode === "single") return;
     if (checked) {
       const allIds = new Set(selectedRobotIds);
       for (const r of filteredRobots) allIds.add(r.id);
@@ -126,12 +136,18 @@ export default function CreateTaskModal({
     }
   };
 
+  const handleSelectTaskType = (tt: TaskTypeDefinition) => {
+    setSelectedTaskType(tt);
+    setSelectedRobotIds(new Set());
+    setParams({});
+  };
+
   const canNext = (): boolean => {
     switch (step) {
       case 1:
-        return selectedRobotIds.size > 0;
-      case 2:
         return selectedTaskType !== null;
+      case 2:
+        return selectedRobotIds.size > 0;
       case 3:
         if (!selectedTaskType) return false;
         return Object.entries(selectedTaskType.params)
@@ -181,9 +197,9 @@ export default function CreateTaskModal({
   const renderStepContent = () => {
     switch (step) {
       case 1:
-        return renderSelectRobots();
-      case 2:
         return renderSelectTaskType();
+      case 2:
+        return renderSelectRobots();
       case 3:
         return renderConfigureParams();
       case 4:
@@ -193,90 +209,10 @@ export default function CreateTaskModal({
     }
   };
 
-  const renderSelectRobots = () => (
-    <div>
-      <p style={{ marginBottom: "1rem", color: "#525252", fontSize: "0.875rem" }}>
-        Select one or more target robots from the current solution. You must select at least one robot to proceed.
-      </p>
-      <TextInput
-        id="robot-search-modal"
-        labelText=""
-        hideLabel
-        placeholder="Search robots..."
-        value={robotSearch}
-        onChange={(e) => setRobotSearch(e.target.value)}
-        style={{ marginBottom: "0.75rem" }}
-      />
-      {robotsLoading ? (
-        <InlineLoading description="Loading robots..." />
-      ) : filteredRobots.length === 0 ? (
-        <p style={{ color: "#525252", padding: "2rem", textAlign: "center" }}>
-          No robots found. Add robots to this solution first.
-        </p>
-      ) : (
-        <>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              padding: "0.5rem 0",
-              borderBottom: "1px solid #e0e0e0",
-              background: "#e0e0e0",
-            }}
-          >
-            <div style={{ width: 36, display: "flex", justifyContent: "center" }}>
-              <input
-                type="checkbox"
-                checked={allRobotsSelected}
-                onChange={(e) => toggleAllRobots(e.target.checked)}
-                aria-label="Select all robots"
-              />
-            </div>
-            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#525252" }}>
-              Select All
-            </span>
-          </div>
-          <div style={{ maxHeight: "240px", overflow: "auto" }}>
-            {filteredRobots.map((robot, i) => (
-              <div
-                key={robot.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "0.6rem 0",
-                  borderBottom: "1px solid #f0f0f0",
-                  background: i % 2 === 0 ? "white" : "#fafafa",
-                }}
-              >
-                <div style={{ width: 36, display: "flex", justifyContent: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedRobotIds.has(robot.id)}
-                    onChange={() => toggleRobot(robot.id)}
-                    aria-label={`Select ${robot.alias}`}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{robot.alias}</span>
-                  <span style={{ marginLeft: "1rem", color: "#525252", fontSize: "0.8125rem" }}>
-                    {formatAddressDisplay(robot.address, robot.port)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p style={{ marginTop: "0.75rem", color: "#525252", fontSize: "0.875rem" }}>
-            {selectedRobotIds.size} robot{selectedRobotIds.size !== 1 ? "s" : ""} selected
-          </p>
-        </>
-      )}
-    </div>
-  );
-
   const renderSelectTaskType = () => (
     <div>
       <p style={{ marginBottom: "1rem", color: "#525252", fontSize: "0.875rem" }}>
-        Choose the type of task to execute on the selected robots.
+        Choose the type of task to execute. The task type determines robot selection mode and required parameters.
       </p>
       <TextInput
         id="task-type-search"
@@ -288,12 +224,12 @@ export default function CreateTaskModal({
         style={{ marginBottom: "0.75rem" }}
       />
       <div style={{ maxHeight: "300px", overflow: "auto" }}>
-        {filteredTaskTypes.map((tt, i) => {
+        {filteredTaskTypes.map((tt) => {
           const isSelected = selectedTaskType?.type === tt.type;
           return (
             <div
               key={tt.type}
-              onClick={() => setSelectedTaskType(tt)}
+              onClick={() => handleSelectTaskType(tt)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -328,6 +264,9 @@ export default function CreateTaskModal({
                 <div style={{ color: "#525252", fontSize: "0.8125rem", marginTop: "0.125rem" }}>
                   {tt.description}
                 </div>
+                <div style={{ color: "#8d8d8d", fontSize: "0.75rem", marginTop: "0.125rem" }}>
+                  Robot selection: {tt.robotSelection.mode === "single" ? "Single robot" : "Multiple robots"}
+                </div>
               </div>
             </div>
           );
@@ -340,6 +279,105 @@ export default function CreateTaskModal({
       </div>
     </div>
   );
+
+  const renderSelectRobots = () => {
+    const mode = robotSelectionMode;
+    const singleHint = mode === "single"
+      ? "Select exactly one target robot for this task type."
+      : "Select one or more target robots from the current solution. You must select at least one robot to proceed.";
+
+    return (
+      <div>
+        <p style={{ marginBottom: "1rem", color: "#525252", fontSize: "0.875rem" }}>
+          {selectedTaskType?.robotSelection.description ?? singleHint}
+        </p>
+        <TextInput
+          id="robot-search-modal"
+          labelText=""
+          hideLabel
+          placeholder="Search robots..."
+          value={robotSearch}
+          onChange={(e) => setRobotSearch(e.target.value)}
+          style={{ marginBottom: "0.75rem" }}
+        />
+        {robotsLoading ? (
+          <InlineLoading description="Loading robots..." />
+        ) : filteredRobots.length === 0 ? (
+          <p style={{ color: "#525252", padding: "2rem", textAlign: "center" }}>
+            No robots found. Add robots to this solution first.
+          </p>
+        ) : (
+          <>
+            {mode === "multiple" && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0.5rem 0",
+                  borderBottom: "1px solid #e0e0e0",
+                  background: "#e0e0e0",
+                }}
+              >
+                <div style={{ width: 36, display: "flex", justifyContent: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={allRobotsSelected}
+                    onChange={(e) => toggleAllRobots(e.target.checked)}
+                    aria-label="Select all robots"
+                  />
+                </div>
+                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#525252" }}>
+                  Select All
+                </span>
+              </div>
+            )}
+            <div style={{ maxHeight: "240px", overflow: "auto" }}>
+              {filteredRobots.map((robot, i) => (
+                <div
+                  key={robot.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0.6rem 0",
+                    borderBottom: "1px solid #f0f0f0",
+                    background: i % 2 === 0 ? "white" : "#fafafa",
+                  }}
+                >
+                  <div style={{ width: 36, display: "flex", justifyContent: "center" }}>
+                    {mode === "multiple" ? (
+                      <input
+                        type="checkbox"
+                        checked={selectedRobotIds.has(robot.id)}
+                        onChange={() => toggleRobot(robot.id)}
+                        aria-label={`Select ${robot.alias}`}
+                      />
+                    ) : (
+                      <input
+                        type="radio"
+                        name="robot-selection"
+                        checked={selectedRobotIds.has(robot.id)}
+                        onChange={() => toggleRobot(robot.id)}
+                        aria-label={`Select ${robot.alias}`}
+                      />
+                    )}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{robot.alias}</span>
+                    <span style={{ marginLeft: "1rem", color: "#525252", fontSize: "0.8125rem" }}>
+                      {formatAddressDisplay(robot.address, robot.port)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p style={{ marginTop: "0.75rem", color: "#525252", fontSize: "0.875rem" }}>
+              {selectedRobotIds.size} robot{selectedRobotIds.size !== 1 ? "s" : ""} selected
+            </p>
+          </>
+        )}
+      </div>
+    );
+  };
 
   const renderConfigureParams = () => (
     <div>
@@ -419,6 +457,42 @@ export default function CreateTaskModal({
               )}
             </div>
           )}
+          {paramDesc.type === "text" && (
+            <TextInput
+              id={`param-${paramKey}`}
+              labelText=""
+              hideLabel
+              placeholder={`Enter ${paramDesc.label.toLowerCase()}...`}
+              value={params[paramKey] ?? ""}
+              onChange={(e) => setParams({ ...params, [paramKey]: e.target.value })}
+            />
+          )}
+          {paramDesc.type === "number" && (
+            <TextInput
+              id={`param-${paramKey}`}
+              labelText=""
+              hideLabel
+              type="number"
+              placeholder={`Enter ${paramDesc.label.toLowerCase()}...`}
+              value={params[paramKey] ?? ""}
+              onChange={(e) => setParams({ ...params, [paramKey]: e.target.value })}
+            />
+          )}
+          {paramDesc.type === "select" && (
+            <Select
+              id={`param-${paramKey}`}
+              labelText=""
+              hideLabel
+              noLabel
+              value={params[paramKey] ?? ""}
+              onChange={(e) => setParams({ ...params, [paramKey]: e.target.value })}
+            >
+              <SelectItem value="" text={`Select ${paramDesc.label.toLowerCase()}...`} />
+              {(paramDesc.options ?? []).map((opt) => (
+                <SelectItem key={opt} value={opt} text={opt} />
+              ))}
+            </Select>
+          )}
         </div>
       ))}
     </div>
@@ -446,12 +520,12 @@ export default function CreateTaskModal({
         </p>
         <div style={{ marginBottom: "1.5rem" }}>
           <div style={{ marginBottom: "0.75rem" }}>
-            <span style={{ color: "#525252", fontSize: "0.875rem" }}>Target Robots: </span>
-            <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{robotList}</span>
-          </div>
-          <div style={{ marginBottom: "0.75rem" }}>
             <span style={{ color: "#525252", fontSize: "0.875rem" }}>Task Type: </span>
             <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{selectedTaskType?.name}</span>
+          </div>
+          <div style={{ marginBottom: "0.75rem" }}>
+            <span style={{ color: "#525252", fontSize: "0.875rem" }}>Target Robots: </span>
+            <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{robotList}</span>
           </div>
           {paramSummary.map(({ label, value }) => (
             <div key={label} style={{ marginBottom: "0.75rem" }}>

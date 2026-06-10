@@ -37,38 +37,22 @@ export interface TaskDefinition {
   input?: Record<string, unknown>;
 }
 
-export interface TaskTypeDescriptor {
-  type: string;
-  name: string;
-  description: string;
-  params: Record<string, TaskParamDescriptor>;
-}
+// Re-export task registry types for backward compatibility
+export type {
+  TaskTypeDefinition as TaskTypeDescriptor,
+  TaskParamDescriptor,
+  RobotSelection,
+  DagDefinition,
+  DagTaskNode,
+  DagResolver,
+} from "../data/taskRegistry.js";
 
-export interface TaskParamDescriptor {
-  type: "artifact" | "text" | "number" | "select";
-  label: string;
-  required: boolean;
-  options?: string[];
-}
-
-export const TASK_TYPES: TaskTypeDescriptor[] = [
-  {
-    type: "upgrade-bup",
-    name: "Upgrade BUP",
-    description: "Upgrade the BUP firmware on selected robots.",
-    params: {
-      artifactId: { type: "artifact", label: "Artifact file", required: true },
-    },
-  },
-  {
-    type: "upgrade-movebase",
-    name: "Upgrade Movebase",
-    description: "Upgrade the Movebase software on selected robots.",
-    params: {
-      artifactId: { type: "artifact", label: "Artifact file", required: true },
-    },
-  },
-];
+export {
+  TASK_REGISTRY,
+  getTaskTypeDefinition,
+  getTaskTypeDefinitions,
+  parseTaskRegistry,
+} from "../data/taskRegistry.js";
 
 export function computeResultSummary(taskStates: Record<string, TaskState>): string {
   const values = Object.values(taskStates);

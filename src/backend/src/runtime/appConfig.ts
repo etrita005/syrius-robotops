@@ -66,7 +66,7 @@ function isPkgRuntime(): boolean {
 
 export function resolveRuntimePaths(): RuntimePaths {
   const executableDir = isPkgRuntime() ? join(process.execPath, "..") : process.cwd();
-  const staticRoot = new URL("../../dist-static/", import.meta.url).pathname;
+  const staticRoot = join(__dirname, "../../dist-static/");
   return {
     executableDir,
     configPath: join(executableDir, "config.json"),

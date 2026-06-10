@@ -1,5 +1,10 @@
 import pino from "pino";
 import type { Logger as PinoLogger, TransportTargetOptions } from "pino";
+import { pathToFileURL } from "node:url";
+import { mkdirSync, createWriteStream } from "node:fs";
+import { join } from "node:path";
+
+import "pino-pretty";
 
 export type Logger = PinoLogger;
 
@@ -8,41 +13,46 @@ export interface LoggerOptions {
   logsDir?: string;
 }
 
+function isPkgRuntime(): boolean {
+  return Boolean((process as NodeJS.Process & { pkg?: unknown }).pkg);
+}
+
 let rootLogger: Logger = createRootLogger();
 
 function createRootLogger(options: LoggerOptions = {}): Logger {
-  const isDev = process.env.NODE_ENV !== "production";
-  const targets: TransportTargetOptions[] = [];
+  const isDev = process.env.NODE_ENV !== "production" && !isPkgRuntime();
+  const level = options.level ?? process.env.LOG_LEVEL ?? (isDev ? "debug" : "info");
+  const logsDir = options.logsDir ?? "./logs";
 
   if (isDev) {
-    targets.push({
-      target: "pino-pretty",
-      level: "debug",
-      options: {
-        colorize: true,
-        translateTime: "SYS:HH:MM:ss.l",
-        ignore: "pid,hostname",
+    return pino({
+      name: "robotops",
+      level,
+      timestamp: pino.stdTimeFunctions.isoTime,
+      transport: {
+        targets: [
+          {
+            target: pathToFileURL(require.resolve("pino-pretty")).href,
+            level: "debug",
+            options: {
+              colorize: true,
+              translateTime: "SYS:HH:MM:ss.l",
+              ignore: "pid,hostname",
+            },
+          },
+        ] as TransportTargetOptions[],
       },
     });
   }
 
-  targets.push({
-    target: "pino-roll",
-    level: options.level ?? "info",
-    options: {
-      file: `${options.logsDir ?? "./logs"}/app`,
-      size: "500m",
-      max: 0,
-      mkdir: true,
-    },
-  });
-
+  mkdirSync(logsDir, { recursive: true });
+  const logFile = join(logsDir, "app.log");
+  const dest = pino.destination(logFile);
   return pino({
     name: "robotops",
-    level: options.level ?? process.env.LOG_LEVEL ?? (isDev ? "debug" : "info"),
+    level,
     timestamp: pino.stdTimeFunctions.isoTime,
-    transport: { targets },
-  });
+  }, dest);
 }
 
 export const logger: Logger = new Proxy({} as Logger, {

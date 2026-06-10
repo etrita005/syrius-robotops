@@ -22,7 +22,7 @@ import {
   type TaskDefinition,
   type TaskTypeDescriptor,
 } from "../types/task.js";
-import { getDagConfig } from "../types/taskDag.js";
+import { getTaskTypeDefinition } from "../data/taskRegistry.js";
 
 const POLL_INTERVAL_MS = 10_000;
 const TICK_INTERVAL_MS = 1_000;
@@ -187,10 +187,11 @@ export function useTasks(solutionId: string | null) {
     ): Promise<TaskDefinition[]> => {
       if (!solutionId) throw new Error("No active solution");
 
-      const dagConfig = getDagConfig(taskType.type);
-      const dag = dagConfig.dag as unknown as Record<string, unknown>;
-      const { expectedResults } = dagConfig;
-      const errorDag = dagConfig.errorDag as unknown as Record<string, unknown> | undefined;
+      const definition = getTaskTypeDefinition(taskType.type);
+      if (!definition) throw new Error(`Unknown task type: ${taskType.type}`);
+      const dag = definition.dag as unknown as Record<string, unknown>;
+      const { expectedResults } = definition;
+      const errorDag = definition.errorDag as unknown as Record<string, unknown> | undefined;
 
       const summaries: FlowSummary[] = [];
 

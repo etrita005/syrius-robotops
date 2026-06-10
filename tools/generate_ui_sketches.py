@@ -612,7 +612,7 @@ def page_tasks_list():
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# Tasks: 02 — Create Task Step 1: Select Robots
+# Tasks: 02 — Create Task Step 1: Select Task Type
 # ---------------------------------------------------------------------------
 def page_create_task_step1():
     W, H = 1200, 800
@@ -623,12 +623,53 @@ def page_create_task_step1():
     mx, my, mw, mh = 300, 120, 600, 560
     draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
     draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
-    draw_step_indicator(draw, mx, my + 60, ["Robots", "Type", "Params", "Confirm"], 1)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 1)
 
-    draw.text((mx + 24, my + 110), "Step 1: Select Robots", fill="#161616", font=FONT_MD)
-    draw_input(draw, (mx + 24, my + 150, mx + mw - 24, my + 184), placeholder="Search robots...")
+    draw.text((mx + 24, my + 110), "Step 1: Select Task Type", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "The task type determines robot selection mode and parameters.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 158, mx + mw - 24, my + 192), placeholder="Search task types...")
 
-    y = my + 200
+    types = [
+        ("Upgrade BUP", "Upgrade the BUP firmware on selected robots.", "Multiple robots"),
+        ("Upgrade Movebase", "Upgrade the Movebase software on selected robots.", "Single robot"),
+    ]
+    for i, (name, desc, mode_label) in enumerate(types):
+        y = my + 208 + i * 100
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 80], fill="white", outline="#c6c6c6", width=2 if i == 0 else 1)
+        if i == 0:
+            draw.ellipse([mx + 40, y + 28, mx + 56, y + 44], fill="#0f62fe")
+        else:
+            draw.ellipse([mx + 40, y + 28, mx + 56, y + 44], outline="#8d8d8d", width=1)
+        draw.text((mx + 70, y + 14), name, fill="#161616", font=FONT_MD)
+        draw.text((mx + 70, y + 36), desc, fill="#525252", font=FONT_SM)
+        draw.text((mx + 70, y + 56), f"Robot selection: {mode_label}", fill="#8d8d8d", font=FONT_SM)
+
+    draw_button(draw, (mx + mw - 220, my + mh - 60, mx + mw - 120, my + mh - 28), "Cancel")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+
+    path = os.path.join(TASKS_DIR, "02_create_task_step1.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Tasks: 03 — Create Task Step 2: Select Robots
+# ---------------------------------------------------------------------------
+def page_create_task_step2():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 2)
+
+    draw.text((mx + 24, my + 110), "Step 2: Select Robots", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "Task type: Upgrade BUP (Multiple robots)", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 158, mx + mw - 24, my + 192), placeholder="Search robots...")
+
+    y = my + 208
     draw.rectangle([mx + 24, y, mx + mw - 24, y + 36], fill="#e0e0e0")
     for text, cx in [("", mx + 40), ("Alias", mx + 80), ("Address", mx + 220), ("Model", mx + 380)]:
         draw.text((cx, y + 8), text, fill="#161616", font=FONT_MD)
@@ -645,7 +686,7 @@ def page_create_task_step1():
         (False, "AGV-04", "192.168.1.104:22", "X100"),
     ]
     for i, (checked, alias, address, model) in enumerate(robots):
-        y = my + 240 + i * 44
+        y = my + 248 + i * 44
         fill = "white" if i % 2 == 0 else "#fafafa"
         draw.rectangle([mx + 24, y, mx + mw - 24, y + 40], fill=fill, outline="#e0e0e0", width=1)
         cb_x, cb_y = mx + 40, y + 10
@@ -657,44 +698,6 @@ def page_create_task_step1():
         draw.text((mx + 380, y + 10), model, fill="#525252", font=FONT_SM)
 
     draw.text((mx + 24, my + mh - 80), "2 robots selected", fill="#525252", font=FONT_SM)
-    draw_button(draw, (mx + mw - 220, my + mh - 60, mx + mw - 120, my + mh - 28), "Cancel")
-    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
-
-    path = os.path.join(TASKS_DIR, "02_create_task_step1.png")
-    img.save(path)
-    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
-
-# ---------------------------------------------------------------------------
-# Tasks: 03 — Create Task Step 2: Select Task Type
-# ---------------------------------------------------------------------------
-def page_create_task_step2():
-    W, H = 1200, 800
-    img = Image.new("RGB", (W, H), "#f4f4f4")
-    draw = ImageDraw.Draw(img)
-    page_tasks_list()
-    draw.rectangle([0, 0, W, H], fill="#00000080")
-    mx, my, mw, mh = 300, 120, 600, 560
-    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
-    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
-    draw_step_indicator(draw, mx, my + 60, ["Robots", "Type", "Params", "Confirm"], 2)
-
-    draw.text((mx + 24, my + 110), "Step 2: Select Task Type", fill="#161616", font=FONT_MD)
-    draw_input(draw, (mx + 24, my + 140, mx + mw - 24, my + 174), placeholder="Search task types...")
-
-    types = [
-        ("Upgrade BUP", "Upgrade the BUP firmware on selected robots."),
-        ("Upgrade Movebase", "Upgrade the Movebase software on selected robots."),
-    ]
-    for i, (name, desc) in enumerate(types):
-        y = my + 190 + i * 100
-        draw.rectangle([mx + 24, y, mx + mw - 24, y + 80], fill="white", outline="#c6c6c6", width=2 if i == 0 else 1)
-        if i == 0:
-            draw.ellipse([mx + 40, y + 28, mx + 56, y + 44], fill="#0f62fe")
-        else:
-            draw.ellipse([mx + 40, y + 28, mx + 56, y + 44], outline="#8d8d8d", width=1)
-        draw.text((mx + 70, y + 16), name, fill="#161616", font=FONT_MD)
-        draw.text((mx + 70, y + 44), desc, fill="#525252", font=FONT_SM)
-
     draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
     draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
 
@@ -714,14 +717,14 @@ def page_create_task_step3():
     mx, my, mw, mh = 300, 120, 600, 560
     draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
     draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
-    draw_step_indicator(draw, mx, my + 60, ["Robots", "Type", "Params", "Confirm"], 3)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 3)
 
     draw.text((mx + 24, my + 110), "Step 3: Configure Parameters", fill="#161616", font=FONT_MD)
-    draw.text((mx + 24, my + 135), "Task: Upgrade BUP", fill="#525252", font=FONT_SM)
-    draw.text((mx + 24, my + 152), "Parameters are rendered dynamically based on task type.", fill="#8d8d8d", font=FONT_SM)
-    draw.text((mx + 24, my + 180), "Select an artifact file:", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 132), "Task: Upgrade BUP", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 148), "Parameters are rendered dynamically based on task type.", fill="#8d8d8d", font=FONT_SM)
+    draw.text((mx + 24, my + 172), "Artifact file *", fill="#161616", font=FONT_MD)
 
-    y = my + 210
+    y = my + 200
     draw.rectangle([mx + 24, y, mx + mw - 24, y + 36], fill="#e0e0e0")
     for text, cx in [("Name", mx + 40), ("Type", mx + 240), ("Size", mx + 380), ("Created", mx + 480)]:
         draw.text((cx, y + 8), text, fill="#161616", font=FONT_MD)
@@ -732,7 +735,7 @@ def page_create_task_step3():
         (False, "map_floor_2.zip", "Map", "45.2 MB", "2026-05-26"),
     ]
     for i, (checked, name, typ, size, created) in enumerate(artifacts):
-        y = my + 250 + i * 44
+        y = my + 240 + i * 44
         fill = "white" if i % 2 == 0 else "#fafafa"
         draw.rectangle([mx + 24, y, mx + mw - 24, y + 40], fill=fill, outline="#e0e0e0", width=1)
         cb_x, cb_y = mx + 40, y + 10
@@ -763,13 +766,13 @@ def page_create_task_step4():
     mx, my, mw, mh = 300, 120, 600, 560
     draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
     draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
-    draw_step_indicator(draw, mx, my + 60, ["Robots", "Type", "Params", "Confirm"], 4)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 4)
 
     draw.text((mx + 24, my + 110), "Step 4: Confirm", fill="#161616", font=FONT_MD)
 
     fields = [
-        ("Target Robots", "AGV-01, AGV-03"),
         ("Task Type", "Upgrade BUP"),
+        ("Target Robots", "AGV-01, AGV-03"),
         ("Artifact", "bup_v2.3.1.bin (12.5 MB)"),
     ]
     fy = my + 160

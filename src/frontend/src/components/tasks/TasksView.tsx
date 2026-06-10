@@ -18,8 +18,9 @@ import {
 } from "@carbon/react";
 import { useTasks } from "../../hooks/useTasks.js";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
-import type { TaskDefinition, TaskTypeDescriptor } from "../../types/task.js";
-import { TASK_TYPES } from "../../types/task.js";
+import type { TaskDefinition } from "../../types/task.js";
+import type { TaskTypeDefinition } from "../../data/taskRegistry.js";
+import { getTaskTypeDefinitions } from "../../data/taskRegistry.js";
 import CreateTaskModal from "./CreateTaskModal.js";
 
 interface TasksViewProps {
@@ -248,7 +249,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
 
   const handleCreateTask = async (
     robotIds: string[],
-    taskType: TaskTypeDescriptor,
+    taskType: TaskTypeDefinition,
     params: Record<string, string>
   ) => {
     const createdTasks = await createTask(robotIds, taskType, params);
@@ -507,7 +508,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
       <CreateTaskModal
         open={createModalOpen}
         solutionId={solutionId}
-        taskTypes={TASK_TYPES}
+        taskTypes={getTaskTypeDefinitions()}
         onClose={() => setCreateModalOpen(false)}
         onCreate={handleCreateTask}
       />
