@@ -4,8 +4,8 @@
 }
 
 @keyframes upload-pulse {
-  0%, 100% { border-color: #0f62fe; background-color: #f4f4f4; }
-  50%      { border-color: #78a9ff; background-color: #e8f0fe; }
+  0%, 100% { border-color: #0f62fe; box-shadow: inset 0 0 0 1px rgba(15, 98, 254, 0.1); }
+  50%      { border-color: #78a9ff; box-shadow: inset 0 0 0 1px rgba(120, 169, 255, 0.2); }
 }
 
 @keyframes step-fade-in {

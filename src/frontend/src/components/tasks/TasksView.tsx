@@ -17,6 +17,7 @@ import {
 } from "@carbon/react";
 import { useTasks } from "../../hooks/useTasks.js";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 import { useToast } from "../../hooks/useToast.js";
 import type { TaskDefinition } from "../../types/task.js";
 import type { TaskTypeDefinition } from "../../data/taskRegistry.js";
@@ -75,6 +76,10 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
   const [deleteTarget, setDeleteTarget] = useState<TaskDefinition | null>(null);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const { showToast } = useToast();
+
+  const bgPending = useThemeColor("#e0e0e0", "#525252");
+  const textSecondary = useThemeColor("#525252", "#c6c6c6");
+  const textTertiary = useThemeColor("#6f6f6f", "#a8a8a8");
 
   useEffect(() => {
     if (error) {
@@ -232,7 +237,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
         borderRadius: "4px",
         fontSize: "0.75rem",
         fontWeight: 600,
-        backgroundColor: STATE_COLORS[state] ?? "#e0e0e0",
+        backgroundColor: state === "PENDING" ? bgPending : (STATE_COLORS[state] ?? "#e0e0e0"),
         color: STATE_TEXT_COLORS[state] ?? "#161616",
         textTransform: "uppercase",
         position: "relative",
@@ -313,7 +318,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
           </a>
         </BreadcrumbItem>
         <BreadcrumbItem>
-          <span style={{ color: "#525252" }}>{activeMeta?.name ?? solutionId}</span>
+          <span style={{ color: textSecondary }}>{activeMeta?.name ?? solutionId}</span>
         </BreadcrumbItem>
         <BreadcrumbItem isCurrentPage>
           <span>Tasks</span>
@@ -342,8 +347,8 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
             gap: "1rem",
           }}
         >
-          <p style={{ fontSize: "1.25rem", color: "#525252" }}>No tasks yet</p>
-          <p style={{ color: "#6f6f6f" }}>
+          <p style={{ fontSize: "1.25rem", color: textSecondary }}>No tasks yet</p>
+          <p style={{ color: textTertiary }}>
             Create tasks to upgrade robots in this solution.
           </p>
           <Button onClick={() => setCreateModalOpen(true)}>Create your first task</Button>
@@ -374,7 +379,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
             <Button onClick={() => setCreateModalOpen(true)}>Create Task</Button>
             {selectedIds.size > 0 && (
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                <span style={{ padding: "0.5rem 0", color: "#525252", fontSize: "0.875rem" }}>
+                <span style={{ padding: "0.5rem 0", color: textSecondary, fontSize: "0.875rem" }}>
                   {selectedIds.size} selected
                 </span>
                 <Button kind="secondary" size="sm" onClick={() => handleBatchAction("pause")}>

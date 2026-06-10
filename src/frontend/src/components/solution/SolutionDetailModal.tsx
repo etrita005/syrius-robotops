@@ -11,6 +11,7 @@ import {
 } from "@carbon/react";
 import { SolutionMeta } from "../../types/solution.js";
 import { solutionApi } from "../../api/solutionApi.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 interface SolutionDetailModalProps {
   solution: SolutionMeta | null;
@@ -28,6 +29,8 @@ export function SolutionDetailModal({
   const [description, setDescription] = useState(solution?.description ?? "");
   const [tagsInput, setTagsInput] = useState(solution?.tags.join(", ") ?? "");
   const [saving, setSaving] = useState(false);
+
+  const codeBg = useThemeColor("#f4f4f4", "#262626");
 
   if (!solution) return null;
 
@@ -95,7 +98,7 @@ export function SolutionDetailModal({
             {Object.keys(solution.metadata).length > 0 && (
               <div>
                 <strong>Metadata:</strong>
-                <pre style={{ fontSize: "0.75rem", background: "#f4f4f4", padding: "0.5rem", borderRadius: "4px" }}>
+                <pre style={{ fontSize: "0.75rem", background: codeBg, padding: "0.5rem", borderRadius: "4px" }}>
                   {JSON.stringify(solution.metadata, null, 2)}
                 </pre>
               </div>

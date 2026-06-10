@@ -7,6 +7,7 @@ import {
   ModalFooter,
 } from "@carbon/react";
 import { RecentSolutionEntry } from "../../types/solution.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 interface RecentSolutionsDropdownProps {
   entries: RecentSolutionEntry[];
@@ -20,6 +21,9 @@ export function RecentSolutionsDropdown({
   onRemove,
 }: RecentSolutionsDropdownProps) {
   const [open, setOpen] = useState(false);
+
+  const borderLight = useThemeColor("#e0e0e0", "#393939");
+  const textTertiary = useThemeColor("#8d8d8d", "#a0a0a0");
 
   if (entries.length === 0) return null;
 
@@ -40,7 +44,7 @@ export function RecentSolutionsDropdown({
                   justifyContent: "space-between",
                   alignItems: "center",
                   padding: "0.75rem",
-                  border: "1px solid #e0e0e0",
+                  border: `1px solid ${borderLight}`,
                   borderRadius: "4px",
                   cursor: "pointer",
                 }}
@@ -51,7 +55,7 @@ export function RecentSolutionsDropdown({
               >
                 <div>
                   <div style={{ fontWeight: 600 }}>{entry.name}</div>
-                  <div style={{ fontSize: "0.75rem", color: "#8d8d8d" }}>
+                   <div style={{ fontSize: "0.75rem", color: textTertiary }}>
                     {new Date(entry.accessedAt).toLocaleString()}
                   </div>
                 </div>

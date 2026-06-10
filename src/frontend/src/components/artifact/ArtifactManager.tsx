@@ -20,6 +20,7 @@ import { TrashCan, View, Download } from "@carbon/react/icons";
 import { ArtifactMeta } from "../../types/artifact.js";
 import { artifactApi } from "../../api/artifactApi.js";
 import { useToast } from "../../hooks/useToast.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 interface ArtifactManagerProps {
   artifacts: ArtifactMeta[];
@@ -44,6 +45,9 @@ export function ArtifactManager({
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [showUnreferencedOnly, setShowUnreferencedOnly] = useState(false);
   const { showToast } = useToast();
+
+  const textTertiary = useThemeColor("#8d8d8d", "#a0a0a0");
+  const codeBg = useThemeColor("#f4f4f4", "#262626");
 
   useEffect(() => {
     if (error) {
@@ -158,7 +162,7 @@ export function ArtifactManager({
         >
           Type: {typeFilter}
         </span>
-        <span style={{ color: "#8d8d8d", fontSize: "0.875rem" }}>|</span>
+        <span style={{ color: textTertiary, fontSize: "0.875rem" }}>|</span>
         <span
           onClick={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
           style={{
@@ -170,7 +174,7 @@ export function ArtifactManager({
         >
           Sort: {sortOrder === "desc" ? "Recent" : "Oldest"}
         </span>
-        <span style={{ color: "#8d8d8d", fontSize: "0.875rem" }}>|</span>
+        <span style={{ color: textTertiary, fontSize: "0.875rem" }}>|</span>
         <span
           onClick={() => setShowUnreferencedOnly((v) => !v)}
           style={{
@@ -201,65 +205,69 @@ export function ArtifactManager({
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map((row) => {
-                const rowProps = getRowProps({ row });
-                const { key: rowKey, ...rowRest } = rowProps;
-                return (
-                  <TableRow key={rowKey} {...rowRest}>
-                  {row.cells.map((cell) => {
-                    if (cell.info.header === "refCount") {
-                      const val = cell.value as number;
+                {rows.map((row) => {
+                  const rowProps = getRowProps({ row });
+                  const { key: rowKey, ...rowRest } = rowProps;
+                  return (
+                    <TableRow key={rowKey} {...rowRest}>
+                    {row.cells.map((cell) => {
+                      if (cell.info.header === "refCount") {
+                        const val = cell.value as number;
+                        const refCellProps = getCellProps({ cell });
+                        const { key: refCellKey, ...refCellRest } = refCellProps;
+                        return (
+                          <TableCell key={refCellKey} {...refCellRest}>
+                            {val}
+                            {val === 0 && (
+                              <Tag type="gray" size="sm" style={{ marginLeft: "0.5rem" }}>
+                                Unreferenced
+                              </Tag>
+                            )}
+                          </TableCell>
+                        );
+                      }
+                      if (cell.info.header === "actions") {
+                        const meta = artifactMap.get(row.id);
+                        return (
+                          <TableCell key={cell.id}>
+                            <Button
+                              size="sm"
+                              kind="ghost"
+                              renderIcon={View}
+                              iconDescription="View"
+                              hasIconOnly
+                              onClick={() => meta && setSelectedArtifact(meta)}
+                            />
+                            <Button
+                              size="sm"
+                              kind="ghost"
+                              renderIcon={Download}
+                              iconDescription="Download"
+                              hasIconOnly
+                              onClick={() => meta && handleDownload(meta.id)}
+                            />
+                            <Button
+                              size="sm"
+                              kind="ghost"
+                              renderIcon={TrashCan}
+                              iconDescription="Delete"
+                              hasIconOnly
+                              onClick={() => meta && setShowDelete(meta)}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      const cellProps = getCellProps({ cell });
+                      const { key: cellKey, ...cellRest } = cellProps;
                       return (
-                        <TableCell {...getCellProps({ cell })}>
-                          {val}
-                          {val === 0 && (
-                            <Tag type="gray" size="sm" style={{ marginLeft: "0.5rem" }}>
-                              Unreferenced
-                            </Tag>
-                          )}
+                        <TableCell key={cellKey} {...cellRest}>
+                          {cell.value}
                         </TableCell>
                       );
-                    }
-                    if (cell.info.header === "actions") {
-                      const meta = artifactMap.get(row.id);
-                      return (
-                        <TableCell key={cell.id}>
-                          <Button
-                            size="sm"
-                            kind="ghost"
-                            renderIcon={View}
-                            iconDescription="View"
-                            hasIconOnly
-                            onClick={() => meta && setSelectedArtifact(meta)}
-                          />
-                          <Button
-                            size="sm"
-                            kind="ghost"
-                            renderIcon={Download}
-                            iconDescription="Download"
-                            hasIconOnly
-                            onClick={() => meta && handleDownload(meta.id)}
-                          />
-                          <Button
-                            size="sm"
-                            kind="ghost"
-                            renderIcon={TrashCan}
-                            iconDescription="Delete"
-                            hasIconOnly
-                            onClick={() => meta && setShowDelete(meta)}
-                          />
-                        </TableCell>
-                      );
-                    }
-                    return (
-                      <TableCell {...getCellProps({ cell })}>
-                        {cell.value}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-                );
-              })}
+                    })}
+                  </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
         )}
@@ -289,7 +297,7 @@ export function ArtifactManager({
               {Object.keys(selectedArtifact.metadata).length > 0 && (
                 <div>
                   <strong>Metadata:</strong>
-                  <pre style={{ fontSize: "0.75rem", background: "#f4f4f4", padding: "0.5rem", borderRadius: "4px" }}>
+                  <pre style={{ fontSize: "0.75rem", background: codeBg, padding: "0.5rem", borderRadius: "4px" }}>
                     {JSON.stringify(selectedArtifact.metadata, null, 2)}
                   </pre>
                 </div>

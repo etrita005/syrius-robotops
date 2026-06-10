@@ -18,6 +18,7 @@ import {
 } from "@carbon/react";
 import { ArtifactMeta } from "../../types/artifact.js";
 import { artifactApi } from "../../api/artifactApi.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 interface ArtifactSelectorProps {
   open: boolean;
@@ -38,6 +39,7 @@ export function ArtifactSelector({
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const rowSelectedBg = useThemeColor("#e8f0fe", "#1a2a3a");
 
   useEffect(() => {
     if (open) {
@@ -117,7 +119,7 @@ export function ArtifactSelector({
                       onClick={() => setSelectedId(row.id)}
                       style={{
                         cursor: "pointer",
-                        background: selectedId === row.id ? "#e8f0fe" : undefined,
+                        background: selectedId === row.id ? rowSelectedBg : undefined,
                       }}
                     >
                       <TableCell>

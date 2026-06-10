@@ -16,6 +16,7 @@ import { Add, Export, Copy, TrashCan } from "@carbon/react/icons";
 import { SolutionMeta, CreateSolutionInput } from "../../types/solution.js";
 import { solutionApi } from "../../api/solutionApi.js";
 import { useToast } from "../../hooks/useToast.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 interface SolutionSelectorProps {
   solutions: SolutionMeta[];
@@ -43,6 +44,11 @@ export function SolutionSelector({
     tags: [],
   });
   const { showToast } = useToast();
+
+  const bgCard = useThemeColor("#fff", "#262626");
+  const borderCard = useThemeColor("#e0e0e0", "#393939");
+  const textSecondary = useThemeColor("#525252", "#c6c6c6");
+  const textTertiary = useThemeColor("#8d8d8d", "#a0a0a0");
 
   useEffect(() => {
     if (corruptedIds.length > 0) {
@@ -148,7 +154,7 @@ export function SolutionSelector({
               style={{
                 textAlign: "center",
                 padding: "4rem",
-                color: "#8d8d8d",
+                          color: textTertiary,
               }}
             >
               <p style={{ fontSize: "1.25rem", marginBottom: "1rem" }}>
@@ -162,10 +168,10 @@ export function SolutionSelector({
                 <div
                   key={solution.id}
                   style={{
-                    border: "1px solid #e0e0e0",
+                    border: `1px solid ${borderCard}`,
                     borderRadius: "4px",
                     padding: "1.25rem",
-                    background: "#fff",
+                    background: bgCard,
                     transition: "box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease",
                     cursor: "auto",
                   }}
@@ -175,7 +181,7 @@ export function SolutionSelector({
                     (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = "#e0e0e0";
+                    (e.currentTarget as HTMLElement).style.borderColor = borderCard;
                     (e.currentTarget as HTMLElement).style.boxShadow = "none";
                     (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
                   }}
@@ -194,7 +200,7 @@ export function SolutionSelector({
                       {solution.description && (
                         <p
                           style={{
-                            color: "#525252",
+                            color: textSecondary,
                             marginTop: "0.25rem",
                             maxWidth: "600px",
                             overflow: "hidden",
@@ -222,7 +228,7 @@ export function SolutionSelector({
                       <p
                         style={{
                           fontSize: "0.75rem",
-                          color: "#8d8d8d",
+                color: textTertiary,
                           marginTop: "0.5rem",
                         }}
                       >

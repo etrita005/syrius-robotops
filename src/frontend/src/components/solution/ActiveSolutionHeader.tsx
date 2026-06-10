@@ -11,11 +11,17 @@ import { Switcher } from "@carbon/react/icons";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
 import { useRecentSolutions } from "../../hooks/useRecentSolutions.js";
 import { RecentSolutionEntry } from "../../types/solution.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 export function ActiveSolutionHeader() {
   const { activeId, activeMeta, activate, deactivate } = useActiveSolution();
   const { entries, recordAccess, remove } = useRecentSolutions();
   const [showSwitcher, setShowSwitcher] = useState(false);
+
+  const bannerBg = useThemeColor("#e0e0e0", "#393939");
+  const bannerText = useThemeColor("#161616", "#f4f4f4");
+  const textTertiary = useThemeColor("#8d8d8d", "#a0a0a0");
+  const borderLight = useThemeColor("#e0e0e0", "#393939");
 
   if (!activeId) return null;
 
@@ -26,8 +32,8 @@ export function ActiveSolutionHeader() {
         alignItems: "center",
         gap: "1rem",
         padding: "0 1rem",
-        background: "#e0e0e0",
-        color: "#161616",
+        background: bannerBg,
+        color: bannerText,
         height: "48px",
       }}
     >
@@ -62,7 +68,7 @@ export function ActiveSolutionHeader() {
         <ModalBody>
           <div className="modal-content-enter">
           {entries.length === 0 ? (
-            <p style={{ color: "#8d8d8d" }}>No recent solutions.</p>
+            <p style={{ color: textTertiary }}>No recent solutions.</p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
               {entries.map((entry: RecentSolutionEntry) => (
@@ -73,7 +79,7 @@ export function ActiveSolutionHeader() {
                     justifyContent: "space-between",
                     alignItems: "center",
                     padding: "0.5rem",
-                    border: "1px solid #e0e0e0",
+                    border: `1px solid ${borderLight}`,
                     borderRadius: "4px",
                     cursor: "pointer",
                   }}
@@ -91,7 +97,7 @@ export function ActiveSolutionHeader() {
                     <span
                       style={{
                         fontSize: "0.75rem",
-                        color: "#8d8d8d",
+                        color: textTertiary,
                         marginLeft: "0.5rem",
                       }}
                     >

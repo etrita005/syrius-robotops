@@ -55,6 +55,10 @@ export default function App() {
   const [inWorkspace, setInWorkspace] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
 
+  const isDark = theme === "g100";
+  const textSecondary = isDark ? "#c6c6c6" : "#525252";
+  const textTertiary = isDark ? "#a0a0a0" : "#8d8d8d";
+
   const solutionsState = useSolutions();
   const artifactsState = useArtifacts();
 
@@ -148,6 +152,19 @@ export default function App() {
           .cds--header__nav {
             display: flex !important;
           }
+          html, body, #root, #root > .cds--white, #root > .cds--g100 {
+            background-color: ${isDark ? "#161616" : "#ffffff"};
+            height: 100%;
+            margin: 0;
+          }
+          #root > .cds--white, #root > .cds--g100 {
+            display: flex;
+            flex-direction: column;
+          }
+          #main-content {
+            flex: 1;
+            min-height: 0;
+          }
         `}</style>
         <a href="#main-content" className="cds--visually-hidden">
           Skip to main content
@@ -207,7 +224,7 @@ export default function App() {
         {activeId && inWorkspace && <ActiveSolutionHeader />}
 
         {inWorkspace && activeId ? (
-          <div id="main-content" style={{ height: "calc(100vh - 96px)" }}>
+          <div id="main-content" style={{ overflow: "hidden" }}>
             {renderSolutionContent()}
           </div>
         ) : (
@@ -218,7 +235,7 @@ export default function App() {
                 <h1 style={{ fontSize: "1.75rem", fontWeight: 600, marginBottom: "0.5rem" }}>
                   Artifact Manager
                 </h1>
-                <p style={{ color: "#525252", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
+                <p style={{ color: textSecondary, fontSize: "0.875rem", marginBottom: "1.5rem" }}>
                   Global binary artifacts shared across all solutions.
                 </p>
                 <UploadDropZone onUploadComplete={artifactsState.refresh} />

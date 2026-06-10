@@ -17,6 +17,7 @@ import {
   Tag,
 } from "@carbon/react";
 import { RobotDefinition, formatAddressDisplay, parseAddressInput, formatInfoValue } from "../../types/robot.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 interface RobotDetailModalProps {
   open: boolean;
@@ -32,6 +33,8 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
   const [addressInvalid, setAddressInvalid] = useState(false);
   const [addressInvalidText, setAddressInvalidText] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const textSecondary = useThemeColor("#525252", "#c6c6c6");
 
   useEffect(() => {
     if (open && robot) {
@@ -107,7 +110,7 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
   const renderKeyValueList = (obj: Record<string, string>) => {
     return Object.entries(obj).map(([k, v]) => (
       <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "0.25rem 0" }}>
-        <span style={{ color: "#525252" }}>{k}</span>
+        <span style={{ color: textSecondary }}>{k}</span>
         <span>{v}</span>
       </div>
     ));

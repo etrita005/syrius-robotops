@@ -5,6 +5,7 @@ import {
 import { artifactApi } from "../../api/artifactApi.js";
 import { UploadResult } from "../../types/artifact.js";
 import { useToast } from "../../hooks/useToast.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 interface UploadDropZoneProps {
   onUploadComplete?: () => void;
@@ -18,6 +19,12 @@ export function UploadDropZone({ onUploadComplete }: UploadDropZoneProps) {
   >([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
+
+  const dropBgNormal = useThemeColor("#f4f4f4", "#262626");
+  const dropBgDrag = useThemeColor("#e8f0fe", "#1a2a3a");
+  const dropText = useThemeColor("#0f62fe", "#78a9ff");
+  const dropTextHint = useThemeColor("#8d8d8d", "#a0a0a0");
+  const dropBorderDrag = useThemeColor("#002d9c", "#78a9ff");
 
   const handleFiles = useCallback(
     async (files: File[]) => {
@@ -112,11 +119,11 @@ export function UploadDropZone({ onUploadComplete }: UploadDropZoneProps) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         style={{
-          border: `2px dashed ${isDragOver ? "#002d9c" : "#0f62fe"}`,
+          border: `2px dashed ${isDragOver ? dropBorderDrag : dropText}`,
           borderRadius: "4px",
           padding: "1.5rem",
           textAlign: "center",
-          backgroundColor: isDragOver ? "#e8f0fe" : "#f4f4f4",
+          backgroundColor: isDragOver ? dropBgDrag : dropBgNormal,
           cursor: uploading ? "not-allowed" : "pointer",
           opacity: uploading ? 0.6 : 1,
           transition: "all 0.11s cubic-bezier(0.2, 0, 0.38, 0.9)",
@@ -130,10 +137,10 @@ export function UploadDropZone({ onUploadComplete }: UploadDropZoneProps) {
           onChange={handleChange}
           disabled={uploading}
         />
-        <p style={{ color: "#0f62fe", fontSize: "1rem", fontWeight: 400, margin: 0 }}>
+        <p style={{ color: dropText, fontSize: "1rem", fontWeight: 400, margin: 0 }}>
           Drag and drop files here or click to upload
         </p>
-        <p style={{ color: "#8d8d8d", fontSize: "0.875rem", margin: "0.25rem 0 0 0" }}>
+        <p style={{ color: dropTextHint, fontSize: "0.875rem", margin: "0.25rem 0 0 0" }}>
           Supports batch upload
         </p>
       </div>

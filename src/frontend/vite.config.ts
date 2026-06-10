@@ -5,6 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    headers: {
+      "Permissions-Policy": "unload=()",
+    },
     proxy: {
       "/api": {
         target: "http://localhost:30001",

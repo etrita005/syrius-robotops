@@ -13,6 +13,7 @@ import { formatAddressDisplay } from "../../types/robot.js";
 import type { ArtifactMeta } from "../../types/artifact.js";
 import { artifactApi } from "../../api/artifactApi.js";
 import { listRobots } from "../../api/robotApi.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 interface CreateTaskModalProps {
   open: boolean;
@@ -35,6 +36,21 @@ export default function CreateTaskModal({
   onClose,
   onCreate,
 }: CreateTaskModalProps) {
+  const bgCard = useThemeColor("white", "#262626");
+  const bgCardSelected = useThemeColor("#f0f7ff", "#1a2530");
+  const bgRowEven = useThemeColor("white", "#262626");
+  const bgRowOdd = useThemeColor("#fafafa", "#333333");
+  const bgHeader = useThemeColor("#e0e0e0", "#393939");
+  const borderLight = useThemeColor("#e0e0e0", "#393939");
+  const borderRow = useThemeColor("#f0f0f0", "#333333");
+  const borderDefault = useThemeColor("#c6c6c6", "#525252");
+  const borderRadio = useThemeColor("#8d8d8d", "#6f6f6f");
+  const textSecondary = useThemeColor("#525252", "#c6c6c6");
+  const textTertiary = useThemeColor("#8d8d8d", "#a0a0a0");
+  const textPrimary = useThemeColor("#161616", "#f4f4f4");
+  const stepInactive = useThemeColor("#c6c6c6", "#525252");
+  const stepBorder = useThemeColor("#161616", "#f4f4f4");
+
   const [step, setStep] = useState(1);
   const [robots, setRobots] = useState<StoredRobotData[]>([]);
   const [robotsLoading, setRobotsLoading] = useState(false);
@@ -211,7 +227,7 @@ export default function CreateTaskModal({
 
   const renderSelectTaskType = () => (
     <div>
-      <p style={{ marginBottom: "1rem", color: "#525252", fontSize: "0.875rem" }}>
+      <p style={{ marginBottom: "1rem", color: textSecondary, fontSize: "0.875rem" }}>
         Choose the type of task to execute. The task type determines robot selection mode and required parameters.
       </p>
       <TextInput
@@ -235,10 +251,10 @@ export default function CreateTaskModal({
                 alignItems: "center",
                 padding: "0.75rem 1rem",
                 marginBottom: "0.5rem",
-                border: isSelected ? "2px solid #0f62fe" : "1px solid #c6c6c6",
+                border: isSelected ? "2px solid #0f62fe" : `1px solid ${borderDefault}`,
                 borderRadius: "4px",
                 cursor: "pointer",
-                background: isSelected ? "#f0f7ff" : "white",
+                background: isSelected ? bgCardSelected : bgCard,
               }}
             >
               <div
@@ -246,8 +262,8 @@ export default function CreateTaskModal({
                   width: 18,
                   height: 18,
                   borderRadius: "50%",
-                  border: isSelected ? "none" : "1px solid #8d8d8d",
-                  background: isSelected ? "#0f62fe" : "white",
+                  border: isSelected ? "none" : `1px solid ${borderRadio}`,
+                  background: isSelected ? "#0f62fe" : bgCard,
                   marginRight: "0.75rem",
                   flexShrink: 0,
                   display: "flex",
@@ -256,15 +272,15 @@ export default function CreateTaskModal({
                 }}
               >
                 {isSelected && (
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "white" }} />
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: bgCard }} />
                 )}
               </div>
               <div>
                 <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>{tt.name}</div>
-                <div style={{ color: "#525252", fontSize: "0.8125rem", marginTop: "0.125rem" }}>
+                <div style={{ color: textSecondary, fontSize: "0.8125rem", marginTop: "0.125rem" }}>
                   {tt.description}
                 </div>
-                <div style={{ color: "#8d8d8d", fontSize: "0.75rem", marginTop: "0.125rem" }}>
+                <div style={{ color: textTertiary, fontSize: "0.75rem", marginTop: "0.125rem" }}>
                   Robot selection: {tt.robotSelection.mode === "single" ? "Single robot" : "Multiple robots"}
                 </div>
               </div>
@@ -272,7 +288,7 @@ export default function CreateTaskModal({
           );
         })}
         {filteredTaskTypes.length === 0 && (
-          <p style={{ color: "#525252", padding: "2rem", textAlign: "center" }}>
+          <p style={{ color: textSecondary, padding: "2rem", textAlign: "center" }}>
             No task types match your search.
           </p>
         )}
@@ -288,7 +304,7 @@ export default function CreateTaskModal({
 
     return (
       <div>
-        <p style={{ marginBottom: "1rem", color: "#525252", fontSize: "0.875rem" }}>
+        <p style={{ marginBottom: "1rem", color: textSecondary, fontSize: "0.875rem" }}>
           {selectedTaskType?.robotSelection.description ?? singleHint}
         </p>
         <TextInput
@@ -303,7 +319,7 @@ export default function CreateTaskModal({
         {robotsLoading ? (
           <InlineLoading description="Loading robots..." />
         ) : filteredRobots.length === 0 ? (
-          <p style={{ color: "#525252", padding: "2rem", textAlign: "center" }}>
+          <p style={{ color: textSecondary, padding: "2rem", textAlign: "center" }}>
             No robots found. Add robots to this solution first.
           </p>
         ) : (
@@ -314,8 +330,8 @@ export default function CreateTaskModal({
                   display: "flex",
                   alignItems: "center",
                   padding: "0.5rem 0",
-                  borderBottom: "1px solid #e0e0e0",
-                  background: "#e0e0e0",
+                  borderBottom: `1px solid ${borderLight}`,
+                  background: bgHeader,
                 }}
               >
                 <div style={{ width: 36, display: "flex", justifyContent: "center" }}>
@@ -326,7 +342,7 @@ export default function CreateTaskModal({
                     aria-label="Select all robots"
                   />
                 </div>
-                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#525252" }}>
+                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: textSecondary }}>
                   Select All
                 </span>
               </div>
@@ -339,8 +355,8 @@ export default function CreateTaskModal({
                     display: "flex",
                     alignItems: "center",
                     padding: "0.6rem 0",
-                    borderBottom: "1px solid #f0f0f0",
-                    background: i % 2 === 0 ? "white" : "#fafafa",
+                    borderBottom: `1px solid ${borderRow}`,
+                    background: i % 2 === 0 ? bgRowEven : bgRowOdd,
                   }}
                 >
                   <div style={{ width: 36, display: "flex", justifyContent: "center" }}>
@@ -363,14 +379,14 @@ export default function CreateTaskModal({
                   </div>
                   <div style={{ flex: 1 }}>
                     <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{robot.alias}</span>
-                    <span style={{ marginLeft: "1rem", color: "#525252", fontSize: "0.8125rem" }}>
+                    <span style={{ marginLeft: "1rem", color: textSecondary, fontSize: "0.8125rem" }}>
                       {formatAddressDisplay(robot.address, robot.port)}
                     </span>
                   </div>
                 </div>
               ))}
             </div>
-            <p style={{ marginTop: "0.75rem", color: "#525252", fontSize: "0.875rem" }}>
+            <p style={{ marginTop: "0.75rem", color: textSecondary, fontSize: "0.875rem" }}>
               {selectedRobotIds.size} robot{selectedRobotIds.size !== 1 ? "s" : ""} selected
             </p>
           </>
@@ -381,7 +397,7 @@ export default function CreateTaskModal({
 
   const renderConfigureParams = () => (
     <div>
-      <p style={{ marginBottom: "0.5rem", color: "#525252", fontSize: "0.875rem" }}>
+      <p style={{ marginBottom: "0.5rem", color: textSecondary, fontSize: "0.875rem" }}>
         Parameters are rendered dynamically based on the selected task type.
       </p>
       <p style={{ marginBottom: "1rem", fontWeight: 500, fontSize: "0.875rem" }}>
@@ -407,7 +423,7 @@ export default function CreateTaskModal({
               {artifactsLoading ? (
                 <InlineLoading description="Loading artifacts..." />
               ) : (
-                <div style={{ maxHeight: "180px", overflow: "auto", border: "1px solid #e0e0e0" }}>
+                <div style={{ maxHeight: "180px", overflow: "auto", border: `1px solid ${borderLight}` }}>
                   {filteredArtifacts.map((a, i) => {
                     const isSelected = params[paramKey] === a.id;
                     return (
@@ -419,8 +435,8 @@ export default function CreateTaskModal({
                           alignItems: "center",
                           padding: "0.6rem 0.75rem",
                           cursor: "pointer",
-                          background: isSelected ? "#f0f7ff" : i % 2 === 0 ? "white" : "#fafafa",
-                          borderBottom: "1px solid #f0f0f0",
+                          background: isSelected ? bgCardSelected : i % 2 === 0 ? bgRowEven : bgRowOdd,
+                          borderBottom: `1px solid ${borderRow}`,
                         }}
                       >
                         <div
@@ -428,7 +444,7 @@ export default function CreateTaskModal({
                             width: 16,
                             height: 16,
                             borderRadius: "50%",
-                            border: isSelected ? "5px solid #0f62fe" : "1px solid #8d8d8d",
+                            border: isSelected ? "5px solid #0f62fe" : `1px solid ${borderRadio}`,
                             marginRight: "0.75rem",
                             flexShrink: 0,
                           }}
@@ -436,20 +452,20 @@ export default function CreateTaskModal({
                         <div style={{ flex: 1 }}>
                           <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>{a.fileName}</span>
                         </div>
-                        <span style={{ color: "#525252", fontSize: "0.75rem", marginRight: "1rem" }}>
+                        <span style={{ color: textSecondary, fontSize: "0.75rem", marginRight: "1rem" }}>
                           {a.contentType}
                         </span>
-                        <span style={{ color: "#525252", fontSize: "0.75rem", marginRight: "1rem" }}>
+                        <span style={{ color: textSecondary, fontSize: "0.75rem", marginRight: "1rem" }}>
                           {formatFileSize(a.size)}
                         </span>
-                        <span style={{ color: "#525252", fontSize: "0.75rem" }}>
+                        <span style={{ color: textSecondary, fontSize: "0.75rem" }}>
                           {new Date(a.createdAt).toLocaleDateString()}
                         </span>
                       </div>
                     );
                   })}
                   {filteredArtifacts.length === 0 && !artifactsLoading && (
-                    <p style={{ padding: "1.5rem", textAlign: "center", color: "#525252", fontSize: "0.875rem" }}>
+                    <p style={{ padding: "1.5rem", textAlign: "center", color: textSecondary, fontSize: "0.875rem" }}>
                       No artifacts found. Upload artifacts in the Artifact Manager first.
                     </p>
                   )}
@@ -515,21 +531,21 @@ export default function CreateTaskModal({
 
     return (
       <div>
-        <p style={{ marginBottom: "1rem", color: "#525252", fontSize: "0.875rem" }}>
+        <p style={{ marginBottom: "1rem", color: textSecondary, fontSize: "0.875rem" }}>
           Review the task details before creating.
         </p>
         <div style={{ marginBottom: "1.5rem" }}>
           <div style={{ marginBottom: "0.75rem" }}>
-            <span style={{ color: "#525252", fontSize: "0.875rem" }}>Task Type: </span>
+            <span style={{ color: textSecondary, fontSize: "0.875rem" }}>Task Type: </span>
             <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{selectedTaskType?.name}</span>
           </div>
           <div style={{ marginBottom: "0.75rem" }}>
-            <span style={{ color: "#525252", fontSize: "0.875rem" }}>Target Robots: </span>
+            <span style={{ color: textSecondary, fontSize: "0.875rem" }}>Target Robots: </span>
             <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{robotList}</span>
           </div>
           {paramSummary.map(({ label, value }) => (
             <div key={label} style={{ marginBottom: "0.75rem" }}>
-              <span style={{ color: "#525252", fontSize: "0.875rem" }}>{label}: </span>
+              <span style={{ color: textSecondary, fontSize: "0.875rem" }}>{label}: </span>
               <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{value}</span>
             </div>
           ))}
@@ -576,14 +592,14 @@ export default function CreateTaskModal({
                       width: 24,
                       height: 24,
                       borderRadius: "50%",
-                      background: isActive ? "#0f62fe" : "#c6c6c6",
+                      background: isActive ? "#0f62fe" : stepInactive,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: "white",
+                      color: bgCard,
                       fontSize: "0.75rem",
                       fontWeight: 600,
-                      border: isCurrent ? "2px solid #161616" : "none",
+                      border: isCurrent ? `2px solid ${stepBorder}` : "none",
                     }}
                   >
                     {stepNum}
@@ -592,7 +608,7 @@ export default function CreateTaskModal({
                     style={{
                       fontSize: "0.75rem",
                       fontWeight: isCurrent ? 600 : 400,
-                      color: isActive ? "#161616" : "#8d8d8d",
+                      color: isActive ? textPrimary : textTertiary,
                     }}
                   >
                     {s}
@@ -603,7 +619,7 @@ export default function CreateTaskModal({
                     style={{
                       width: 40,
                       height: 1,
-                      background: "#c6c6c6",
+                      background: stepInactive,
                       margin: "0 0.5rem",
                     }}
                   />
@@ -623,7 +639,7 @@ export default function CreateTaskModal({
       </div>
 
       {step === 4 && (
-        <p style={{ marginTop: "1rem", color: "#525252", fontSize: "0.875rem" }}>
+        <p style={{ marginTop: "1rem", color: textSecondary, fontSize: "0.875rem" }}>
           Are you sure you want to create this task?
         </p>
       )}

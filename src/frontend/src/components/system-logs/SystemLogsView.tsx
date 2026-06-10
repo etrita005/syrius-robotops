@@ -11,6 +11,7 @@ import { useLogQuery } from "../../hooks/useLogQuery.js";
 import { systemLogApi } from "../../api/systemLogApi.js";
 import type { LogEntry, LogLevel, LogQueryRequest } from "../../types/systemLog.js";
 import { useToast } from "../../hooks/useToast.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 const LEVEL_COLORS: Record<LogLevel, string> = {
   trace: "#8d8d8d",
@@ -53,6 +54,17 @@ function toLocalDatetimeISO(iso: string): string {
 }
 
 export function SystemLogsView() {
+  const bgPanel = useThemeColor("white", "#262626");
+  const bgCard = useThemeColor("#fafafa", "#333333");
+  const bgTableHeader = useThemeColor("#f4f4f4", "#262626");
+  const bgFooter = useThemeColor("#f4f4f4", "#262626");
+  const bgSelect = useThemeColor("#f4f4f4", "#262626");
+  const borderPanel = useThemeColor("#e0e0e0", "#393939");
+  const borderRow = useThemeColor("#e8e8e8", "#333333");
+  const borderInput = useThemeColor("#8d8d8d", "#6f6f6f");
+  const textSecondary = useThemeColor("#525252", "#c6c6c6");
+  const textTertiary = useThemeColor("#8d8d8d", "#a0a0a0");
+
   const { files, loading: filesLoading, error: filesError } = useLogFiles();
   const { modules, loading: modulesLoading } = useLogModules();
 
@@ -151,17 +163,17 @@ export function SystemLogsView() {
     <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "1.5rem" }}>
       <div style={{ marginBottom: "1rem" }}>
         <h1 style={{ fontSize: "1.75rem", fontWeight: 600, margin: 0 }}>System Logs</h1>
-        <p style={{ color: "#525252", fontSize: "0.875rem", margin: "0.25rem 0 0" }}>
+        <p style={{ color: textSecondary, fontSize: "0.875rem", margin: "0.25rem 0 0" }}>
           Backend service runtime logs (read-only view of pino-roll output)
         </p>
       </div>
 
       <div style={{ display: "flex", gap: "1.5rem" }}>
-        <div style={{ width: "300px", flexShrink: 0, background: "white", border: "1px solid #e0e0e0", borderRadius: "4px", padding: "1rem" }}>
+        <div style={{ width: "300px", flexShrink: 0, background: bgPanel, border: `1px solid ${borderPanel}`, borderRadius: "4px", padding: "1rem" }}>
           <h3 style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", fontWeight: 600 }}>Log Files</h3>
           {filesLoading && <Loading small withOverlay={false} />}
           {!filesLoading && files.length === 0 && (
-            <p style={{ color: "#525252", fontSize: "0.8rem" }}>No log files found.</p>
+            <p style={{ color: textSecondary, fontSize: "0.8rem" }}>No log files found.</p>
           )}
           {files.map((f) => (
             <div
@@ -169,8 +181,8 @@ export function SystemLogsView() {
               style={{
                 padding: "0.5rem",
                 marginBottom: "0.5rem",
-                background: "#fafafa",
-                border: "1px solid #e0e0e0",
+                background: bgCard,
+                border: `1px solid ${borderPanel}`,
                 borderRadius: "4px",
                 fontSize: "0.8rem",
               }}
@@ -179,7 +191,7 @@ export function SystemLogsView() {
                 <span style={{ color: "#0f62fe", fontWeight: 500, fontSize: "0.85rem" }}>{f.name}</span>
                 {f.isActive && <Tag size="sm" type="green">ACTIVE</Tag>}
               </div>
-              <div style={{ color: "#525252", marginBottom: "0.25rem" }}>
+              <div style={{ color: textSecondary, marginBottom: "0.25rem" }}>
                 {f.size >= 1_000_000
                   ? `${(f.size / 1_000_000).toFixed(1)} MB`
                   : f.size >= 1_000
@@ -202,14 +214,14 @@ export function SystemLogsView() {
 
         <div style={{ flex: 1 }}>
           <div style={{
-            background: "white",
-            border: "1px solid #e0e0e0",
+            background: bgPanel,
+            border: `1px solid ${borderPanel}`,
             borderRadius: "4px",
             padding: "1rem",
             marginBottom: "1rem",
           }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem", alignItems: "center" }}>
-              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#525252", marginRight: "0.25rem" }}>
+              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: textSecondary, marginRight: "0.25rem" }}>
                 Time range
               </span>
               <select
@@ -219,10 +231,10 @@ export function SystemLogsView() {
                 }}
                 style={{
                   padding: "4px 8px",
-                  border: "1px solid #8d8d8d",
+                  border: `1px solid ${borderInput}`,
                   borderRadius: "4px",
                   fontSize: "0.8rem",
-                  background: "#f4f4f4",
+                  background: bgSelect,
                 }}
               >
                 {QUICK_RANGES.map((r, i) => (
@@ -235,14 +247,14 @@ export function SystemLogsView() {
                     type="datetime-local"
                     value={customFrom}
                     onChange={(e) => setCustomFrom(e.target.value)}
-                    style={{ padding: "4px 8px", border: "1px solid #8d8d8d", borderRadius: "4px", fontSize: "0.8rem" }}
+                    style={{ padding: "4px 8px", border: `1px solid ${borderInput}`, borderRadius: "4px", fontSize: "0.8rem" }}
                   />
                   <span style={{ fontSize: "0.8rem" }}>→</span>
                   <input
                     type="datetime-local"
                     value={customTo}
                     onChange={(e) => setCustomTo(e.target.value)}
-                    style={{ padding: "4px 8px", border: "1px solid #8d8d8d", borderRadius: "4px", fontSize: "0.8rem" }}
+                    style={{ padding: "4px 8px", border: `1px solid ${borderInput}`, borderRadius: "4px", fontSize: "0.8rem" }}
                   />
                 </>
               )}
@@ -281,10 +293,10 @@ export function SystemLogsView() {
                   }}
                   style={{
                     padding: "4px 8px",
-                    border: "1px solid #8d8d8d",
+                    border: `1px solid ${borderInput}`,
                     borderRadius: "4px",
                     fontSize: "0.8rem",
-                    background: "#f4f4f4",
+                    background: bgSelect,
                     minWidth: "160px",
                   }}
                 >
@@ -310,7 +322,7 @@ export function SystemLogsView() {
                   placeholder="keyword..."
                   style={{
                     padding: "4px 8px",
-                    border: "1px solid #8d8d8d",
+                    border: `1px solid ${borderInput}`,
                     borderRadius: "4px",
                     fontSize: "0.8rem",
                     width: "160px",
@@ -321,18 +333,19 @@ export function SystemLogsView() {
           </div>
 
           <div style={{
-            background: "white",
-            border: "1px solid #e0e0e0",
+            background: bgPanel,
+            border: `1px solid ${borderPanel}`,
             borderRadius: "4px",
             overflow: "auto",
+            padding: "0 1rem",
           }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+            <table style={{ minWidth: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
               <thead>
-                <tr style={{ background: "#f4f4f4" }}>
-                  <th style={{ padding: "8px 12px", textAlign: "left", borderBottom: "1px solid #e0e0e0", width: "100px" }}>Time</th>
-                  <th style={{ padding: "8px 12px", textAlign: "left", borderBottom: "1px solid #e0e0e0", width: "60px" }}>Level</th>
-                  <th style={{ padding: "8px 12px", textAlign: "left", borderBottom: "1px solid #e0e0e0", width: "120px" }}>Module</th>
-                  <th style={{ padding: "8px 12px", textAlign: "left", borderBottom: "1px solid #e0e0e0" }}>Message</th>
+                <tr style={{ background: bgTableHeader }}>
+                  <th style={{ padding: "8px 12px", textAlign: "left", borderBottom: `1px solid ${borderPanel}`, width: "100px" }}>Time</th>
+                  <th style={{ padding: "8px 12px", textAlign: "left", borderBottom: `1px solid ${borderPanel}`, width: "60px" }}>Level</th>
+                  <th style={{ padding: "8px 12px", textAlign: "left", borderBottom: `1px solid ${borderPanel}`, width: "120px" }}>Module</th>
+                  <th style={{ padding: "8px 12px", textAlign: "left", borderBottom: `1px solid ${borderPanel}` }}>Message</th>
                 </tr>
               </thead>
               <tbody>
@@ -345,7 +358,7 @@ export function SystemLogsView() {
                 )}
                 {!queryLoading && entries.length === 0 && (
                   <tr>
-                    <td colSpan={4} style={{ padding: "2rem", textAlign: "center", color: "#525252" }}>
+                    <td colSpan={4} style={{ padding: "2rem", textAlign: "center", color: textSecondary }}>
                       No log entries found for the selected time range.
                     </td>
                   </tr>
@@ -353,10 +366,10 @@ export function SystemLogsView() {
                 {entries.map((entry, idx) => (
                   <tr
                     key={`${entry.time}-${idx}`}
-                    style={{ borderBottom: "1px solid #e8e8e8" }}
+                    style={{ borderBottom: `1px solid ${borderRow}` }}
                     title={JSON.stringify(entry.extra, null, 2)}
                   >
-                    <td style={{ padding: "6px 12px", fontSize: "0.75rem", whiteSpace: "nowrap", color: "#525252" }}>
+                    <td style={{ padding: "6px 12px", fontSize: "0.75rem", whiteSpace: "nowrap", color: textSecondary }}>
                       {formatTime(entry.time)}
                     </td>
                     <td style={{ padding: "6px 12px" }}>
@@ -379,7 +392,7 @@ export function SystemLogsView() {
                     <td style={{ padding: "6px 12px", fontSize: "0.8rem" }}>
                       <span>{entry.msg}</span>
                       {Object.keys(entry.extra).length > 0 && (
-                        <span style={{ color: "#8d8d8d", fontSize: "0.75rem", marginLeft: "4px" }}>
+                        <span style={{ color: textTertiary, fontSize: "0.75rem", marginLeft: "4px" }}>
                           {JSON.stringify(entry.extra).substring(0, 80)}
                         </span>
                       )}
@@ -389,7 +402,7 @@ export function SystemLogsView() {
               </tbody>
             </table>
             {truncated && (
-              <div style={{ padding: "0.75rem", textAlign: "center", background: "#f4f4f4", borderTop: "1px solid #e0e0e0" }}>
+              <div style={{ padding: "0.75rem", textAlign: "center", background: bgFooter, borderTop: `1px solid ${borderPanel}` }}>
                 <Button size="sm" onClick={loadNextPage} disabled={queryLoading}>
                   Load more entries
                 </Button>

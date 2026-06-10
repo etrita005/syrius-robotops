@@ -145,8 +145,10 @@ export class SystemLogService {
     });
 
     files.sort((a, b) => {
-      const aNum = parseInt(a.name.match(/\d+/)![0], 10);
-      const bNum = parseInt(b.name.match(/\d+/)![0], 10);
+      const aMatch = a.name.match(/\d+/);
+      const bMatch = b.name.match(/\d+/);
+      const aNum = aMatch ? parseInt(aMatch[0], 10) : Infinity;
+      const bNum = bMatch ? parseInt(bMatch[0], 10) : Infinity;
       return bNum - aNum;
     });
 

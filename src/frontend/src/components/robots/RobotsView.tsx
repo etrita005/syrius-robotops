@@ -20,6 +20,7 @@ import { RobotDefinition, formatAddressDisplay, formatInfoValue } from "../../ty
 import AddRobotModal from "./AddRobotModal.js";
 import RobotDetailModal from "./RobotDetailModal.js";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
+import { useThemeColor } from "../../hooks/useThemeColors.js";
 import { useToast } from "../../hooks/useToast.js";
 
 interface RobotsViewProps {
@@ -73,6 +74,13 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
   const [editingAliasId, setEditingAliasId] = useState<string | null>(null);
   const [editingAliasValue, setEditingAliasValue] = useState("");
   const { showToast } = useToast();
+
+  const bgCard = useThemeColor("white", "#262626");
+  const borderCard = useThemeColor("#e0e0e0", "#393939");
+  const bgOffline = useThemeColor("#e0e0e0", "#525252");
+  const bgOfflineDot = useThemeColor("#8d8d8d", "#6f6f6f");
+  const textSecondary = useThemeColor("#525252", "#c6c6c6");
+  const textTertiary = useThemeColor("#6f6f6f", "#a8a8a8");
 
   useEffect(() => {
     if (error) {
@@ -179,8 +187,8 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
           <div
             key={robot.id}
             style={{
-              background: "white",
-              border: "1px solid #e0e0e0",
+              background: bgCard,
+              border: `1px solid ${borderCard}`,
               borderRadius: "4px",
               padding: "1rem",
               cursor: "pointer",
@@ -222,7 +230,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
                 width: 10,
                 height: 10,
                 borderRadius: "50%",
-                background: robot.online ? "#24a148" : "#8d8d8d",
+                background: robot.online ? "#24a148" : bgOfflineDot,
                 animation: robot.online ? "breathe 2s ease-in-out infinite" : undefined,
               }}
               title={robot.online ? "Online" : "Offline"}
@@ -240,11 +248,11 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
                   width: 56,
                   height: 56,
                   borderRadius: "50%",
-                  background: robot.online ? "#24a148" : "#e0e0e0",
+                  background: robot.online ? "#24a148" : bgOffline,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: robot.online ? "white" : "#8d8d8d",
+                  color: robot.online ? "white" : bgOfflineDot,
                   fontSize: "0.75rem",
                   marginBottom: "0.5rem",
                 }}
@@ -255,13 +263,13 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
             <div style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: "0.25rem" }}>
               {robot.alias}
             </div>
-            <div style={{ fontSize: "0.8125rem", color: "#525252", marginBottom: "0.25rem" }}>
+            <div style={{ fontSize: "0.8125rem", color: textSecondary, marginBottom: "0.25rem" }}>
               {formatAddressDisplay(robot.address, robot.port)} | {formatInfoValue(robot.model)}
             </div>
-            <div style={{ fontSize: "0.8125rem", color: "#525252", marginBottom: "0.25rem" }}>
+            <div style={{ fontSize: "0.8125rem", color: textSecondary, marginBottom: "0.25rem" }}>
               SN: {formatInfoValue(robot.robotSN)}
             </div>
-            <div style={{ fontSize: "0.8125rem", color: "#525252" }}>
+            <div style={{ fontSize: "0.8125rem", color: textSecondary }}>
               Movebase: {formatInfoValue(robot.movebaseVersion)}
             </div>
           </div>
@@ -301,7 +309,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
                 width: 8,
                 height: 8,
                 borderRadius: "50%",
-                background: r.online ? "#24a148" : "#8d8d8d",
+                background: r.online ? "#24a148" : bgOfflineDot,
                 flexShrink: 0,
                 animation: r.online ? "breathe 2s ease-in-out infinite" : undefined,
               }}
@@ -331,7 +339,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
                 width: 8,
                 height: 8,
                 borderRadius: "50%",
-                background: r.online ? "#24a148" : "#8d8d8d",
+                background: r.online ? "#24a148" : bgOfflineDot,
                 flexShrink: 0,
                 animation: r.online ? "breathe 2s ease-in-out infinite" : undefined,
               }}
@@ -452,7 +460,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
           </a>
         </BreadcrumbItem>
         <BreadcrumbItem>
-          <span style={{ color: "#525252" }}>
+          <span style={{ color: textSecondary }}>
             {activeMeta?.name ?? solutionId}
           </span>
         </BreadcrumbItem>
@@ -483,8 +491,8 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
             gap: "1rem",
           }}
         >
-          <p style={{ fontSize: "1.25rem", color: "#525252" }}>No robots yet</p>
-          <p style={{ color: "#6f6f6f" }}>
+          <p style={{ fontSize: "1.25rem", color: textSecondary }}>No robots yet</p>
+          <p style={{ color: textTertiary }}>
             Add robots to this solution to manage them.
           </p>
           <Button onClick={() => setAddOpen(true)}>Add your first robot</Button>
