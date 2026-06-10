@@ -19,6 +19,7 @@ export interface StoredRobotData {
 }
 
 export interface RobotDefinition extends StoredRobotData {
+  online: boolean;
   model: string;
   robotSN: string;
   thingsId: string;
@@ -56,8 +57,15 @@ export interface RobotBasicInfoResponse {
   mainSomSn: string;
 }
 
+export interface RobotSoftwareInfoResponse {
+  movebaseVersion: string;
+  minimalSystemVersion: string;
+  l4tVersion: string;
+}
+
 export interface RobotWithBasicInfoResponse extends StoredRobotData {
   basicInfo: RobotBasicInfoResponse | null;
+  softwareInfo: RobotSoftwareInfoResponse | null;
   basicInfoFetchedAt: string | null;
 }
 
@@ -112,6 +120,7 @@ const EMPTY_VERSION_MAP: Record<string, string> = {};
 export function enrichRobot(stored: StoredRobotData): RobotDefinition {
   return {
     ...stored,
+    online: false,
     model: PLACEHOLDER,
     robotSN: PLACEHOLDER,
     thingsId: PLACEHOLDER,
@@ -137,6 +146,7 @@ export function enrichRobot(stored: StoredRobotData): RobotDefinition {
 export function enrichRobotFromBackend(robot: RobotWithBasicInfoResponse): RobotDefinition {
   return {
     ...robot,
+    online: robot.basicInfo !== null,
     model: robot.basicInfo?.model ?? PLACEHOLDER,
     robotSN: robot.basicInfo?.robotSn ?? PLACEHOLDER,
     thingsId: robot.basicInfo?.thingsId ?? PLACEHOLDER,
@@ -145,9 +155,9 @@ export function enrichRobotFromBackend(robot: RobotWithBasicInfoResponse): Robot
     mainboardSN: robot.basicInfo?.mainBoardSn ?? PLACEHOLDER,
     mainboardId: robot.basicInfo?.mainBoardId ?? PLACEHOLDER,
     mainSOMSN: robot.basicInfo?.mainSomSn ?? PLACEHOLDER,
-    megaCosmOSVersion: PLACEHOLDER,
-    movebaseVersion: PLACEHOLDER,
-    ggrVersion: PLACEHOLDER,
+    movebaseVersion: robot.softwareInfo?.movebaseVersion ?? PLACEHOLDER,
+    megaCosmOSVersion: robot.softwareInfo?.minimalSystemVersion ?? PLACEHOLDER,
+    ggrVersion: robot.softwareInfo?.l4tVersion ?? PLACEHOLDER,
     mcuFirmwareVersions: EMPTY_VERSION_MAP,
     actuatorFirmwareVersions: EMPTY_VERSION_MAP,
     sensorFirmwareVersions: EMPTY_VERSION_MAP,

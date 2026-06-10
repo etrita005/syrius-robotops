@@ -18,7 +18,7 @@ import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
-import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask, RebootRobotTask, MockRebootRobotTask, MatchFileContentTask, MockMatchFileContentTask, MatchMovebaseVersionTask, MockMatchMovebaseVersionTask, TransferBUPTask, MockTransferBUPTask, UpgradeBUPTask, MockUpgradeBUPTask, MatchBUPVersionTask, MockMatchBUPVersionTask } from "./tasks/index.js";
+import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, GetRobotSoftwareInfoTask, MockGetRobotSoftwareInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, UpdateRobotSoftwareInfoTask, MockUpdateRobotSoftwareInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask, RebootRobotTask, MockRebootRobotTask, MatchFileContentTask, MockMatchFileContentTask, MatchMovebaseVersionTask, MockMatchMovebaseVersionTask, TransferBUPTask, MockTransferBUPTask, UpgradeBUPTask, MockUpgradeBUPTask, MatchBUPVersionTask, MockMatchBUPVersionTask } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
@@ -85,7 +85,9 @@ async function main(): Promise<void> {
   registerTasks(resolverRegistry, config.runtime.mock, [
     { name: "SshCommandTask", real: SshCommandTask, mock: MockSshCommandTask },
     { name: "GetRobotBasicInfoTask", real: GetRobotBasicInfoTask, mock: MockGetRobotBasicInfoTask },
+    { name: "GetRobotSoftwareInfoTask", real: GetRobotSoftwareInfoTask, mock: MockGetRobotSoftwareInfoTask },
     { name: "UpdateRobotBasicInfoTask", real: UpdateRobotBasicInfoTask, mock: MockUpdateRobotBasicInfoTask },
+    { name: "UpdateRobotSoftwareInfoTask", real: UpdateRobotSoftwareInfoTask, mock: MockUpdateRobotSoftwareInfoTask },
     { name: "SshFileTransferTask", real: SshFileTransferTask, mock: MockSshFileTransferTask },
     { name: "UpgradeMovebaseTask", real: UpgradeMovebaseTask, mock: MockUpgradeMovebaseTask },
     { name: "TransferMovebaseTask", real: TransferMovebaseTask, mock: MockTransferMovebaseTask },

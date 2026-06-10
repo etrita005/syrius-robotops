@@ -12,6 +12,7 @@ import {
   RobotAddressExistsError,
 } from "../errors/appErrors.js";
 import type { RobotBasicInfo } from "../tasks/real/getRobotBasicInfoTask.js";
+import type { RobotSoftwareInfo } from "../tasks/real/getRobotSoftwareInfoTask.js";
 import { MemStore } from "../memStore/index.js";
 import type { CacheEntry, CacheEventHandler, IMemStore } from "../memStore/index.js";
 import { TaskFlowEngine } from "./taskFlowEngine/index.js";
@@ -19,8 +20,6 @@ import type { SseManager, ISseManagerEventHandler } from "./sseManager.js";
 import { logger } from "../logger/index.js";
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
-const DEFAULT_SSH_USERNAME = "root";
-const DEFAULT_SSH_PASSWORD = "";
 const ROBOT_INFO_TTL_MS = 5 * 60 * 1000;
 const ROBOT_INFO_CRON = "*/180";
 const ROBOT_INFO_KEY_PREFIX = "robot:";
@@ -70,8 +69,13 @@ export function buildRobotInfoKey(solutionId: string, robotId: string): string {
   return `${ROBOT_INFO_KEY_PREFIX}${solutionId}/${robotId}`;
 }
 
+export function buildRobotSoftwareInfoKey(solutionId: string, robotId: string): string {
+  return `${buildRobotInfoKey(solutionId, robotId)}/sw`;
+}
+
 export interface RobotWithBasicInfo extends StoredRobotData {
   basicInfo: RobotBasicInfo | null;
+  softwareInfo: RobotSoftwareInfo | null;
   basicInfoFetchedAt: string | null;
 }
 
@@ -85,17 +89,23 @@ export class RobotCacheEventHandler implements CacheEventHandler, ISseManagerEve
   private engine: TaskFlowEngine;
   private memStore: MemStore;
   private getRobotAddress: (solutionId: string, robotId: string) => Promise<{ address: string; port: number } | null>;
+  private sshUsername: string;
+  private sshPassword: string;
 
   constructor(
     sseManager: SseManager,
     engine: TaskFlowEngine,
     memStore: MemStore,
-    getRobotAddress: (solutionId: string, robotId: string) => Promise<{ address: string; port: number } | null>
+    getRobotAddress: (solutionId: string, robotId: string) => Promise<{ address: string; port: number } | null>,
+    sshUsername: string,
+    sshPassword: string
   ) {
     this.sseManager = sseManager;
     this.engine = engine;
     this.memStore = memStore;
     this.getRobotAddress = getRobotAddress;
+    this.sshUsername = sshUsername;
+    this.sshPassword = sshPassword;
   }
 
   onCreated(store: IMemStore, entry: CacheEntry): void {
@@ -145,69 +155,85 @@ export class RobotCacheEventHandler implements CacheEventHandler, ISseManagerEve
   }
 
   private executeRefreshFlow(store: IMemStore, entry: CacheEntry): void {
-    const taskFlowSpec = entry.properties.taskFlowSpec;
-    if (!taskFlowSpec) {
-      logger.warn({ key: entry.key }, 'No taskFlowSpec in properties');
+    const solutionId = entry.properties.solutionId as string | undefined;
+    const robotId = entry.properties.robotId as string | undefined;
+    if (!solutionId || !robotId) {
+      logger.warn({ key: entry.key }, "Missing solutionId or robotId in cache properties");
       store.clearRefreshing(entry.key);
       return;
     }
 
-    this.getRobotAddress(
-      entry.properties.solutionId as string,
-      entry.properties.robotId as string
-    ).then((robotAddr) => {
+    const swKey = buildRobotSoftwareInfoKey(solutionId, robotId);
+
+    this.getRobotAddress(solutionId, robotId).then((robotAddr) => {
       if (!robotAddr) {
-        logger.warn({ key: entry.key }, 'Robot not found');
+        logger.warn({ key: entry.key }, "Robot not found");
         store.clearRefreshing(entry.key);
         return;
       }
 
-      const spec = this.buildSpec(entry.key, robotAddr, taskFlowSpec as Record<string, unknown>);
+      const dag = {
+        tasks: {
+          fetchInfo: {
+            resolver: {
+              name: "GetRobotBasicInfoTask",
+              results: { robotInfo: "robotInfo" },
+              params: {
+                sshUsername: { value: this.sshUsername },
+                sshPassword: { value: this.sshPassword },
+                robotIp: { value: robotAddr.address },
+                robotPort: { value: robotAddr.port },
+              },
+            },
+            provides: ["robotInfo"],
+          },
+          fetchSoftwareInfo: {
+            requires: ["robotInfo"],
+            resolver: {
+              name: "GetRobotSoftwareInfoTask",
+              results: { softwareInfo: "softwareInfo" },
+              params: {
+                sshUsername: { value: this.sshUsername },
+                sshPassword: { value: this.sshPassword },
+                robotIp: { value: robotAddr.address },
+                robotPort: { value: robotAddr.port },
+              },
+            },
+            provides: ["softwareInfo"],
+          },
+          updateInfo: {
+            requires: ["robotInfo"],
+            resolver: {
+              name: "UpdateRobotBasicInfoTask",
+              params: {
+                robotInfo: "robotInfo",
+                cacheKey: { value: entry.key },
+              },
+            },
+          },
+          updateSoftwareInfo: {
+            requires: ["softwareInfo"],
+            resolver: {
+              name: "UpdateRobotSoftwareInfoTask",
+              params: {
+                softwareInfo: "softwareInfo",
+                cacheKey: { value: swKey },
+              },
+            },
+          },
+        },
+      };
+
       this.engine
-        .createFlow("internal", spec as any)
+        .createFlow("internal", dag as any)
         .catch((err: unknown) => {
-          logger.error({ key: entry.key, err: err instanceof Error ? err.message : String(err) }, 'Failed to create refresh flow');
+          logger.error({ key: entry.key, err: err instanceof Error ? err.message : String(err) }, "Failed to create refresh flow");
         })
         .finally(() => store.clearRefreshing(entry.key));
     }).catch((err: unknown) => {
-      logger.error({ key: entry.key, err: err instanceof Error ? err.message : String(err) }, 'Error getting robot address');
+      logger.error({ key: entry.key, err: err instanceof Error ? err.message : String(err) }, "Error getting robot address");
       store.clearRefreshing(entry.key);
     });
-  }
-
-  private buildSpec(key: string, robotAddr: { address: string; port: number }, taskFlowSpec: Record<string, unknown>): Record<string, unknown> {
-    if (taskFlowSpec.tasks && typeof taskFlowSpec.tasks === "object") {
-      const tasks = { ...taskFlowSpec.tasks } as Record<string, unknown>;
-      if (tasks.fetchInfo && typeof tasks.fetchInfo === "object") {
-        const fetchInfo = { ...(tasks.fetchInfo as Record<string, unknown>) };
-        if (fetchInfo.resolver && typeof fetchInfo.resolver === "object") {
-          const resolver = { ...(fetchInfo.resolver as Record<string, unknown>) };
-          if (resolver.params && typeof resolver.params === "object") {
-            const params = { ...(resolver.params as Record<string, unknown>) };
-            params.robotIp = { value: robotAddr.address };
-            params.robotPort = { value: robotAddr.port };
-            resolver.params = params;
-          }
-          fetchInfo.resolver = resolver;
-        }
-        tasks.fetchInfo = fetchInfo;
-      }
-      if (tasks.updateInfo && typeof tasks.updateInfo === "object") {
-        const updateInfo = { ...(tasks.updateInfo as Record<string, unknown>) };
-        if (updateInfo.resolver && typeof updateInfo.resolver === "object") {
-          const resolver = { ...(updateInfo.resolver as Record<string, unknown>) };
-          if (resolver.params && typeof resolver.params === "object") {
-            const params = { ...(resolver.params as Record<string, unknown>) };
-            params.cacheKey = { value: key };
-            resolver.params = params;
-          }
-          updateInfo.resolver = resolver;
-        }
-        tasks.updateInfo = updateInfo;
-      }
-      return { ...taskFlowSpec, tasks };
-    }
-    return taskFlowSpec;
   }
 }
 
@@ -227,8 +253,8 @@ export class RobotService {
     options?: RobotServiceOptions
   ) {
     this.obs = obs;
-    this.sshUsername = options?.sshUsername ?? DEFAULT_SSH_USERNAME;
-    this.sshPassword = options?.sshPassword ?? DEFAULT_SSH_PASSWORD;
+    this.sshUsername = options?.sshUsername ?? "root";
+    this.sshPassword = options?.sshPassword ?? "";
 
     this.sseManager = sseManager;
     this.memStore = memStore;
@@ -237,7 +263,9 @@ export class RobotService {
       sseManager,
       engine,
       memStore,
-      this.getRobotAddress.bind(this)
+      this.getRobotAddress.bind(this),
+      this.sshUsername,
+      this.sshPassword
     );
 
     this.memStore.setHandler(handler);
@@ -254,12 +282,15 @@ export class RobotService {
 
     return robots.map((robot) => {
       const key = buildRobotInfoKey(solutionId, robot.id);
+      const swKey = buildRobotSoftwareInfoKey(solutionId, robot.id);
       const cached = this.memStore.getCache(key) as RobotBasicInfo | undefined;
+      const swCached = this.memStore.getCache(swKey) as RobotSoftwareInfo | undefined;
 
-      if (cached) {
+      if (cached || swCached) {
         return {
           ...robot,
-          basicInfo: cached,
+          basicInfo: cached ?? null,
+          softwareInfo: swCached ?? null,
           basicInfoFetchedAt: null,
         };
       }
@@ -269,6 +300,7 @@ export class RobotService {
       return {
         ...robot,
         basicInfo: null,
+        softwareInfo: null,
         basicInfoFetchedAt: null,
       };
     });
@@ -277,12 +309,15 @@ export class RobotService {
   async getRobotInfo(solutionId: string, robotId: string): Promise<RobotWithBasicInfo> {
     const robot = await this.get(solutionId, robotId);
     const key = buildRobotInfoKey(solutionId, robotId);
+    const swKey = buildRobotSoftwareInfoKey(solutionId, robotId);
     const cached = this.memStore.getCache(key) as RobotBasicInfo | undefined;
+    const swCached = this.memStore.getCache(swKey) as RobotSoftwareInfo | undefined;
 
-    if (cached) {
+    if (cached || swCached) {
       return {
         ...robot,
-        basicInfo: cached,
+        basicInfo: cached ?? null,
+        softwareInfo: swCached ?? null,
         basicInfoFetchedAt: null,
       };
     }
@@ -292,50 +327,32 @@ export class RobotService {
     return {
       ...robot,
       basicInfo: null,
+      softwareInfo: null,
       basicInfoFetchedAt: null,
     };
   }
 
   private ensureRobotInfoCache(solutionId: string, robot: StoredRobotData): void {
     const key = buildRobotInfoKey(solutionId, robot.id);
+    const swKey = buildRobotSoftwareInfoKey(solutionId, robot.id);
 
-    if (this.memStore.hasCache(key)) return;
+    if (!this.memStore.hasCache(key)) {
+      this.memStore.createCache(key, {
+        ttlMs: ROBOT_INFO_TTL_MS,
+        cron: ROBOT_INFO_CRON,
+      }, {
+        properties: { solutionId, robotId: robot.id },
+      });
+    }
 
-    const taskFlowSpec = {
-      tasks: {
-        fetchInfo: {
-          resolver: {
-            name: "GetRobotBasicInfoTask",
-            results: { robotInfo: "robotInfo" },
-            params: {
-              sshUsername: { value: this.sshUsername },
-              sshPassword: { value: this.sshPassword },
-            },
-          },
-          provides: ["robotInfo"],
-        },
-        updateInfo: {
-          requires: ["robotInfo"],
-          resolver: {
-            name: "UpdateRobotBasicInfoTask",
-            params: {
-              robotInfo: "robotInfo",
-            },
-          },
-        },
-      },
-    };
-
-    this.memStore.createCache(key, {
-      ttlMs: ROBOT_INFO_TTL_MS,
-      cron: ROBOT_INFO_CRON,
-    }, {
-      properties: {
-        solutionId,
-        robotId: robot.id,
-        taskFlowSpec,
-      },
-    });
+    if (!this.memStore.hasCache(swKey)) {
+      this.memStore.createCache(swKey, {
+        ttlMs: ROBOT_INFO_TTL_MS,
+        cron: ROBOT_INFO_CRON,
+      }, {
+        properties: { solutionId, robotId: robot.id, software: true },
+      });
+    }
   }
 
   async list(solutionId: string): Promise<StoredRobotData[]> {
@@ -488,7 +505,9 @@ export class RobotService {
     const addressChanged = resolvedPatch.address !== undefined || resolvedPatch.port !== undefined;
     if (addressChanged) {
       const oldKey = buildRobotInfoKey(solutionId, robotId);
+      const oldSwKey = buildRobotSoftwareInfoKey(solutionId, robotId);
       this.memStore.deleteCache(oldKey);
+      this.memStore.deleteCache(oldSwKey);
       this.ensureRobotInfoCache(solutionId, updated);
     }
 
@@ -513,7 +532,9 @@ export class RobotService {
     this.solutionRobots.get(solutionId)?.delete(robotId);
 
     const infoKey = buildRobotInfoKey(solutionId, robotId);
+    const swKey = buildRobotSoftwareInfoKey(solutionId, robotId);
     this.memStore.deleteCache(infoKey);
+    this.memStore.deleteCache(swKey);
   }
 
   removeSolutionCache(solutionId: string): void {

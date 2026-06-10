@@ -241,6 +241,19 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
             </div>
             <div
               style={{
+                position: "absolute",
+                top: 12,
+                right: 12,
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                background: robot.online ? "#24a148" : "#8d8d8d",
+                animation: robot.online ? "breathe 2s ease-in-out infinite" : undefined,
+              }}
+              title={robot.online ? "Online" : "Offline"}
+            />
+            <div
+              style={{
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
@@ -252,11 +265,11 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
                   width: 56,
                   height: 56,
                   borderRadius: "50%",
-                  background: "#e0e0e0",
+                  background: robot.online ? "#24a148" : "#e0e0e0",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#8d8d8d",
+                  color: robot.online ? "white" : "#8d8d8d",
                   fontSize: "0.75rem",
                   marginBottom: "0.5rem",
                 }}
@@ -274,7 +287,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
               SN: {formatInfoValue(robot.robotSN)}
             </div>
             <div style={{ fontSize: "0.8125rem", color: "#525252" }}>
-              megacosmOS: {formatInfoValue(robot.megaCosmOSVersion)}
+              Movebase: {formatInfoValue(robot.movebaseVersion)}
             </div>
           </div>
         ))}
@@ -291,7 +304,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
       { key: "model", header: "Model" },
       { key: "robotSN", header: "Robot SN" },
       { key: "thingsId", header: "Things ID" },
-      { key: "megaCosmOSVersion", header: "megacosmOS" },
+      { key: "movebaseVersion", header: "Movebase" },
       { key: "actions", header: "Actions" },
     ];
 
@@ -307,24 +320,48 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
       ),
       alias:
         editingAliasId === r.id ? (
-          <TextInput
-            id={`alias-edit-${r.id}`}
-            labelText=""
-            hideLabel
-            value={editingAliasValue}
-            onChange={(e) => setEditingAliasValue(e.target.value)}
-            onBlur={() => handleAliasEditSave(r.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleAliasEditSave(r.id);
-            }}
-            size="sm"
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: r.online ? "#24a148" : "#8d8d8d",
+                flexShrink: 0,
+                animation: r.online ? "breathe 2s ease-in-out infinite" : undefined,
+              }}
+              title={r.online ? "Online" : "Offline"}
+            />
+            <TextInput
+              id={`alias-edit-${r.id}`}
+              labelText=""
+              hideLabel
+              value={editingAliasValue}
+              onChange={(e) => setEditingAliasValue(e.target.value)}
+              onBlur={() => handleAliasEditSave(r.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAliasEditSave(r.id);
+              }}
+              size="sm"
+            />
+          </div>
         ) : (
           <span
             onDoubleClick={() => handleAliasEditStart(r)}
-            style={{ cursor: "pointer" }}
+            style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5rem" }}
             title="Double-click to edit"
           >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: r.online ? "#24a148" : "#8d8d8d",
+                flexShrink: 0,
+                animation: r.online ? "breathe 2s ease-in-out infinite" : undefined,
+              }}
+              title={r.online ? "Online" : "Offline"}
+            />
             {r.alias}
           </span>
         ),
@@ -332,7 +369,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
       model: formatInfoValue(r.model),
       robotSN: formatInfoValue(r.robotSN),
       thingsId: formatInfoValue(r.thingsId),
-      megaCosmOSVersion: formatInfoValue(r.megaCosmOSVersion),
+      movebaseVersion: formatInfoValue(r.movebaseVersion),
       actions: (
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <Button kind="ghost" size="sm" onClick={() => openDetail(r)}>
@@ -420,6 +457,12 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
 
   return (
     <div>
+      <style>{`
+        @keyframes breathe {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+      `}</style>
       <Breadcrumb style={{ marginBottom: "1rem" }}>
         <BreadcrumbItem>
           <a

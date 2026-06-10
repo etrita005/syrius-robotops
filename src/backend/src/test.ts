@@ -14,8 +14,11 @@ import { MemStore } from "./memStore/index.js";
 import type { CacheEventHandler, CacheEntry } from "./memStore/index.js";
 import { buildRobotInfoKey } from "./services/robotService.js";
 import { MockGetRobotBasicInfoTask } from "./tasks/mock/mockGetRobotBasicInfoTask.js";
+import { MockGetRobotSoftwareInfoTask } from "./tasks/mock/mockGetRobotSoftwareInfoTask.js";
 import { UpdateRobotBasicInfoTask } from "./tasks/real/updateRobotBasicInfoTask.js";
+import { UpdateRobotSoftwareInfoTask } from "./tasks/real/updateRobotSoftwareInfoTask.js";
 import type { RobotBasicInfo } from "./tasks/real/getRobotBasicInfoTask.js";
+import type { RobotSoftwareInfo } from "./tasks/real/getRobotSoftwareInfoTask.js";
 
 class InMemoryObjectStore {
   private store = new Map<string, unknown>();
@@ -2146,7 +2149,9 @@ function createTestTaskFlowEngine(objectStore?: unknown): TaskFlowEngine {
   const sse = new SpySseManager() as unknown as SseManager;
   const registry = new ResolverRegistry();
   registry.register("GetRobotBasicInfoTask", MockGetRobotBasicInfoTask as unknown as import("flowed").TaskResolverClass);
+  registry.register("GetRobotSoftwareInfoTask", MockGetRobotSoftwareInfoTask as unknown as import("flowed").TaskResolverClass);
   registry.register("UpdateRobotBasicInfoTask", UpdateRobotBasicInfoTask as unknown as import("flowed").TaskResolverClass);
+  registry.register("UpdateRobotSoftwareInfoTask", UpdateRobotSoftwareInfoTask as unknown as import("flowed").TaskResolverClass);
   const engine = new TaskFlowEngine(objStore, sse, registry);
   testEngines.add(engine);
   return engine;
@@ -2640,7 +2645,9 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     const sse = new SpySseManager() as unknown as SseManager;
     const registry = new ResolverRegistry();
     registry.register("GetRobotBasicInfoTask", MockGetRobotBasicInfoTask);
+    registry.register("GetRobotSoftwareInfoTask", MockGetRobotSoftwareInfoTask);
     registry.register("UpdateRobotBasicInfoTask", UpdateRobotBasicInfoTask as unknown as import("flowed").TaskResolverClass);
+    registry.register("UpdateRobotSoftwareInfoTask", UpdateRobotSoftwareInfoTask as unknown as import("flowed").TaskResolverClass);
 
     const engine = new TaskFlowEngine(
       objStore as unknown as import("./services/objectStore.js").ObjectStore,
@@ -2703,7 +2710,8 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     const meta = ms.getCacheMeta(key);
     assert.ok(meta, "memStore cache meta should exist after robot creation");
     assert.ok(meta.properties, "memStore cache properties should be defined");
-    assert.ok(meta.properties.taskFlowSpec, "memStore cache properties should contain taskFlowSpec");
+    assert.equal(meta.properties.solutionId, solution.id, "properties should contain solutionId");
+    assert.equal(meta.properties.robotId, robot.id, "properties should contain robotId");
     assert.equal(meta.config.ttlMs, 5 * 60 * 1000, "TTL should be 5 minutes");
     assert.equal(meta.config.cron, "*/180", "Cron should be every 180 seconds");
 
@@ -2744,7 +2752,9 @@ describe("RobotService - MemStore & TaskFlow Integration", () => {
     assert.equal(completed.state, "COMPLETED", `Task flow should complete successfully, got: ${completed.state}`);
     assert.ok(completed.taskResults, "Task results should be present");
     assert.equal(completed.taskStates["fetchInfo"], "COMPLETED", "fetchInfo task should complete");
+    assert.equal(completed.taskStates["fetchSoftwareInfo"], "COMPLETED", "fetchSoftwareInfo task should complete");
     assert.equal(completed.taskStates["updateInfo"], "COMPLETED", "updateInfo task should complete");
+    assert.equal(completed.taskStates["updateSoftwareInfo"], "COMPLETED", "updateSoftwareInfo task should complete");
 
     await sleep(500);
 

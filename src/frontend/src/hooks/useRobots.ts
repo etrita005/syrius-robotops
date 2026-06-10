@@ -6,6 +6,7 @@ import {
   deleteRobot,
   subscribeMemStoreKey,
   buildRobotMemStoreKey,
+  buildRobotSoftwareMemStoreKey,
 } from "../api/robotApi.js";
 import {
   StoredRobotData,
@@ -14,6 +15,7 @@ import {
   enrichRobotFromBackend,
   enrichRobot,
   RobotWithBasicInfoResponse,
+  RobotSoftwareInfoResponse,
 } from "../types/robot.js";
 
 const INITIAL_LOAD_TIMEOUT_MS = 30_000;
@@ -37,6 +39,7 @@ export function useRobots(solutionId: string | null) {
             if (r.id !== robot.id) return r;
             return {
               ...r,
+              online: true,
               model: updatedBasicInfo?.model ?? r.model,
               robotSN: updatedBasicInfo?.robotSn ?? r.robotSN,
               thingsId: updatedBasicInfo?.thingsId ?? r.thingsId,
@@ -53,6 +56,26 @@ export function useRobots(solutionId: string | null) {
       }
     });
     sseUnsubscribers.current.push(unsub);
+
+    const swKey = buildRobotSoftwareMemStoreKey(solId, robot.id);
+    const swUnsub = subscribeMemStoreKey(swKey, (data) => {
+      if (cancelledRef.current) return;
+      if ((data.type === "current" || data.type === "update") && data.value) {
+        const updatedSoftwareInfo = data.value as RobotSoftwareInfoResponse;
+        setRobots((prev) =>
+          prev.map((r) => {
+            if (r.id !== robot.id) return r;
+            return {
+              ...r,
+              movebaseVersion: updatedSoftwareInfo.movebaseVersion ?? r.movebaseVersion,
+              megaCosmOSVersion: updatedSoftwareInfo.minimalSystemVersion ?? r.megaCosmOSVersion,
+              ggrVersion: updatedSoftwareInfo.l4tVersion ?? r.ggrVersion,
+            };
+          })
+        );
+      }
+    });
+    sseUnsubscribers.current.push(swUnsub);
   }, []);
 
   useEffect(() => {

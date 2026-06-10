@@ -167,10 +167,75 @@ Writes robot basic info into the in-memory LRU cache (`MemStore`). No SSH or net
 
 - Only performs update if `cacheKey`, `robotInfo`, and `memStore` are all present
 - Calls `memStore.updateCache(cacheKey, robotInfo)`
+- Basic info and software info are stored in separate cache entries (`{key}` and `{key}/sw`)
 
 ---
 
-## 5. DeleteRemotePathTask
+## 5. GetRobotSoftwareInfoTask
+
+### Overview
+
+Reads robot software version information from `/opt/cosmos/etc/ota/version`, `/mnt/cosmos/boot/etc/ota/minimal_system_version`, and `/etc/l4t_jurassic_release` via a shell script, parses the JSON output, and returns a structured `RobotSoftwareInfo` object.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`.
+
+No additional parameters (command is hardcoded).
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | `true` | Task success marker |
+| `rawOutput` | `string` | Full stdout from the shell script |
+| `softwareInfo` | `RobotSoftwareInfo` | Parsed software info object |
+| `softwareInfo.movebaseVersion` | `string` | Movebase version from `/opt/cosmos/etc/ota/version` |
+| `softwareInfo.minimalSystemVersion` | `string` | Minimal system version from `/mnt/cosmos/boot/etc/ota/minimal_system_version` |
+| `softwareInfo.l4tVersion` | `string` | L4T release version from `/etc/l4t_jurassic_release` |
+
+### Notes
+
+- Executes a multi-command shell script that reads from `cat` on three separate files
+- The robotService DAG chains this task after `GetRobotBasicInfoTask` (requires `robotInfo` for sequential execution)
+- Expects a JSON line in stdout; parses the first JSON line found
+
+---
+
+## 6. UpdateRobotSoftwareInfoTask
+
+### Overview
+
+Writes robot software version info into a separate in-memory LRU cache entry (`MemStore`). No SSH or network operations.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `cacheKey` | `string` | (required) | Cache key for the robot software info (`{baseKey}/sw`) |
+| `softwareInfo` | `RobotSoftwareInfo` | (required) | Robot software info object to cache |
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `memStore` | `MemStore` | In-memory cache instance |
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | `true` | Task success marker |
+| `updated` | `true` | Confirmation of cache update |
+
+### Notes
+
+- Software info is stored in a separate cache entry from basic info (key suffixed with `/sw`)
+- Only performs update if `cacheKey`, `softwareInfo`, and `memStore` are all present
+
+---
+
+## 7. DeleteRemotePathTask
 
 ### Overview
 
@@ -196,7 +261,7 @@ Same as `SshCommandTask`.
 
 ---
 
-## 6. DeleteMovebaseTask
+## 8. DeleteMovebaseTask
 
 ### Overview
 
@@ -217,7 +282,7 @@ Same as `SshCommandTask`.
 
 ---
 
-## 7. TransferMovebaseTask
+## 9. TransferMovebaseTask
 
 ### Overview
 
@@ -250,7 +315,7 @@ Same as `SshFileTransferTask`.
 
 ---
 
-## 8. UpgradeMovebaseTask
+## 10. UpgradeMovebaseTask
 
 ### Overview
 
@@ -275,7 +340,7 @@ Same as `SshCommandTask`.
 
 ---
 
-## 9. RebootRobotTask
+## 11. RebootRobotTask
 
 ### Overview
 
@@ -302,7 +367,7 @@ Same as `SshCommandTask`.
 
 ---
 
-## 10. MatchFileContentTask
+## 12. MatchFileContentTask
 
 ### Overview
 
@@ -335,7 +400,7 @@ Inherits all from `SshCommandTask`. `sudo` forced to `false`, `retryCount` force
 
 ---
 
-## 11. MatchMovebaseVersionTask
+## 13. MatchMovebaseVersionTask
 
 ### Overview
 
@@ -363,7 +428,7 @@ Same as `MatchFileContentTask`.
 
 ---
 
-## 12. TransferBUPTask
+## 14. TransferBUPTask
 
 ### Overview
 
@@ -393,7 +458,7 @@ Same as `SshFileTransferTask`.
 
 ---
 
-## 13. UpgradeBUPTask
+## 15. UpgradeBUPTask
 
 ### Overview
 
@@ -420,7 +485,7 @@ Same as `SshCommandTask`.
 
 ---
 
-## 14. MatchBUPVersionTask
+## 16. MatchBUPVersionTask
 
 ### Overview
 
@@ -447,7 +512,7 @@ Same as `MatchFileContentTask`.
 
 ---
 
-## 15. DeleteBUPTask
+## 17. DeleteBUPTask
 
 ### Overview
 

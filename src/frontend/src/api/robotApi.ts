@@ -11,6 +11,10 @@ export function buildRobotMemStoreKey(solutionId: string, robotId: string): stri
   return `${ROBOT_MEMSTORE_KEY_PREFIX}${solutionId}/${robotId}`;
 }
 
+export function buildRobotSoftwareMemStoreKey(solutionId: string, robotId: string): string {
+  return `${buildRobotMemStoreKey(solutionId, robotId)}/sw`;
+}
+
 export async function listRobots(solutionId: string): Promise<StoredRobotData[]> {
   return get<StoredRobotData[]>(`/solutions/${solutionId}/robots`);
 }
