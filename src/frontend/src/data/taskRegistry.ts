@@ -69,8 +69,33 @@ const UPGRADE_MOVEBASE_DAG: DagDefinition = {
       },
       provides: ["upgrade_done"],
     },
-    cleanup: {
+    reboot: {
       requires: ["robotIp", "robotPort", "upgrade_done"],
+      resolver: {
+        name: "RebootRobotTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "reboot_done" },
+      },
+      provides: ["reboot_done"],
+    },
+    verify_version: {
+      requires: ["robotIp", "robotPort", "reboot_done", "expectedVersion"],
+      resolver: {
+        name: "MatchMovebaseVersionTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          expectedContent: "expectedVersion",
+        },
+        results: { done: "verify_done" },
+      },
+      provides: ["verify_done"],
+    },
+    cleanup: {
+      requires: ["robotIp", "robotPort", "verify_done"],
       resolver: {
         name: "DeleteMovebaseTask",
         params: {
@@ -158,6 +183,11 @@ export const TASK_REGISTRY: TaskRegistry = {
         artifactId: {
           type: "artifact",
           label: "Artifact file",
+          required: true,
+        },
+        expectedVersion: {
+          type: "text",
+          label: "Expected version",
           required: true,
         },
       },

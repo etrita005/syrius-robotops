@@ -18,7 +18,7 @@ import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
-import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask } from "./tasks/index.js";
+import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask, RebootRobotTask, MockRebootRobotTask, MatchFileContentTask, MockMatchFileContentTask, MatchMovebaseVersionTask, MockMatchMovebaseVersionTask } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
@@ -90,6 +90,9 @@ async function main(): Promise<void> {
     { name: "UpgradeMovebaseTask", real: UpgradeMovebaseTask, mock: MockUpgradeMovebaseTask },
     { name: "TransferMovebaseTask", real: TransferMovebaseTask, mock: MockTransferMovebaseTask },
     { name: "DeleteMovebaseTask", real: DeleteMovebaseTask, mock: MockDeleteMovebaseTask },
+    { name: "RebootRobotTask", real: RebootRobotTask, mock: MockRebootRobotTask },
+    { name: "MatchFileContentTask", real: MatchFileContentTask, mock: MockMatchFileContentTask },
+    { name: "MatchMovebaseVersionTask", real: MatchMovebaseVersionTask, mock: MockMatchMovebaseVersionTask },
   ]);
 
   const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);

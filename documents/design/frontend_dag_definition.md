@@ -85,7 +85,7 @@ params: {
 
 ```typescript
 const TASK_DAG_MAP: Record<string, DagConfig> = {
-  "upgrade-movebase": { /* 三步 DAG: transfer → upgrade → cleanup */ },
+  "upgrade-movebase": { /* 五步 DAG: transfer → upgrade → reboot → verify_version → cleanup */ },
   "upgrade-bup":      { /* 一步 DAG: SSH 文件传输 */ },
 };
 ```
@@ -94,18 +94,20 @@ const TASK_DAG_MAP: Record<string, DagConfig> = {
 
 #### upgrade-movebase（Movebase 升级）
 
-三步流程，含异常处理：
+五步流程，含异常处理：
 
 ```
-input variables ──→ [transfer] ──→ [upgrade] ──→ [cleanup] ──→ cleanup_done
-                        │                             │
-                        └── transfer_done ────────────┘
-                                                      
+input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot] ──→ [verify_version] ──→ [cleanup] ──→ cleanup_done
+                        │              │             │               │                       │
+                        └── transfer_done ───────────┘               │                       │
+                                       └── upgrade_done ────────────┘                       │
+                                                      └── reboot_done ──────────────────────┘
+                                                                      └── verify_done ──────┘
 如果主流程任一任务失败：
 [error_cleanup] ──→ error_cleanup_done
 ```
-- 解析器：`TransferMovebaseTask`, `UpgradeMovebaseTask`, `DeleteMovebaseTask`
-- 输入依赖：`robotIp`, `robotPort`, `artifactId`
+- 解析器：`TransferMovebaseTask`, `UpgradeMovebaseTask`, `RebootRobotTask`, `MatchMovebaseVersionTask`, `DeleteMovebaseTask`
+- 输入依赖：`robotIp`, `robotPort`, `artifactId`, `expectedVersion`
 - 预期结果：`cleanup_done`
 - 异常 DAG：清理残留安装包
 

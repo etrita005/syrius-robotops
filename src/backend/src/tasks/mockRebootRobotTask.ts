@@ -1,0 +1,34 @@
+import type { ValueMap } from "flowed";
+import { RebootRobotTask } from "./rebootRobotTask.js";
+import { createLogger } from "../logger/index.js";
+
+const log = createLogger("RebootRobot");
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export class MockRebootRobotTask extends RebootRobotTask {
+  override async exec(params: ValueMap): Promise<ValueMap> {
+    const bootWaitMs = this.getBootWaitMs(params);
+
+    log.info("Simulating robot reboot (mock)");
+
+    await sleep(5000);
+
+    log.info("Reboot completed (mock)");
+
+    if (bootWaitMs > 0) {
+      log.info({ bootWaitMs }, "Waiting after reboot (mock)");
+      await sleep(bootWaitMs);
+    }
+
+    return {
+      done: true,
+      success: true,
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+    };
+  }
+}
