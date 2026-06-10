@@ -92,15 +92,17 @@ export default function AddRobotModal({ open, onClose, onAdd }: AddRobotModalPro
       }
     >
       {error && (
-        <InlineNotification
-          kind="error"
-          title="Error"
-          subtitle={error}
-          onCloseButtonClick={() => setError(null)}
-          style={{ marginBottom: "1rem" }}
-        />
+        <div className="notif-anim">
+          <InlineNotification
+            kind="error"
+            title="Error"
+            subtitle={error}
+            onCloseButtonClick={() => setError(null)}
+            style={{ marginBottom: "1rem" }}
+          />
+        </div>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
+      <div className="modal-content-enter" style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
         <TextInput
           id="robot-address"
           labelText="Address *"

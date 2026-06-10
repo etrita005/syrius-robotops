@@ -95,7 +95,10 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
     serialNumber: d.serialNumber,
     hardwareId: d.hardwareId,
     online: d.online ? (
-      <Tag type="green">Online</Tag>
+      <span style={{ display: "flex", alignItems: "center" }}>
+        <span className="status-pulse-dot" />
+        <Tag type="green">Online</Tag>
+      </span>
     ) : (
       <Tag type="red">Offline</Tag>
     ),
@@ -118,7 +121,8 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
       onRequestClose={onClose}
       passiveModal
     >
-      <Tabs
+      <div className="modal-content-enter">
+        <Tabs
         selectedIndex={activeTab}
         onChange={({ selectedIndex }) => setActiveTab(selectedIndex)}
       >
@@ -260,6 +264,7 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
         <Button kind="primary" onClick={handleSave} disabled={!hasChanges || saving}>
           {saving ? "Saving..." : "Save"}
         </Button>
+      </div>
       </div>
     </Modal>
   );

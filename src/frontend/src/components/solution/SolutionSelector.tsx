@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Button,
   Grid,
@@ -11,11 +11,11 @@ import {
   ModalBody,
   ModalFooter,
   Loading,
-  InlineNotification,
 } from "@carbon/react";
 import { Add, Export, Copy, TrashCan } from "@carbon/react/icons";
 import { SolutionMeta, CreateSolutionInput } from "../../types/solution.js";
 import { solutionApi } from "../../api/solutionApi.js";
+import { useToast } from "../../hooks/useToast.js";
 
 interface SolutionSelectorProps {
   solutions: SolutionMeta[];
@@ -42,6 +42,13 @@ export function SolutionSelector({
     description: "",
     tags: [],
   });
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    if (corruptedIds.length > 0) {
+      showToast("warning", "Corrupted solutions detected", `Solutions with corrupted metadata: ${corruptedIds.join(", ")}`, 0);
+    }
+  }, [corruptedIds, showToast]);
 
   const filtered = solutions.filter((s) =>
     searchName
@@ -136,15 +143,6 @@ export function SolutionSelector({
             style={{ marginBottom: "1.5rem" }}
           />
 
-          {corruptedIds.length > 0 && (
-            <InlineNotification
-              kind="warning"
-              title="Corrupted solutions detected"
-              subtitle={`Solutions with corrupted metadata: ${corruptedIds.join(", ")}`}
-              lowContrast
-            />
-          )}
-
           {filtered.length === 0 ? (
             <div
               style={{
@@ -168,6 +166,18 @@ export function SolutionSelector({
                     borderRadius: "4px",
                     padding: "1.25rem",
                     background: "#fff",
+                    transition: "box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease",
+                    cursor: "auto",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = "#0f62fe";
+                    (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 8px rgba(15, 98, 254, 0.15)";
+                    (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor = "#e0e0e0";
+                    (e.currentTarget as HTMLElement).style.boxShadow = "none";
+                    (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
                   }}
                 >
                   <div
@@ -276,7 +286,8 @@ export function SolutionSelector({
       >
         <ModalHeader title="Create solution" />
         <ModalBody>
-          <TextInput
+          <div className="modal-content-enter">
+            <TextInput
             id="create-name"
             labelText="Name"
             required
@@ -313,6 +324,7 @@ export function SolutionSelector({
               })
             }
           />
+          </div>
         </ModalBody>
         <ModalFooter>
           <Button kind="secondary" onClick={() => setShowCreate(false)}>
@@ -336,10 +348,12 @@ export function SolutionSelector({
       >
         <ModalHeader title="Delete solution" />
         <ModalBody>
-          <p>
+          <div className="modal-content-enter">
+            <p>
             This action is destructive and cannot be undone. All sub-resources
             will be permanently deleted.
           </p>
+          </div>
         </ModalBody>
         <ModalFooter>
           <Button

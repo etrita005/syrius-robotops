@@ -9,7 +9,6 @@ import {
   TableCell,
   Button,
   InlineLoading,
-  InlineNotification,
   Modal,
   TextInput,
   Pagination,
@@ -18,6 +17,7 @@ import {
 } from "@carbon/react";
 import { useTasks } from "../../hooks/useTasks.js";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
+import { useToast } from "../../hooks/useToast.js";
 import type { TaskDefinition } from "../../types/task.js";
 import type { TaskTypeDefinition } from "../../data/taskRegistry.js";
 import { getTaskTypeDefinitions } from "../../data/taskRegistry.js";
@@ -74,18 +74,13 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TaskDefinition | null>(null);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
-  const [notification, setNotification] = useState<{
-    kind: "success" | "error" | "warning";
-    title: string;
-    subtitle?: string;
-  } | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => setNotification(null), 5000);
-      return () => clearTimeout(timer);
+    if (error) {
+      showToast("error", "Error", error, 0);
     }
-  }, [notification]);
+  }, [error, showToast]);
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
@@ -159,11 +154,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
           return;
       }
     } catch (err) {
-      setNotification({
-        kind: "error",
-        title: `Failed to ${action}`,
-        subtitle: (err as Error).message,
-      });
+      showToast("error", `Failed to ${action}`, (err as Error).message, 0);
     }
   };
 
@@ -176,17 +167,9 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
         next.delete(deleteTarget.id);
         return next;
       });
-      setNotification({
-        kind: "success",
-        title: "Task deleted",
-        subtitle: `Task ${deleteTarget.taskName} has been removed.`,
-      });
+      showToast("success", "Task deleted", `Task ${deleteTarget.taskName} has been removed.`);
     } catch (err) {
-      setNotification({
-        kind: "error",
-        title: "Failed to delete task",
-        subtitle: (err as Error).message,
-      });
+      showToast("error", "Failed to delete task", (err as Error).message, 0);
     } finally {
       setDeleteConfirmOpen(false);
       setDeleteTarget(null);
@@ -211,17 +194,9 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
           setBatchDeleteOpen(true);
           return;
       }
-      setNotification({
-        kind: "success",
-        title: `Batch ${action} completed`,
-        subtitle: `${ids.length} tasks ${action}d.`,
-      });
+      showToast("success", `Batch ${action} completed`, `${ids.length} tasks ${action}d.`);
     } catch (err) {
-      setNotification({
-        kind: "error",
-        title: `Failed to batch ${action}`,
-        subtitle: (err as Error).message,
-      });
+      showToast("error", `Failed to batch ${action}`, (err as Error).message, 0);
     }
   };
 
@@ -231,17 +206,9 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
     try {
       await batchDeleteTasks(ids);
       setSelectedIds(new Set());
-      setNotification({
-        kind: "success",
-        title: "Batch delete completed",
-        subtitle: `${ids.length} tasks deleted.`,
-      });
+      showToast("success", "Batch delete completed", `${ids.length} tasks deleted.`);
     } catch (err) {
-      setNotification({
-        kind: "error",
-        title: "Failed to batch delete",
-        subtitle: (err as Error).message,
-      });
+      showToast("error", "Failed to batch delete", (err as Error).message, 0);
     } finally {
       setBatchDeleteOpen(false);
     }
@@ -254,11 +221,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
   ) => {
     const createdTasks = await createTask(robotIds, taskType, params);
     setCreateModalOpen(false);
-    setNotification({
-      kind: "success",
-      title: "Tasks created",
-      subtitle: `${createdTasks.length} ${taskType.name} task(s) for ${robotIds.length} robot(s).`,
-    });
+    showToast("success", "Tasks created", `${createdTasks.length} ${taskType.name} task(s) for ${robotIds.length} robot(s).`);
   };
 
   const renderStateTag = (state: string) => (
@@ -272,9 +235,12 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
         backgroundColor: STATE_COLORS[state] ?? "#e0e0e0",
         color: STATE_TEXT_COLORS[state] ?? "#161616",
         textTransform: "uppercase",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
       {state}
+      {state === "RUNNING" && <span className="marquee-shimmer" />}
     </span>
   );
 
@@ -315,7 +281,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
               disabled={isPending}
               onClick={() => handleAction(action, t)}
             >
-              {isPending ? "..." : action.charAt(0).toUpperCase() + action.slice(1)}
+              {isPending ? <InlineLoading description="" className="inline-action-loading" /> : action.charAt(0).toUpperCase() + action.slice(1)}
             </Button>
           );
         })}
@@ -364,24 +330,6 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
       >
         <h3>Tasks</h3>
       </div>
-
-      {notification && (
-        <InlineNotification
-          kind={notification.kind}
-          title={notification.title}
-          subtitle={notification.subtitle}
-          onCloseButtonClick={() => setNotification(null)}
-          style={{ marginBottom: "1rem" }}
-        />
-      )}
-      {error && (
-        <InlineNotification
-          kind="error"
-          title="Error"
-          subtitle={error}
-          style={{ marginBottom: "1rem" }}
-        />
-      )}
 
       {tasks.length === 0 && !loading ? (
         <div
@@ -525,12 +473,14 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
         onRequestSubmit={handleDeleteConfirm}
         danger
       >
-        <p>This action cannot be undone. The task record will be permanently removed.</p>
-        {deleteTarget && (
-          <p style={{ marginTop: "0.5rem", fontWeight: 600 }}>
-            {deleteTarget.taskName} ({deleteTarget.robotAliases.join(", ")})
-          </p>
-        )}
+        <div className="modal-content-enter">
+          <p>This action cannot be undone. The task record will be permanently removed.</p>
+          {deleteTarget && (
+            <p style={{ marginTop: "0.5rem", fontWeight: 600 }}>
+              {deleteTarget.taskName} ({deleteTarget.robotAliases.join(", ")})
+            </p>
+          )}
+        </div>
       </Modal>
 
       <Modal
@@ -542,9 +492,11 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
         onRequestSubmit={handleBatchDeleteConfirm}
         danger
       >
-        <p>
-          This action cannot be undone. The selected task records will be permanently removed.
-        </p>
+        <div className="modal-content-enter">
+          <p>
+            This action cannot be undone. The selected task records will be permanently removed.
+          </p>
+        </div>
       </Modal>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, Fragment, useMemo } from "react";
+import React, { useState, Fragment, useMemo, useEffect } from "react";
 import {
   Button,
   DataTable,
@@ -13,13 +13,13 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
-  InlineNotification,
   Loading,
   TextInput,
 } from "@carbon/react";
 import { TrashCan, View, Download } from "@carbon/react/icons";
 import { ArtifactMeta } from "../../types/artifact.js";
 import { artifactApi } from "../../api/artifactApi.js";
+import { useToast } from "../../hooks/useToast.js";
 
 interface ArtifactManagerProps {
   artifacts: ArtifactMeta[];
@@ -43,6 +43,13 @@ export function ArtifactManager({
   const [typeFilter, setTypeFilter] = useState<string>("All");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [showUnreferencedOnly, setShowUnreferencedOnly] = useState(false);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    if (error) {
+      showToast("error", "Error", error, 0);
+    }
+  }, [error, showToast]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -131,15 +138,6 @@ export function ArtifactManager({
 
   return (
     <Fragment>
-      {error && (
-        <InlineNotification
-          kind="error"
-          title="Error"
-          subtitle={error}
-          lowContrast
-        />
-      )}
-
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem", flexWrap: "wrap" }}>
         <TextInput
           id="search-artifacts"
@@ -274,7 +272,7 @@ export function ArtifactManager({
         >
           <ModalHeader title="Artifact Details" />
           <ModalBody>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <div className="modal-content-enter" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
               <div><strong>ID:</strong> {selectedArtifact.id}</div>
               <div><strong>File Name:</strong> {selectedArtifact.fileName}</div>
               <div><strong>Size:</strong> {formatSize(selectedArtifact.size)}</div>
@@ -313,12 +311,14 @@ export function ArtifactManager({
         >
           <ModalHeader title="Delete Artifact" />
           <ModalBody>
-            <p style={{ marginBottom: "1rem" }}>
-              This will permanently delete the artifact file and its metadata.
-            </p>
-            <p style={{ fontWeight: 600 }}>
-              {showDelete.fileName}
-            </p>
+            <div className="modal-content-enter">
+              <p style={{ marginBottom: "1rem" }}>
+                This will permanently delete the artifact file and its metadata.
+              </p>
+              <p style={{ fontWeight: 600 }}>
+                {showDelete.fileName}
+              </p>
+            </div>
           </ModalBody>
           <ModalFooter>
             <Button

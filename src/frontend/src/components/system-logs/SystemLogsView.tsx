@@ -1,7 +1,6 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import {
   Button,
-  InlineNotification,
   Loading,
   Tag,
 } from "@carbon/react";
@@ -11,6 +10,7 @@ import { useLogModules } from "../../hooks/useLogModules.js";
 import { useLogQuery } from "../../hooks/useLogQuery.js";
 import { systemLogApi } from "../../api/systemLogApi.js";
 import type { LogEntry, LogLevel, LogQueryRequest } from "../../types/systemLog.js";
+import { useToast } from "../../hooks/useToast.js";
 
 const LEVEL_COLORS: Record<LogLevel, string> = {
   trace: "#8d8d8d",
@@ -95,6 +95,25 @@ export function SystemLogsView() {
 
   const queryReq = useMemo(() => buildQueryRequest(), [buildQueryRequest]);
   const { entries, truncated, parseErrorCount, loading: queryLoading, error: queryError, loadNextPage } = useLogQuery(queryReq);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    if (filesError) {
+      showToast("error", "Failed to load files", filesError, 0);
+    }
+  }, [filesError, showToast]);
+
+  useEffect(() => {
+    if (queryError) {
+      showToast("error", "Query error", queryError, 0);
+    }
+  }, [queryError, showToast]);
+
+  useEffect(() => {
+    if (parseErrorCount > 0) {
+      showToast("warning", "Parse errors", `${parseErrorCount} line(s) could not be parsed`, 0);
+    }
+  }, [parseErrorCount, showToast]);
 
   const toggleLevel = (level: LogLevel) => {
     setSelectedLevels((prev) =>
@@ -140,15 +159,6 @@ export function SystemLogsView() {
       <div style={{ display: "flex", gap: "1.5rem" }}>
         <div style={{ width: "300px", flexShrink: 0, background: "white", border: "1px solid #e0e0e0", borderRadius: "4px", padding: "1rem" }}>
           <h3 style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", fontWeight: 600 }}>Log Files</h3>
-          {filesError && (
-            <InlineNotification
-              kind="error"
-              title="Failed to load files"
-              subtitle={filesError}
-              hideCloseButton
-              style={{ marginBottom: "0.5rem" }}
-            />
-          )}
           {filesLoading && <Loading small withOverlay={false} />}
           {!filesLoading && files.length === 0 && (
             <p style={{ color: "#525252", fontSize: "0.8rem" }}>No log files found.</p>
@@ -309,24 +319,6 @@ export function SystemLogsView() {
               </div>
             </div>
           </div>
-
-          {queryError && (
-            <InlineNotification
-              kind="error"
-              title="Query error"
-              subtitle={queryError}
-              style={{ marginBottom: "0.5rem" }}
-            />
-          )}
-          {parseErrorCount > 0 && (
-            <InlineNotification
-              kind="warning"
-              title="Parse errors"
-              subtitle={`${parseErrorCount} line(s) could not be parsed`}
-              hideCloseButton
-              style={{ marginBottom: "0.5rem" }}
-            />
-          )}
 
           <div style={{
             background: "white",

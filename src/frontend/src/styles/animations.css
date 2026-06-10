@@ -1,0 +1,70 @@
+@keyframes marquee-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(150%); }
+}
+
+@keyframes upload-pulse {
+  0%, 100% { border-color: #0f62fe; background-color: #f4f4f4; }
+  50%      { border-color: #78a9ff; background-color: #e8f0fe; }
+}
+
+@keyframes step-fade-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.75); }
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.marquee-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 100%
+  );
+  animation: marquee-slide 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.upload-pulse {
+  animation: upload-pulse 1.2s ease-in-out infinite;
+}
+
+.step-fade {
+  animation: step-fade-in 0.2s ease-out;
+}
+
+.status-pulse-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #24a148;
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+.modal-content-enter {
+  animation: modal-fade-in 0.2s ease-out;
+}
+
+.inline-action-loading {
+  min-width: 20px;
+  height: 16px;
+}
+
+.inline-action-loading .cds--inline-loading__animation {
+  width: 14px;
+  height: 14px;
+}

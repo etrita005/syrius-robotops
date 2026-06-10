@@ -618,7 +618,9 @@ export default function CreateTaskModal({
         <p style={{ color: "#fa4d56", fontSize: "0.875rem", marginBottom: "1rem" }}>{error}</p>
       )}
 
-      {renderStepContent()}
+      <div key={step} className="step-fade">
+        {renderStepContent()}
+      </div>
 
       {step === 4 && (
         <p style={{ marginTop: "1rem", color: "#525252", fontSize: "0.875rem" }}>

@@ -31,7 +31,7 @@ export function RecentSolutionsDropdown({
       <ComposedModal open={open} onClose={() => setOpen(false)}>
         <ModalHeader title="Recent Solutions" />
         <ModalBody>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div className="modal-content-enter" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             {entries.map((entry) => (
               <div
                 key={entry.id}

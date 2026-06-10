@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   FileUploaderItem,
-  InlineNotification,
 } from "@carbon/react";
 import { artifactApi } from "../../api/artifactApi.js";
 import { UploadResult } from "../../types/artifact.js";
+import { useToast } from "../../hooks/useToast.js";
 
 interface UploadDropZoneProps {
   onUploadComplete?: () => void;
@@ -17,6 +17,7 @@ export function UploadDropZone({ onUploadComplete }: UploadDropZoneProps) {
     { name: string; result: UploadResult }[]
   >([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { showToast } = useToast();
 
   const handleFiles = useCallback(
     async (files: File[]) => {
@@ -79,6 +80,15 @@ export function UploadDropZone({ onUploadComplete }: UploadDropZoneProps) {
 
   useEffect(() => {
     if (!uploading && results.length > 0) {
+      const successCount = results.filter((r) => r.result.status === "success").length;
+      const dedupCount = results.filter((r) => r.result.status === "deduplicated").length;
+      const failCount = results.filter((r) => r.result.status === "failed").length;
+      showToast(
+        failCount > 0 ? "warning" : "success",
+        "Upload Summary",
+        `${successCount} succeeded, ${dedupCount} deduplicated, ${failCount} failed`,
+        5000
+      );
       dismissTimerRef.current = setTimeout(() => {
         setResults([]);
       }, 5000);
@@ -89,15 +99,14 @@ export function UploadDropZone({ onUploadComplete }: UploadDropZoneProps) {
         dismissTimerRef.current = null;
       }
     };
-  }, [uploading, results.length]);
+  }, [uploading, results.length, showToast]);
 
   const successCount = results.filter((r) => r.result.status === "success").length;
-  const dedupCount = results.filter((r) => r.result.status === "deduplicated").length;
-  const failCount = results.filter((r) => r.result.status === "failed").length;
 
   return (
     <div>
       <div
+        className={uploading ? "upload-pulse" : ""}
         onClick={() => !uploading && inputRef.current?.click()}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -131,12 +140,6 @@ export function UploadDropZone({ onUploadComplete }: UploadDropZoneProps) {
 
       {results.length > 0 && (
         <div style={{ marginTop: "1rem" }}>
-          <InlineNotification
-            kind={failCount > 0 ? "warning" : "success"}
-            title="Upload Summary"
-            subtitle={`${successCount} succeeded, ${dedupCount} deduplicated, ${failCount} failed`}
-            lowContrast
-          />
           {results.map((r, i) => (
             <FileUploaderItem
               key={i}

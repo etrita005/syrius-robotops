@@ -9,7 +9,6 @@ import {
   TableCell,
   Button,
   InlineLoading,
-  InlineNotification,
   Modal,
   TextInput,
   Breadcrumb,
@@ -21,6 +20,7 @@ import { RobotDefinition, formatAddressDisplay, formatInfoValue } from "../../ty
 import AddRobotModal from "./AddRobotModal.js";
 import RobotDetailModal from "./RobotDetailModal.js";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
+import { useToast } from "../../hooks/useToast.js";
 
 interface RobotsViewProps {
   solutionId: string;
@@ -72,20 +72,13 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [editingAliasId, setEditingAliasId] = useState<string | null>(null);
   const [editingAliasValue, setEditingAliasValue] = useState("");
-  const [notification, setNotification] = useState<{
-    kind: "success" | "error" | "warning";
-    title: string;
-    subtitle?: string;
-  } | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => {
-        setNotification(null);
-      }, 5000);
-      return () => clearTimeout(timer);
+    if (error) {
+      showToast("error", "Error", error, 0);
     }
-  }, [notification]);
+  }, [error, showToast]);
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
@@ -138,11 +131,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
       try {
         await editRobot(robotId, { alias: editingAliasValue.trim() });
       } catch (err) {
-        setNotification({
-          kind: "error",
-          title: "Failed to update alias",
-          subtitle: (err as Error).message,
-        });
+        showToast("error", "Failed to update alias", (err as Error).message, 0);
       }
     }
     setEditingAliasId(null);
@@ -153,17 +142,9 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
     if (!deleteTarget) return;
     try {
       await removeRobot(deleteTarget.id);
-      setNotification({
-        kind: "success",
-        title: "Robot deleted",
-        subtitle: `${deleteTarget.alias} has been removed.`,
-      });
+      showToast("success", "Robot deleted", `${deleteTarget.alias} has been removed.`);
     } catch (err) {
-      setNotification({
-        kind: "error",
-        title: "Failed to delete robot",
-        subtitle: (err as Error).message,
-      });
+      showToast("error", "Failed to delete robot", (err as Error).message, 0);
     } finally {
       setDeleteConfirmOpen(false);
       setDeleteTarget(null);
@@ -175,18 +156,10 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
     if (ids.length === 0) return;
     try {
       const result = await removeRobotsBatch(ids);
-      setNotification({
-        kind: "success",
-        title: "Batch delete completed",
-        subtitle: `${result.succeeded.length} deleted, ${result.failed.length} failed.`,
-      });
+      showToast("success", "Batch delete completed", `${result.succeeded.length} deleted, ${result.failed.length} failed.`);
       setSelectedIds(new Set());
     } catch (err) {
-      setNotification({
-        kind: "error",
-        title: "Failed to batch delete",
-        subtitle: (err as Error).message,
-      });
+      showToast("error", "Failed to batch delete", (err as Error).message, 0);
     } finally {
       setBatchDeleteOpen(false);
     }
@@ -212,13 +185,15 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
               padding: "1rem",
               cursor: "pointer",
               position: "relative",
-              transition: "box-shadow 0.15s ease",
+              transition: "box-shadow 0.15s ease, transform 0.15s ease",
             }}
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)";
+              (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.boxShadow = "none";
+              (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
             }}
             onClick={(e) => {
               const target = e.target as HTMLElement;
@@ -497,24 +472,6 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
         <h3>Robots</h3>
       </div>
 
-      {notification && (
-        <InlineNotification
-          kind={notification.kind}
-          title={notification.title}
-          subtitle={notification.subtitle}
-          onCloseButtonClick={() => setNotification(null)}
-          style={{ marginBottom: "1rem" }}
-        />
-      )}
-      {error && (
-        <InlineNotification
-          kind="error"
-          title="Error"
-          subtitle={error}
-          style={{ marginBottom: "1rem" }}
-        />
-      )}
-
       {robots.length === 0 ? (
         <div
           style={{
@@ -587,11 +544,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
         onClose={() => setAddOpen(false)}
         onAdd={async (input) => {
           const robot = await addRobot(input);
-          setNotification({
-            kind: "success",
-            title: "Robot added",
-            subtitle: `${robot.alias} has been added.`,
-          });
+          showToast("success", "Robot added", `${robot.alias} has been added.`);
         }}
       />
 
@@ -605,11 +558,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
         onSave={async (patch) => {
           if (!detailRobot) return;
           await editRobot(detailRobot.id, patch);
-          setNotification({
-            kind: "success",
-            title: "Robot updated",
-            subtitle: "Changes saved successfully.",
-          });
+          showToast("success", "Robot updated", "Changes saved successfully.");
         }}
       />
 
@@ -625,15 +574,17 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
         onRequestSubmit={handleDelete}
         danger
       >
-        <p>
-          This action cannot be undone. The robot definition will be permanently
-          removed from this solution.
-        </p>
-        {deleteTarget && (
-          <p style={{ marginTop: "0.5rem", fontWeight: 600 }}>
-            {deleteTarget.alias} ({formatAddressDisplay(deleteTarget.address, deleteTarget.port)})
+        <div className="modal-content-enter">
+          <p>
+            This action cannot be undone. The robot definition will be permanently
+            removed from this solution.
           </p>
-        )}
+          {deleteTarget && (
+            <p style={{ marginTop: "0.5rem", fontWeight: 600 }}>
+              {deleteTarget.alias} ({formatAddressDisplay(deleteTarget.address, deleteTarget.port)})
+            </p>
+          )}
+        </div>
       </Modal>
 
       <Modal
@@ -645,10 +596,12 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
         onRequestSubmit={handleBatchDelete}
         danger
       >
-        <p>
-          This action cannot be undone. The selected robot definitions will be
-          permanently removed from this solution.
-        </p>
+        <div className="modal-content-enter">
+          <p>
+            This action cannot be undone. The selected robot definitions will be
+            permanently removed from this solution.
+          </p>
+        </div>
       </Modal>
     </div>
   );

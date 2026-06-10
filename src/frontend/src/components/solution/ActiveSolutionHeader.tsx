@@ -60,6 +60,7 @@ export function ActiveSolutionHeader() {
       >
         <ModalHeader title="Switch Solution" />
         <ModalBody>
+          <div className="modal-content-enter">
           {entries.length === 0 ? (
             <p style={{ color: "#8d8d8d" }}>No recent solutions.</p>
           ) : (
@@ -106,6 +107,7 @@ export function ActiveSolutionHeader() {
               ))}
             </div>
           )}
+          </div>
         </ModalBody>
         <ModalFooter>
           <Button kind="secondary" onClick={() => setShowSwitcher(false)}>

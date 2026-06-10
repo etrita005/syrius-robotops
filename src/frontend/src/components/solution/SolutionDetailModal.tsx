@@ -55,6 +55,7 @@ export function SolutionDetailModal({
     <ComposedModal open={!!solution} onClose={onClose} size="lg">
       <ModalHeader title={editing ? "Edit Solution" : "Solution Details"} />
       <ModalBody>
+        <div className="modal-content-enter">
         {editing ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <TextInput
@@ -101,6 +102,7 @@ export function SolutionDetailModal({
             )}
           </div>
         )}
+        </div>
       </ModalBody>
       <ModalFooter>
         <Button kind="secondary" onClick={onClose}>
