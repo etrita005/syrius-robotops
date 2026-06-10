@@ -1,6 +1,6 @@
 import type { ValueMap } from "flowed";
-import { RebootRobotTask } from "./rebootRobotTask.js";
-import { createLogger } from "../logger/index.js";
+import { RebootRobotTask } from "../real/rebootRobotTask.js";
+import { createLogger } from "../../logger/index.js";
 
 const log = createLogger("RebootRobot");
 

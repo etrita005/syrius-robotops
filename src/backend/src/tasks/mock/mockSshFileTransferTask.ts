@@ -1,6 +1,6 @@
 import type { ValueMap } from "flowed";
-import { SshFileTransferTask } from "./sshFileTransferTask.js";
-import { createLogger } from "../logger/index.js";
+import { SshFileTransferTask } from "../real/sshFileTransferTask.js";
+import { createLogger } from "../../logger/index.js";
 
 const log = createLogger("SshFileTransfer");
 

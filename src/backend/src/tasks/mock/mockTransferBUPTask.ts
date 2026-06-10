@@ -1,14 +1,14 @@
 import type { ValueMap } from "flowed";
-import { TransferMovebaseTask } from "./transferMovebaseTask.js";
-import { createLogger } from "../logger/index.js";
+import { TransferBUPTask } from "../real/transferBUPTask.js";
+import { createLogger } from "../../logger/index.js";
 
-const log = createLogger("TransferMovebase");
+const log = createLogger("TransferBUP");
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class MockTransferMovebaseTask extends TransferMovebaseTask {
+export class MockTransferBUPTask extends TransferBUPTask {
   override async exec(params: ValueMap, _context?: ValueMap): Promise<ValueMap> {
     const artifactId = params.artifactId as string | undefined;
 

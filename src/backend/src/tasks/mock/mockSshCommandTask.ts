@@ -1,6 +1,6 @@
 import type { ValueMap } from "flowed";
-import { SshCommandTask } from "./sshCommandTask.js";
-import { createLogger } from "../logger/index.js";
+import { SshCommandTask } from "../real/sshCommandTask.js";
+import { createLogger } from "../../logger/index.js";
 
 const log = createLogger("SshCommand");
 

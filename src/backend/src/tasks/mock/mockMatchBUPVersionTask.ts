@@ -1,28 +1,28 @@
 import type { ValueMap } from "flowed";
-import { MatchMovebaseVersionTask } from "./matchMovebaseVersionTask.js";
-import { createLogger } from "../logger/index.js";
+import { MatchBUPVersionTask } from "../real/matchBUPVersionTask.js";
+import { createLogger } from "../../logger/index.js";
 
-const log = createLogger("MatchMovebaseVersion");
+const log = createLogger("MatchBUPVersion");
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class MockMatchMovebaseVersionTask extends MatchMovebaseVersionTask {
+export class MockMatchBUPVersionTask extends MatchBUPVersionTask {
   override async exec(params: ValueMap): Promise<ValueMap> {
     const expectedContent = this.getExpectedContent(params);
 
-    log.info({ expectedContent }, "Simulating match movebase version (mock)");
+    log.info({ expectedContent }, "Simulating match BUP version (mock)");
 
     await sleep(2000);
 
-    log.info({ expectedContent }, "Movebase version matched (mock)");
+    log.info({ expectedContent }, "BUP version matched (mock)");
 
     return {
       done: true,
       success: true,
       matched: true,
-      filePath: "/opt/cosmos/etc/ota/version",
+      filePath: "/etc/l4t_jurassic_release",
       expectedContent,
       actualContent: expectedContent,
       stdout: expectedContent,

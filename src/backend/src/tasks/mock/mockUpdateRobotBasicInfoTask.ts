@@ -1,6 +1,6 @@
 import type { ValueMap } from "flowed";
-import { UpdateRobotBasicInfoTask } from "./updateRobotBasicInfoTask.js";
-import { createLogger } from "../logger/index.js";
+import { UpdateRobotBasicInfoTask } from "../real/updateRobotBasicInfoTask.js";
+import { createLogger } from "../../logger/index.js";
 
 const log = createLogger("UpdateRobotBasicInfo");
 

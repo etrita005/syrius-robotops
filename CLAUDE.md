@@ -118,3 +118,4 @@ syrius-robotops/
 - Use `tools/generate_ui_sketches.py` to generate or update UI/UX wireframe sketches. Re-run this script after any UI-related changes to keep the sketches in sync with the implementation.
 - UI/UX wireframe sketches under `documents/ui-ux/` MUST be organized by module and sub-module hierarchy. Each module gets its own directory; sub-modules are nested as sub-directories reflecting the parent-child relationship (e.g., `solution-management/robots/`, `artifact-management/`).
 - After writing code, check code formatting and eliminate warnings and unused imports.
+- When creating, modifying, or deleting a backend task resolver (files under `src/backend/src/tasks/`, excluding mock tasks), you MUST update `documents/design/backend_task_design.md` to keep it consistent. Each task entry includes: functional overview, input parameters, output parameters, and notes.

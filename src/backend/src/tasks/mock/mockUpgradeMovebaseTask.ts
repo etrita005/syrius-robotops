@@ -1,6 +1,6 @@
 import type { ValueMap } from "flowed";
-import { UpgradeMovebaseTask } from "./upgradeMovebaseTask.js";
-import { createLogger } from "../logger/index.js";
+import { UpgradeMovebaseTask } from "../real/upgradeMovebaseTask.js";
+import { createLogger } from "../../logger/index.js";
 
 const log = createLogger("UpgradeMovebase");
 

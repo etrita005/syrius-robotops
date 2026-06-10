@@ -1,6 +1,6 @@
 import type { ValueMap } from "flowed";
 import { SshCommandTask, type SshCommandParams } from "./sshCommandTask.js";
-import { createLogger } from "../logger/index.js";
+import { createLogger } from "../../logger/index.js";
 
 const log = createLogger("RebootRobot");
 

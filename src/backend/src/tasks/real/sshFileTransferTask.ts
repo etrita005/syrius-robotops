@@ -4,8 +4,8 @@ import { stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
 import { posix as pathPosix } from "node:path";
-import { createLogger } from "../logger/index.js";
-import { SSH_USERNAME, SSH_PASSWORD } from "../config.js";
+import { createLogger } from "../../logger/index.js";
+import { SSH_USERNAME, SSH_PASSWORD } from "../../config.js";
 
 const log = createLogger("SshFileTransfer");
 

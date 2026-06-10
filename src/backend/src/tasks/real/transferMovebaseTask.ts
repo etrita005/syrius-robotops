@@ -3,7 +3,7 @@ import { SshFileTransferTask, type SshFileTransferParams } from "./sshFileTransf
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLogger } from "../logger/index.js";
+import { createLogger } from "../../logger/index.js";
 
 const log = createLogger("TransferMovebase");
 

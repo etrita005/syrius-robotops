@@ -86,7 +86,7 @@ params: {
 ```typescript
 const TASK_DAG_MAP: Record<string, DagConfig> = {
   "upgrade-movebase": { /* 五步 DAG: transfer → upgrade → reboot → verify_version → cleanup */ },
-  "upgrade-bup":      { /* 一步 DAG: SSH 文件传输 */ },
+  "upgrade-bup":      { /* 五步 DAG: transfer → upgrade → reboot → verify_version → cleanup */ },
 };
 ```
 
@@ -113,15 +113,23 @@ input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot] ─�
 
 #### upgrade-bup（BUP 固件升级）
 
-单步流程，无异常处理：
+五步流程，含异常处理（reboot 前等待 30s）：
 
 ```
-input variables ──→ [upgrade] ──→ upgrade_result
+input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot(30s)] ──→ [verify_version] ──→ [cleanup] ──→ cleanup_done
+                        │              │                │                  │                       │
+                        └── transfer_done ──────────────┘                  │                       │
+                                       └── upgrade_done ──────────────────┘                       │
+                                                         └── reboot_done ─────────────────────────┘
+                                                                           └── verify_done ───────┘
+如果主流程任一任务失败：
+[error_cleanup] ──→ error_cleanup_done
 ```
-
-- 解析器：`SshFileTransferTask`
-- 输入依赖：`robotIp`, `robotPort`, `localFilePath`, `remoteFilePath`
-- 预期结果：`upgrade_result`
+- 解析器：`TransferBUPTask`, `UpgradeBUPTask`, `RebootRobotTask`, `MatchBUPVersionTask`, `DeleteBUPTask`
+- 输入依赖：`robotIp`, `robotPort`, `artifactId`, `expectedVersion`
+- 预期结果：`cleanup_done`
+- 异常 DAG：清理残留安装包
+- reboot 参数：`bootWaitMs: 30000`（重启前等待 30 秒）
 
 ---
 

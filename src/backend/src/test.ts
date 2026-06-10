@@ -13,9 +13,9 @@ import type { ObjectStoreResource } from "./services/objectStore.js";
 import { MemStore } from "./memStore/index.js";
 import type { CacheEventHandler, CacheEntry } from "./memStore/index.js";
 import { buildRobotInfoKey } from "./services/robotService.js";
-import { MockGetRobotBasicInfoTask } from "./tasks/mockGetRobotBasicInfoTask.js";
-import { UpdateRobotBasicInfoTask } from "./tasks/updateRobotBasicInfoTask.js";
-import type { RobotBasicInfo } from "./tasks/getRobotBasicInfoTask.js";
+import { MockGetRobotBasicInfoTask } from "./tasks/mock/mockGetRobotBasicInfoTask.js";
+import { UpdateRobotBasicInfoTask } from "./tasks/real/updateRobotBasicInfoTask.js";
+import type { RobotBasicInfo } from "./tasks/real/getRobotBasicInfoTask.js";
 
 class InMemoryObjectStore {
   private store = new Map<string, unknown>();

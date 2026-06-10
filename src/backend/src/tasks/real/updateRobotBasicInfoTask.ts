@@ -1,6 +1,6 @@
 import type { ValueMap, ITaskResolver } from "flowed";
 import type { RobotBasicInfo } from "./getRobotBasicInfoTask.js";
-import type { MemStore } from "../memStore/index.js";
+import type { MemStore } from "../../memStore/index.js";
 
 export class UpdateRobotBasicInfoTask implements ITaskResolver {
   async exec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {

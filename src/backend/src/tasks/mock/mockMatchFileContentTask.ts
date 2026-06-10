@@ -1,6 +1,6 @@
 import type { ValueMap } from "flowed";
-import { MatchFileContentTask } from "./matchFileContentTask.js";
-import { createLogger } from "../logger/index.js";
+import { MatchFileContentTask } from "../real/matchFileContentTask.js";
+import { createLogger } from "../../logger/index.js";
 
 const log = createLogger("MatchFileContent");
 

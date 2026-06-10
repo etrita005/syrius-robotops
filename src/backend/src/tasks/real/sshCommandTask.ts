@@ -1,7 +1,7 @@
 import type { ValueMap, ITaskResolver } from "flowed";
 import { Client } from "ssh2";
-import { createLogger } from "../logger/index.js";
-import { SSH_USERNAME, SSH_PASSWORD } from "../config.js";
+import { createLogger } from "../../logger/index.js";
+import { SSH_USERNAME, SSH_PASSWORD } from "../../config.js";
 
 const log = createLogger("SshCommand");
 

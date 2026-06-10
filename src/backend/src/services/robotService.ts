@@ -11,7 +11,7 @@ import {
   InvalidRobotAddressError,
   RobotAddressExistsError,
 } from "../errors/appErrors.js";
-import type { RobotBasicInfo } from "../tasks/getRobotBasicInfoTask.js";
+import type { RobotBasicInfo } from "../tasks/real/getRobotBasicInfoTask.js";
 import { MemStore } from "../memStore/index.js";
 import type { CacheEntry, CacheEventHandler, IMemStore } from "../memStore/index.js";
 import { TaskFlowEngine } from "./taskFlowEngine/index.js";

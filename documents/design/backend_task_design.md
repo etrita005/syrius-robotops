@@ -1,0 +1,468 @@
+# Backend Task Resolver Technical Design
+
+All task resolver classes implement `ITaskResolver` from `flowed`:
+```
+exec(params: ValueMap, context?: ValueMap): Promise<ValueMap>
+```
+`ValueMap` is effectively `Record<string, unknown>`.
+
+Shared SSH credentials (from `../../config.js`):
+- `SSH_USERNAME = "developer"`
+- `SSH_PASSWORD = "developer"`
+
+---
+
+## 1. SshCommandTask
+
+Base class for all SSH command execution tasks.
+
+### Overview
+
+Executes a shell command on a remote robot via raw SSH (ssh2 library). Supports IP and mDNS host resolution, automatic sudo wrapping, retry with exponential backoff, and separate connection/command timeouts.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `robotIp` | `string` | (required) | Target robot IP address |
+| `robotPort` | `number` | `22` | SSH port |
+| `robotMdnsDomain` | `string \| undefined` | `undefined` | mDNS domain, takes precedence over IP |
+| `timeout` | `number` | `10000` | General timeout (ms), fallback for connectTimeout/commandTimeout |
+| `connectTimeout` | `number` | `10000` | SSH connection timeout (ms) |
+| `commandTimeout` | `number` | `30000` | Command execution timeout (ms) |
+| `retryCount` | `number` | `3` | Max retry attempts on failure |
+| `sshUsername` | `string` | `SSH_USERNAME` | SSH login username |
+| `sshPassword` | `string` | `SSH_PASSWORD` | SSH login password |
+| `sshCommand` | `string` | (subclass-defined) | Shell command to execute |
+| `sudo` | `boolean` | `false` | Whether to wrap command with sudo |
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `done` | `true` | Flow completion marker |
+| `success` | `true` | Task success marker |
+| `stdout` | `string` | Command standard output |
+| `stderr` | `string` | Command standard error |
+| `exitCode` | `number \| null` | Command exit code |
+
+### Notes
+
+- Host resolution: uses `robotMdnsDomain` if present, otherwise `robotIp`
+- Sudo wrapping: prepends `echo "<password>" | sudo -S -p ''` to each `&&`-separated segment
+- Retry uses exponential backoff: `sleep(1000 * attempt)` between attempts
+- Throws if exit code != 0 after all retries
+- Subclass overrides: `getSshCommand()` defines the command, `buildParams()` customizes defaults
+
+---
+
+## 2. SshFileTransferTask
+
+Base class for all SFTP file transfer tasks.
+
+### Overview
+
+Uploads a local file to a remote robot via SFTP (ssh2 library). Validates local file existence, optionally verifies integrity via checksum comparison (local vs remote), creates remote parent directories, and supports progress logging.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `robotIp` | `string` | (required) | Target robot IP address |
+| `robotPort` | `number` | `22` | SSH port |
+| `robotMdnsDomain` | `string \| undefined` | `undefined` | mDNS domain |
+| `timeout` | `number` | `30000` | General timeout (ms) |
+| `retryCount` | `number` | `3` | Max retry attempts |
+| `sshUsername` | `string` | `SSH_USERNAME` | SSH login username |
+| `sshPassword` | `string` | `SSH_PASSWORD` | SSH login password |
+| `localFilePath` | `string` | (required) | Local file path to upload |
+| `remoteFilePath` | `string` | (required) | Remote destination path |
+| `sudo` | `boolean` | `false` | Whether to use sudo for mkdir |
+| `verifyChecksum` | `boolean` | `true` | Whether to verify transfer integrity |
+| `checksumAlgorithm` | `"sha256" \| "md5"` | `"sha256"` | Checksum algorithm |
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `done` | `true` | Flow completion marker |
+| `success` | `true` | Task success marker |
+| `bytesTransferred` | `number` | Total bytes transferred |
+| `localChecksum` | `string` | Local file checksum |
+| `remoteChecksum` | `string` | Remote file checksum |
+| `integrityVerified` | `boolean` | Whether checksums matched |
+
+### Notes
+
+- Validates local file exists via `stat()` before connecting
+- Creates remote parent directories via `mkdir -p` (with sudo wrapping if enabled)
+- Transfers via SFTP `fastPut` with progress logging every 2 seconds
+- Remote checksum computed by running `sha256sum` or `md5sum` on the robot via SSH
+
+---
+
+## 3. GetRobotBasicInfoTask
+
+### Overview
+
+Reads robot hardware information from `/sys/robotInfo/*` and `/opt/cosmos/etc/secure/iot-gateway/device_id` via a shell script, parses the JSON output, and returns a structured `RobotBasicInfo` object.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`.
+
+No additional parameters (command is hardcoded).
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | `true` | Task success marker |
+| `rawOutput` | `string` | Full stdout from the shell script |
+| `robotInfo` | `RobotBasicInfo` | Parsed robot info object |
+| `robotInfo.model` | `string` | Robot model |
+| `robotInfo.robotSn` | `string` | Robot serial number |
+| `robotInfo.thingsId` | `string` | IoT device ID |
+| `robotInfo.vendorId` | `string` | Vendor ID |
+| `robotInfo.productId` | `string` | Product ID |
+| `robotInfo.mainBoardSn` | `string` | Main board serial number |
+| `robotInfo.mainBoardId` | `string` | Main board ID |
+| `robotInfo.mainSomSn` | `string` | SOM serial number |
+
+### Notes
+
+- Executes a multi-command shell script that reads from `cat`, `grep`, and `awk`
+- Expects a JSON line in stdout; parses the first JSON line found
+- Reads from `/sys/robotInfo/`, `/opt/cosmos/etc/secure/`, and `/sys/firmware/devicetree/base/`
+
+---
+
+## 4. UpdateRobotBasicInfoTask
+
+### Overview
+
+Writes robot basic info into the in-memory LRU cache (`MemStore`). No SSH or network operations.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `cacheKey` | `string` | (required) | Cache key for the robot |
+| `robotInfo` | `RobotBasicInfo` | (required) | Robot info object to cache |
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `memStore` | `MemStore` | In-memory cache instance |
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | `true` | Task success marker |
+| `updated` | `true` | Confirmation of cache update |
+
+### Notes
+
+- Only performs update if `cacheKey`, `robotInfo`, and `memStore` are all present
+- Calls `memStore.updateCache(cacheKey, robotInfo)`
+
+---
+
+## 5. DeleteRemotePathTask
+
+### Overview
+
+Deletes a specified path on the remote robot via `rm -rf` with sudo.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetPath` | `string` | (required) | Remote path to delete |
+
+Inherits all from `SshCommandTask`. `sudo` is forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Refuses to delete root path `"/"` — throws an error
+- Double-quote escapes the target path in the generated command
+- Command format: `rm -rf -- "<escapedPath>"`
+
+---
+
+## 6. DeleteMovebaseTask
+
+### Overview
+
+Deletes the movebase offline OTA directory (`/mnt/sdcard/offlineota`) on the remote robot.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. No additional parameters. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -rf /mnt/sdcard/offlineota`
+- Used as the cleanup step in both movebase and BUP upgrade flows
+
+---
+
+## 7. TransferMovebaseTask
+
+### Overview
+
+Downloads a movebase artifact from the artifact service to a temp directory, then uploads it to the robot via SFTP.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID to download |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ download(id, dest): Promise<string> }` | Service for artifact download |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/mnt/sdcard/offlineota/alpha2_movebase_offline_package.zip`
+- Creates temp directory at `/tmp/movebase-transfer-<timestamp>`
+- Cleans up temp directory in both success and failure paths
+- If `artifactId` or `artifactService` is absent, falls through to `super.exec()` directly
+
+---
+
+## 8. UpgradeMovebaseTask
+
+### Overview
+
+Executes the movebase offline upgrade script on the remote robot.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `900000` (15 min) | Override for long-running install |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded 3-step command: (1) remove old extracted package, (2) unzip new package, (3) run `install_offline.sh`
+- Default 15-minute timeout accommodates slow install scripts
+
+---
+
+## 9. RebootRobotTask
+
+### Overview
+
+Reboots the remote robot via `sudo reboot`. Tolerates expected connection-loss errors that occur when the robot goes down.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `bootWaitMs` | `number` | `0` | Wait duration after reboot (ms) before task returns |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`, `retryCount` forced to `1`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `reboot`
+- Catches connection-loss errors (`timed out`, `connection lost`, `socket`, `econnreset`, `not connected`, `connection ended`) and treats them as success
+- If `bootWaitMs > 0`, sleeps that duration after reboot before returning
+- BUP upgrade flow configures `bootWaitMs: 30000` (30s) in the DAG
+
+---
+
+## 10. MatchFileContentTask
+
+### Overview
+
+Reads a remote file via `cat` and compares its content (trimmed) against an expected string.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `filePath` | `string` | (required) | Full path to the remote file |
+| `expectedContent` | `string` | (required) | Expected file content (exact match after trim) |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `false`, `retryCount` forced to `1`.
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| (inherited) | | All fields from `SshCommandTask` |
+| `matched` | `true` | Content match confirmed |
+| `filePath` | `string` | Path that was checked |
+| `expectedContent` | `string` | Expected content |
+| `actualContent` | `string` | Actual file content (trimmed) |
+
+### Notes
+
+- Generates SSH command: `cat "<filePath>"`
+- Comparison is exact-match after trimming whitespace from both sides
+- Throws with a detailed mismatch error if content differs
+
+---
+
+## 11. MatchMovebaseVersionTask
+
+### Overview
+
+Checks the robot's movebase version file against an expected version string. Used for post-upgrade verification.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `retryCount` | `number` | `10` | High retry count for post-reboot timing |
+| `commandTimeout` | `number` | `30000` | Command timeout (ms) |
+| `connectTimeout` | `number` | `10000` | Connection timeout (ms) |
+
+Inherits `filePath` and `expectedContent` from `MatchFileContentTask`.
+
+### Output Parameters
+
+Same as `MatchFileContentTask`.
+
+### Notes
+
+- Hardcoded file path: `/opt/cosmos/etc/ota/version`
+- Default 10 retries account for post-reboot boot-up time
+- Inherits content comparison logic from `MatchFileContentTask`
+
+---
+
+## 12. TransferBUPTask
+
+### Overview
+
+Downloads a BUP artifact from the artifact service to a temp directory, then uploads it to the robot via SFTP.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID to download |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+Same as `TransferMovebaseTask` (`artifactService`).
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/mnt/sdcard/bup_offlineota/bup_offline_package.zip`
+- Creates temp directory at `/tmp/bup-transfer-<timestamp>`
+- Implementation mirrors `TransferMovebaseTask`
+
+---
+
+## 13. UpgradeBUPTask
+
+### Overview
+
+Executes the BUP firmware upgrade on the remote robot.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `900000` (15 min) | Override for long-running upgrade |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded 3-step command: (1) remove old extracted BUP package, (2) unzip new BUP package to `/mnt/sdcard/bup_offlineota`, (3) run `upgrade_bup.sh`
+- Default 15-minute timeout accommodates slow upgrade scripts
+- Structure mirrors `UpgradeMovebaseTask`
+- BUP working directory: `/mnt/sdcard/bup_offlineota`
+
+---
+
+## 14. MatchBUPVersionTask
+
+### Overview
+
+Checks the robot's BUP version file against an expected version string. Used for post-upgrade verification.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `retryCount` | `number` | `10` | High retry count for post-reboot timing |
+| `commandTimeout` | `number` | `30000` | Command timeout (ms) |
+| `connectTimeout` | `number` | `10000` | Connection timeout (ms) |
+
+Inherits `filePath` and `expectedContent` from `MatchFileContentTask`.
+
+### Output Parameters
+
+Same as `MatchFileContentTask`.
+
+### Notes
+
+- Hardcoded file path: `/etc/l4t_jurassic_release`
+- Implementation mirrors `MatchMovebaseVersionTask`
+
+---
+
+## 15. DeleteBUPTask
+
+### Overview
+
+Deletes the BUP offline OTA directory (`/mnt/sdcard/offlineota`) on the remote robot.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. No additional parameters. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -rf /mnt/sdcard/offlineota`
+- Used as the cleanup step in the BUP upgrade flow
+- Implementation mirrors `DeleteMovebaseTask`

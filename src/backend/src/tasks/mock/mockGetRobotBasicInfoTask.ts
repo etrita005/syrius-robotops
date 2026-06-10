@@ -1,5 +1,5 @@
 import type { ValueMap } from "flowed";
-import { GetRobotBasicInfoTask, type RobotBasicInfo } from "./getRobotBasicInfoTask.js";
+import { GetRobotBasicInfoTask, type RobotBasicInfo } from "../real/getRobotBasicInfoTask.js";
 
 const MOCK_ROBOT_INFO: RobotBasicInfo = {
   model: "MLLBA0201",

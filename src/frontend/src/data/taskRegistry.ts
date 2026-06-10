@@ -12,7 +12,7 @@ export interface TaskParamDescriptor {
 
 export interface DagResolver {
   name: string;
-  params: Record<string, string>;
+  params: Record<string, string | { value: unknown }>;
   results: Record<string, string>;
 }
 
@@ -126,6 +126,91 @@ const UPGRADE_MOVEBASE_ERROR_DAG: DagDefinition = {
   },
 };
 
+const UPGRADE_BUP_DAG: DagDefinition = {
+  tasks: {
+    transfer: {
+      requires: ["robotIp", "robotPort", "artifactId"],
+      resolver: {
+        name: "TransferBUPTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    upgrade: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "UpgradeBUPTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "upgrade_done" },
+      },
+      provides: ["upgrade_done"],
+    },
+    reboot: {
+      requires: ["robotIp", "robotPort", "upgrade_done"],
+      resolver: {
+        name: "RebootRobotTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          bootWaitMs: { value: 30000 },
+        },
+        results: { done: "reboot_done" },
+      },
+      provides: ["reboot_done"],
+    },
+    verify_version: {
+      requires: ["robotIp", "robotPort", "reboot_done", "expectedVersion"],
+      resolver: {
+        name: "MatchBUPVersionTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          expectedContent: "expectedVersion",
+        },
+        results: { done: "verify_done" },
+      },
+      provides: ["verify_done"],
+    },
+    cleanup: {
+      requires: ["robotIp", "robotPort", "verify_done"],
+      resolver: {
+        name: "DeleteBUPTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "cleanup_done" },
+      },
+      provides: ["cleanup_done"],
+    },
+  },
+};
+
+const UPGRADE_BUP_ERROR_DAG: DagDefinition = {
+  tasks: {
+    error_cleanup: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "DeleteBUPTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "error_cleanup_done" },
+      },
+      provides: ["error_cleanup_done"],
+    },
+  },
+};
+
 const SSH_FILE_TRANSFER_DAG: DagDefinition = {
   tasks: {
     upgrade: {
@@ -157,12 +242,18 @@ export const TASK_REGISTRY: TaskRegistry = {
         description:
           "Select one or more target robots to upgrade BUP firmware.",
       },
-      dag: SSH_FILE_TRANSFER_DAG,
-      expectedResults: ["upgrade_result"],
+      dag: UPGRADE_BUP_DAG,
+      expectedResults: ["cleanup_done"],
+      errorDag: UPGRADE_BUP_ERROR_DAG,
       params: {
         artifactId: {
           type: "artifact",
           label: "Artifact file",
+          required: true,
+        },
+        expectedVersion: {
+          type: "text",
+          label: "Expected version",
           required: true,
         },
       },
