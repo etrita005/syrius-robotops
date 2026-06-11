@@ -7,7 +7,7 @@ import { createLogger } from "../../logger/index.js";
 
 const log = createLogger("TransferBUP");
 
-const REMOTE_TARGET_PATH = "/mnt/sdcard/bup_offlineota/bup_offline_package.zip";
+const REMOTE_TARGET_PATH = "/mnt/sdcard/bup_offlineota/bup_offline_package.tar.gz";
 
 export class TransferBUPTask extends SshFileTransferTask {
   protected override buildParams(params: ValueMap): SshFileTransferParams {
