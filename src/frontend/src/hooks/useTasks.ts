@@ -5,6 +5,7 @@ import {
   pauseFlow,
   resumeFlow,
   stopFlow,
+  retryFlow,
   deleteFlow,
   batchPause,
   batchResume,
@@ -277,6 +278,19 @@ export function useTasks(solutionId: string | null) {
     }
   }, []);
 
+  const handleRetry = useCallback(async (id: string) => {
+    pendingRef.current.add(id);
+    setPendingActions(new Set(pendingRef.current));
+    try {
+      await retryFlow(id);
+    } catch {
+      // silent failure; toast handled by caller
+    } finally {
+      pendingRef.current.delete(id);
+      setPendingActions(new Set(pendingRef.current));
+    }
+  }, []);
+
   const handleDelete = useCallback(async (id: string) => {
     setFlows((prev) => prev.filter((f) => f.id !== id));
     await deleteFlow(id);
@@ -330,6 +344,7 @@ export function useTasks(solutionId: string | null) {
     pauseTask: handlePause,
     resumeTask: handleResume,
     stopTask: handleStop,
+    retryTask: handleRetry,
     deleteTask: handleDelete,
     batchPauseTasks: handleBatchPause,
     batchResumeTasks: handleBatchResume,

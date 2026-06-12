@@ -17,6 +17,7 @@ export interface SshCommandParams {
   sshPassword: string;
   sshCommand: string;
   sudo?: boolean;
+  ignoreFailure?: boolean;
 }
 
 export interface SshCommandResult {
@@ -125,6 +126,7 @@ export class SshCommandTask implements ITaskResolver {
       sshPassword,
       sshCommand,
       sudo,
+      ignoreFailure: (params.ignoreFailure as boolean) ?? false,
     };
   }
 
@@ -136,10 +138,12 @@ export class SshCommandTask implements ITaskResolver {
     const connectTimeout = sshParams.connectTimeout!;
     const commandTimeout = sshParams.commandTimeout!;
     const command = sshParams.sshCommand;
+    const ignoreFailure = sshParams.ignoreFailure ?? false;
 
     log.info({ host, port, username: sshParams.sshUsername }, 'Connecting');
 
     let lastError: Error | undefined;
+    let lastResult: ValueMap | undefined;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -154,9 +158,20 @@ export class SshCommandTask implements ITaskResolver {
         );
 
         if (result.exitCode !== 0) {
-          throw new Error(
+          const err = new Error(
             `SSH command exited with code ${result.exitCode}. Output logged above.`
           );
+          if (ignoreFailure) {
+            log.warn({ host, port, exitCode: result.exitCode }, 'Command failed (ignored)');
+            return {
+              done: true,
+              success: false,
+              stdout: result.stdout,
+              stderr: result.stderr,
+              exitCode: result.exitCode,
+            };
+          }
+          throw err;
         }
 
         log.info({ host, port, exitCode: result.exitCode, stdoutLen: result.stdout.length, stderrLen: result.stderr.length }, 'Command succeeded');
@@ -175,6 +190,17 @@ export class SshCommandTask implements ITaskResolver {
           await sleep(1000 * attempt);
         }
       }
+    }
+
+    if (ignoreFailure && lastError) {
+      log.warn({ host, port, err: lastError.message }, 'Command failed after retries (ignored)');
+      return {
+        done: true,
+        success: false,
+        stdout: "",
+        stderr: lastError.message,
+        exitCode: null,
+      };
     }
 
     throw lastError ?? new Error("SSH command failed after retries");

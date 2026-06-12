@@ -581,6 +581,7 @@ def page_tasks_list():
         (False, "AGV-04", "Upgrade BUP", "COMPLETED", "Success", "00:08:10"),
         (False, "AGV-05", "Upgrade Movebase", "FAILED", "Failed", "00:03:22"),
         (False, "AGV-01", "Upgrade BUP", "STOPPED", "Stopped", "00:01:05"),
+        (False, "AGV-06", "Upgrade BUP", "PENDING", "Pending", "00:00:00"),
     ]
     for i, (checked, aliases, name, state, result, elapsed) in enumerate(rows):
         y = 310 + i * 44
@@ -604,8 +605,13 @@ def page_tasks_list():
             draw_button(draw, (940, y + 6, 1000, y + 34), "Resume")
             draw_button(draw, (1010, y + 6, 1060, y + 34), "Stop")
             draw_button(draw, (1070, y + 6, 1140, y + 34), "Delete", bg="#fa4d56", fg="white")
+        elif state == "PENDING":
+            draw_button(draw, (940, y + 6, 1000, y + 34), "Retry", bg="#0f62fe", fg="white")
+            draw_button(draw, (1010, y + 6, 1060, y + 34), "Stop")
+            draw_button(draw, (1070, y + 6, 1140, y + 34), "Delete", bg="#fa4d56", fg="white")
         else:
-            draw_button(draw, (940, y + 6, 1000, y + 34), "Delete", bg="#fa4d56", fg="white")
+            draw_button(draw, (940, y + 6, 1000, y + 34), "Retry", bg="#0f62fe", fg="white")
+            draw_button(draw, (1010, y + 6, 1080, y + 34), "Delete", bg="#fa4d56", fg="white")
 
     path = os.path.join(TASKS_DIR, "01_task_list.png")
     img.save(path)

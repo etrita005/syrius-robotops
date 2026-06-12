@@ -917,7 +917,7 @@ describe("TaskFlowEngine - Persistence and Recovery", () => {
     engine.destroy();
   });
 
-  it("TC-TFE-036: should recover RUNNING flow on restart", async () => {
+  it("TC-TFE-036: should load RUNNING flow as PENDING on restart without auto-start", async () => {
     const { engine: engine1, objStore, sse } = createEngine();
     const summary = await engine1.createFlow("user", singleTaskDag);
     await engine1.pauseFlow(summary.id);
@@ -942,7 +942,12 @@ describe("TaskFlowEngine - Persistence and Recovery", () => {
 
     const flow = engine2.getFlow(summary.id);
     assert.ok(flow);
-    assert.ok(["RUNNING", "COMPLETED", "FAILED"].includes(flow.state));
+    assert.equal(flow.state, "PENDING");
+    assert.equal(flow.startedAt, undefined);
+
+    const retried = await engine2.retryFlow(summary.id);
+    assert.equal(retried.id, summary.id);
+    assert.equal(retried.state, "RUNNING");
 
     await waitForFlowComplete(engine2, summary.id);
     const completed = engine2.getFlow(summary.id);
@@ -1000,6 +1005,83 @@ describe("TaskFlowEngine - Persistence and Recovery", () => {
     assert.ok(flow);
     assert.equal(flow.state, "COMPLETED");
     engine2.destroy();
+  });
+
+  it("TC-TFE-045: should retry a completed flow resetting its state", async () => {
+    const { engine, objStore } = createEngine();
+    const summary = await engine.createFlow("user", singleTaskDag);
+    await waitForFlowComplete(engine, summary.id);
+
+    const retried = await engine.retryFlow(summary.id);
+    assert.equal(retried.id, summary.id);
+    // In fast mock environments the flow may complete instantly after retry
+    assert.ok(["RUNNING", "COMPLETED", "FAILED"].includes(retried.state));
+
+    const persisted = await objStore.getJson(`flows/${summary.id}`) as FlowRecord;
+    assert.ok(persisted);
+    assert.equal(persisted.id, summary.id);
+    assert.ok(["RUNNING", "COMPLETED", "FAILED"].includes(persisted.state));
+
+    engine.destroy();
+  });
+
+  it("TC-TFE-046: should allow retry on a PENDING flow loaded after restart", async () => {
+    const { engine: engine1, objStore, sse } = createEngine();
+    const summary = await engine1.createFlow("user", singleTaskDag);
+    await engine1.pauseFlow(summary.id);
+
+    let persisted = await objStore.getJson(`flows/${summary.id}`) as FlowRecord;
+    assert.ok(persisted);
+    persisted = { ...persisted, state: "RUNNING" as const };
+    await objStore.putJson(`flows/${summary.id}`, persisted);
+    engine1.destroy();
+
+    const registry2 = new ResolverRegistry();
+    registry2.register("MockTask1", MockTask1);
+    registry2.register("MockTask2", MockTask2);
+    registry2.register("MockFailingTask", MockFailingTask);
+    registry2.register("MockRecoveryTask", MockRecoveryTask);
+    const engine2 = new TaskFlowEngine(
+      objStore as unknown as import("./services/objectStore.js").ObjectStore,
+      sse as unknown as SseManager,
+      registry2
+    );
+    await engine2.loadPersistedFlows();
+
+    const flow = engine2.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "PENDING");
+
+    const retried = await engine2.retryFlow(summary.id);
+    assert.equal(retried.id, summary.id);
+    assert.equal(retried.state, "RUNNING");
+
+    await waitForFlowComplete(engine2, summary.id);
+    const completed = engine2.getFlow(summary.id);
+    assert.ok(completed);
+    assert.ok(["COMPLETED", "FAILED"].includes(completed.state));
+    engine2.destroy();
+  });
+
+  it("TC-TFE-047: should throw when retrying non-existent flow", async () => {
+    const { engine } = createEngine();
+    await assert.rejects(() => engine.retryFlow("nonexistent"), /Flow not found/);
+    engine.destroy();
+  });
+
+  it("TC-TFE-048: should throw when retrying a running flow", async () => {
+    const { engine } = createEngine();
+    const summary = await engine.createFlow("internal", singleTaskDag);
+    await assert.rejects(() => engine.retryFlow(summary.id), /Cannot retry a running or paused flow/);
+    engine.destroy();
+  });
+
+  it("TC-TFE-049: should throw when retrying a paused flow", async () => {
+    const { engine } = createEngine();
+    const summary = await engine.createFlow("internal", singleTaskDag);
+    await engine.pauseFlow(summary.id);
+    await assert.rejects(() => engine.retryFlow(summary.id), /Cannot retry a running or paused flow/);
+    engine.destroy();
   });
 });
 
@@ -2123,6 +2205,27 @@ describe("TaskFlowEngine - Routes", () => {
     });
     assert.equal(res.status, 200);
     assert.equal(engine.getFlow(s1.id), undefined);
+    engine.destroy();
+  });
+
+  it("TC-API-016: POST /api/flows/:id/retry should reset and restart the same flow", async () => {
+    const { app, engine } = setupApp();
+    const summary = await engine.createFlow("internal", singleTaskDag);
+    await waitForFlowComplete(engine, summary.id);
+
+    const res = await app.request(`/api/flows/${summary.id}/retry`, { method: "POST" });
+    assert.equal(res.status, 201);
+    const body = await res.json() as FlowSummary;
+    assert.equal(body.id, summary.id);
+    assert.equal(body.state, "RUNNING");
+    assert.equal(body.taskStates["task1"], "PENDING");
+    engine.destroy();
+  });
+
+  it("TC-API-017: POST /api/flows/:id/retry should return 404 for non-existent", async () => {
+    const { app, engine } = setupApp();
+    const res = await app.request("/api/flows/nonexistent/retry", { method: "POST" });
+    assert.equal(res.status, 404);
     engine.destroy();
   });
 });

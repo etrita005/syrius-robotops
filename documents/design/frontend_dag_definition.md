@@ -86,7 +86,7 @@ params: {
 ```typescript
 const TASK_DAG_MAP: Record<string, DagConfig> = {
   "upgrade-movebase": { /* 五步 DAG: transfer → upgrade → reboot → verify_version → cleanup */ },
-  "upgrade-bup":      { /* 五步 DAG: transfer → upgrade → reboot → verify_version → cleanup */ },
+  "upgrade-bup":      { /* 六步 DAG: transfer → upgrade → reboot → sleep → verify_version → cleanup */ },
 };
 ```
 
@@ -113,23 +113,25 @@ input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot] ─�
 
 #### upgrade-bup（BUP 固件升级）
 
-五步流程，含异常处理（reboot 前等待 30s）：
+六步流程，含异常处理（reboot 忽略失败，reboot 后 sleep 90s）：
 
 ```
-input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot(30s)] ──→ [verify_version] ──→ [cleanup] ──→ cleanup_done
-                        │              │                │                  │                       │
-                        └── transfer_done ──────────────┘                  │                       │
-                                       └── upgrade_done ──────────────────┘                       │
-                                                         └── reboot_done ─────────────────────────┘
-                                                                           └── verify_done ───────┘
+input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot(ignoreFailure)] ──→ [sleep(90s)] ──→ [verify_version] ──→ [cleanup] ──→ cleanup_done
+                         │              │                    │                       │                    │                       │
+                         └── transfer_done ──────────────────┘                       │                    │                       │
+                                        └── upgrade_done ───────────────────────────┘                    │                       │
+                                                              └── reboot_done ────────┘                    │                       │
+                                                                                   └── sleep_done ───────┘                       │
+                                                                                                           └── verify_done ──────┘
 如果主流程任一任务失败：
 [error_cleanup] ──→ error_cleanup_done
 ```
-- 解析器：`TransferBUPTask`, `UpgradeBUPTask`, `RebootRobotTask`, `MatchBUPVersionTask`, `DeleteBUPTask`
+- 解析器：`TransferBUPTask`, `UpgradeBUPTask`, `RebootRobotTask`, `SleepTask`, `MatchBUPVersionTask`, `DeleteBUPTask`
 - 输入依赖：`robotIp`, `robotPort`, `artifactId`, `expectedVersion`
 - 预期结果：`cleanup_done`
 - 异常 DAG：清理残留安装包
-- reboot 参数：`bootWaitMs: 30000`（重启前等待 30 秒）
+- reboot 参数：`ignoreFailure: true`（升级后机器人自动重启，reboot 命令会连接失败）
+- sleep 参数：`sleepSeconds: 90`（等待重启完成）
 
 ---
 

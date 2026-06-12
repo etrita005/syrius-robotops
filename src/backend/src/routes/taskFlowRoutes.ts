@@ -167,6 +167,19 @@ export function createTaskFlowRoutes(engine: TaskFlowEngine): Hono {
     }
   });
 
+  app.post("/:id/retry", async (c) => {
+    try {
+      const id = c.req.param("id");
+      const summary = await engine.retryFlow(id);
+      return c.json(summary, 201);
+    } catch (err) {
+      if (err instanceof AppError) {
+        return c.json({ error: err.code, message: err.message }, err.statusCode);
+      }
+      return c.json({ error: "FLOW_NOT_FOUND", message: "Flow not found" }, 404);
+    }
+  });
+
   app.delete("/:id", async (c) => {
     try {
       const id = c.req.param("id");

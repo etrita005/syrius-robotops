@@ -5,7 +5,7 @@ const UPGRADE_BUP_COMMAND =
   "rm -rf /mnt/sdcard/bup_offlineota/bup_offline_package && " +
   "mkdir -p /mnt/sdcard/bup_offlineota/bup_offline_package && " +
   "tar xvf /mnt/sdcard/bup_offlineota/bup_offline_package.tar.gz -C /mnt/sdcard/bup_offlineota/bup_offline_package && " +
-  "[ -f /etc/l4t_jurassic_release ] && ln -sf /etc/l4t_jurassic_release /etc/jurassic_release || true && " +
+  "sh -c 'if [ ! -f /etc/l4t_jurassic_release -a -f /etc/jurassic_release ]; then cp /etc/jurassic_release /etc/l4t_jurassic_release; elif [ ! -f /etc/jurassic_release -a -f /etc/l4t_jurassic_release ]; then cp /etc/l4t_jurassic_release /etc/jurassic_release; fi' && " +
   "chmod +x /mnt/sdcard/bup_offlineota/bup_offline_package/ota/deploy/upgrade_bup.sh && " +
   "/mnt/sdcard/bup_offlineota/bup_offline_package/ota/deploy/upgrade_bup.sh /mnt/sdcard/bup_offlineota/bup_offline_package/ota";
 

@@ -409,15 +409,15 @@
 | **预期结果** | ObjectStore 中不存在 `flows/{flowId}` |
 | **验证点** | ObjectStore 中没有对应的文件 |
 
-### TC-TFE-036：重启恢复 — RUNNING 流自动重启（FR-TFE-018）
+### TC-TFE-036：重启恢复 — RUNNING 流加载为 PENDING，不自动重启（FR-TFE-018）
 
 | 项 | 值 |
 |----|-----|
-| **测试目标** | 验证后端重启后 RUNNING 状态的持久化流自动恢复执行 |
+| **测试目标** | 验证后端重启后 RUNNING 状态的持久化流被加载为 PENDING，不自动恢复执行 |
 | **前置条件** | ObjectStore 中存在一个 state: "RUNNING" 的 FlowRecord |
 | **输入** | 创建新引擎实例并调用 loadPersistedFlows |
-| **预期结果** | 流被加载并自动重新开始执行 |
-| **验证点** | 引擎 flows 中包含该流，流状态恢复为 RUNNING |
+| **预期结果** | 流被加载，状态变为 `PENDING`，`startedAt` 被清除，不自动执行 |
+| **验证点** | 引擎 flows 中包含该流，state === "PENDING"，startedAt === undefined |
 
 ### TC-TFE-037：重启恢复 — PAUSED 流保持暂停（FR-TFE-018）
 
@@ -498,6 +498,56 @@
 | **输入** | 尝试调用 getTaskFlowEngine / setTaskFlowEngine / clearTaskFlowEngine |
 | **预期结果** | 这些函数不存在于模块导出中 |
 | **验证点** | 导入不包含单例函数，引擎实例由创建者管理 |
+
+### TC-TFE-045：重做终态任务流（FR-TFE-031）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 retryFlow 重置当前流状态并重新启动 |
+| **前置条件** | 已创建一个 COMPLETED 状态的用户流 |
+| **输入** | 调用 engine.retryFlow(flowId) |
+| **预期结果** | 返回同一 FlowSummary（id 不变），state 为 RUNNING，taskStates 全部重置为 PENDING |
+| **验证点** | flow.id 不变，state === "RUNNING"，taskStates["task1"] === "PENDING"，持久化记录 state 为 RUNNING |
+
+### TC-TFE-046：重做失败后手动重启恢复的任务流（FR-TFE-031）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证重启后加载为 PENDING 的流可以通过 retry 重新执行 |
+| **前置条件** | ObjectStore 中存在一个 state: "RUNNING" 的 FlowRecord（模拟崩溃前状态） |
+| **输入** | 新引擎加载持久化流后，调用 retryFlow |
+| **预期结果** | 同一流被重置为 RUNNING 并执行至完成 |
+| **验证点** | flow.id 不变，最终 state === "COMPLETED" 或 "FAILED" |
+
+### TC-TFE-047：重做不存在的流应抛出错误
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 retryFlow 对不存在的流抛出 "Flow not found" |
+| **前置条件** | 引擎中无该流 |
+| **输入** | 调用 engine.retryFlow("non-existent") |
+| **预期结果** | 抛出 Error("Flow not found") |
+| **验证点** | 异常消息为 "Flow not found" |
+
+### TC-TFE-048：重做 RUNNING 状态的流应抛出错误
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 retryFlow 对 RUNNING 状态的流拒绝执行 |
+| **前置条件** | 已创建一个 RUNNING 状态的任务流 |
+| **输入** | 调用 engine.retryFlow(flowId) |
+| **预期结果** | 抛出 Error("Cannot retry a running or paused flow") |
+| **验证点** | 异常消息包含 "Cannot retry a running or paused flow" |
+
+### TC-TFE-049：重做 PAUSED 状态的流应抛出错误
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 retryFlow 对 PAUSED 状态的流拒绝执行 |
+| **前置条件** | 已创建一个 PAUSED 状态的任务流 |
+| **输入** | 调用 engine.retryFlow(flowId) |
+| **预期结果** | 抛出 Error("Cannot retry a running or paused flow") |
+| **验证点** | 异常消息包含 "Cannot retry a running or paused flow" |
 
 ---
 
@@ -668,6 +718,25 @@
 | **输入** | GET /api/sse |
 | **预期结果** | HTTP 200，Content-Type: text/event-stream，body 包含 connected 事件；若存在活跃 flow，则收到 `task-flow-engine/flow-current` 事件 |
 | **验证点** | 响应头、初始 connected 事件、按需收到 flow-current 事件 |
+
+### TC-API-016：POST /api/flows/:id/retry — 重做成功
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证重做 API 重置并重启同一流并返回 201 |
+| **前置条件** | 已创建一个 COMPLETED 状态的用户流 |
+| **输入** | POST /api/flows/{flowId}/retry |
+| **预期结果** | HTTP 201，响应体为同一 FlowSummary（id 不变），state 为 RUNNING，taskStates 全部重置为 PENDING |
+| **验证点** | 状态码 201，flow.id 不变，state 为 RUNNING，taskStates 已重置 |
+
+### TC-API-017：POST /api/flows/:id/retry — 流不存在
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证重做不存在的流返回 404 |
+| **输入** | POST /api/flows/nonexistent/retry |
+| **预期结果** | HTTP 404，error: "FLOW_NOT_FOUND" |
+| **验证点** | 状态码 404 |
 
 ---
 

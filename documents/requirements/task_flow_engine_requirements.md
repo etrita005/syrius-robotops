@@ -442,10 +442,18 @@ API 返回的流摘要信息，包含完整的状态与结果数据：
 - 启动时扫描对象存储 `flows/` 目录。
 - 反序列化每个持久化的流记录。
 - 根据 `Flow` 构造函数和 `serializedRunStatus` 重建引擎实例。
-- 若流状态为 `RUNNING`，自动重新启动执行。
+- ~~若流状态为 `RUNNING`，自动重新启动执行。~~ **已变更**：若流状态为 `RUNNING`，加载后状态重置为 `PENDING`，**不自动启动执行**，等待用户手动触发重做。
 - 若流状态为 `PAUSED`，保持暂停状态。
 - 若流状态为终态，仅加载为历史记录，不重新执行。
 - 正在执行的子任务在崩溃后从头重新执行（引擎在任务边界捕获状态，不支持任务内断点续传）。
+
+**FR-TFE-031**：系统应支持重做（Retry）已结束或中断的任务流。
+
+- 对已处于终态（`COMPLETED`、`FAILED`、`STOPPED`）或 `PENDING`（含后端重启后未自动启动的原 `RUNNING` 流）的用户流，提供重做能力。
+- 重做时，系统**重置当前流**的状态：将所有子任务状态重置为 `PENDING`，清除 `taskResults`、`results`、`finishedAt`、`errorContext` 等字段，并将 `phase` 重置为 `main`。
+- 重置后，系统基于原流的 `dag` 重新创建引擎实例并启动执行，流 `id` 保持不变。
+- `RUNNING` 或 `PAUSED` 状态的流不允许重做。
+- 通过 `POST /api/flows/:id/retry` 触发，返回重置后流的 `FlowSummary`。
 
 ### 6.7 已结束流自动清理
 
@@ -498,6 +506,7 @@ TaskFlowEngine 的 HTTP API 与内部调用接口一一对应，行为一致。�
 | `POST` | `/api/flows/batch/resume` | `{ ids: string[] }` | 批量恢复 | `batchResume()` |
 | `POST` | `/api/flows/batch/stop` | `{ ids: string[] }` | 批量停止 | `batchStop()` |
 | `POST` | `/api/flows/batch/delete` | `{ ids: string[] }` | 批量删除 | `batchDelete()` |
+| `POST` | `/api/flows/:id/retry` | — | 重做任务流（基于原配置创建新流） | `retryFlow()` |
 | `GET` | `/api/sse` | — | 统一 SSE 实时事件端点（含 `task-flow-engine/*` 事件，由共享 `SseManager` 提供） | — |
 
 ### 7.2 Stop 与 Delete 的区别
@@ -556,8 +565,9 @@ graph LR
 | UC-TFE-07 | 删除任务流 | FAE | 流处于终态 | 流记录被移除 | 1. FAE 请求删除；2. 系统移除内存与持久化数据；3. 广播 flow-removed 事件 |
 | UC-TFE-08 | 批量操作 | FAE | 无 | 批量执行控制操作 | 1. FAE 提供 ids 数组；2. 系统对每个 id 独立执行操作；3. 返回操作结果 |
 | UC-TFE-09 | 接收实时事件 | FAE | SSE 连接已建立 | 前端实时更新 | 1. FAE 建立 SSE 连接；2. 系统在状态变更时推送事件；3. 前端根据事件更新 UI |
-| UC-TFE-10 | 重启恢复 | 系统 | 后端重启 | 持久化流恢复执行 | 1. 系统扫描 flows/ 目录；2. 反序列化流记录；3. 重建引擎实例；4. RUNNING 流自动重启 |
+| UC-TFE-10 | 重启恢复 | 系统 | 后端重启 | 持久化流恢复为可用状态 | 1. 系统扫描 flows/ 目录；2. 反序列化流记录；3. 重建引擎实例；4. RUNNING 流重置为 PENDING，不自动重启，等待用户手动重做 |
 | UC-TFE-11 | 自动清理过期流 | 系统 | 有已结束的流 | 过期流被清理 | 1. 定时器触发；2. 检查 finishedAt + TTL；3. 移除过期流；4. 广播 flow-removed 事件 |
+| UC-TFE-12 | 重做任务流 | FAE | 流处于终态或 PENDING（重启后） | 基于原配置创建并启动新流 | 1. FAE 选择已结束/中断的流并点击重做；2. 系统读取原流配置；3. 系统创建并启动新流；4. 广播 SSE 事件；5. 返回新流 FlowSummary |
 
 ---
 

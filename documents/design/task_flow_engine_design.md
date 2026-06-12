@@ -116,6 +116,7 @@ class TaskFlowEngine {
   + resumeFlow(id): Promise<void>
   + stopFlow(id): Promise<void>
   + deleteFlow(id): Promise<void>
+  + retryFlow(id): Promise<FlowSummary>
   + getFlow(id): FlowSummary | undefined
   + listFlows(filterType?, filterParams?): FlowSummary[]
   + batchPause(ids): Promise<void>
@@ -459,18 +460,50 @@ sequenceDiagram
     loop 对每个持久化流
         Engine->>OS: getJson("flows/{name}")
         OS-->>Engine: FlowRecord
-        Engine->>Engine: new Flow(dag, serializedRunStatus)
-        Engine->>Engine: flows.set(id, record), flowInstances.set(id, flow)
 
         alt state === RUNNING
-            Engine->>Engine: startFlow(id) — 自动重启
+            Engine->>Engine: state = PENDING, 清除 startedAt 与序列化状态
+            Engine->>Engine: new Flow(dag) — 不带 serializedRunStatus
+            Engine->>Engine: flows.set(id, record), flowInstances.set(id, flow)
+            Engine->>Engine: 保存更新后的记录（PENDING 状态）
         else state === PAUSED
+            Engine->>Engine: new Flow(dag, serializedRunStatus)
+            Engine->>Engine: flows.set(id, record), flowInstances.set(id, flow)
             Engine->>Engine: 保持暂停状态
         else state 为终态
+            Engine->>Engine: new Flow(dag, serializedRunStatus)
+            Engine->>Engine: flows.set(id, record), flowInstances.set(id, flow)
             Engine->>Engine: 仅加载为历史记录
         end
     end
 ```
+
+### 5.5a 重做任务流（Retry）
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Routes as TaskFlowRoutes
+    participant Engine as TaskFlowEngine
+    participant OS as ObjectStore
+    participant SSE as SseManager
+
+    Client->>Routes: POST /api/flows/:id/retry
+    Routes->>Engine: retryFlow(id)
+    Engine->>Engine: 查找原流记录
+    alt 原流不存在
+        Engine-->>Routes: throw "Flow not found"
+    else 原流存在
+        Engine->>Engine: createFlow(type, dag, input, expectedResults, errorDag)
+        Engine->>OS: putJson("flows/{newFlowId}", newRecord) [用户流]
+        Engine->>SSE: broadcast("task-flow-engine/flow-created", newSummary)
+        Engine->>Engine: startFlow(newFlowId)
+        Engine-->>Routes: FlowSummary (新流)
+    end
+    Routes-->>Client: 201 FlowSummary
+```
+
+> **设计决策**：`retryFlow` **重置并重启当前流**：保留原 `flowId`，将所有子任务状态置为 `PENDING`，清除执行结果和终态标记，重新创建 `Flow` 实例并启动。这保证了用户可以在同一个流记录上多次重做，前端列表中的位置不变，仅状态更新。
 
 ### 5.6 TTL 自动清理
 
@@ -546,6 +579,7 @@ TaskFlowEngine 提供两种调用接口：
 | 恢复流 | `POST /api/flows/:id/resume` | `resumeFlow(id)` |
 | 停止流 | `POST /api/flows/:id/stop` | `stopFlow(id)` |
 | 删除流 | `DELETE /api/flows/:id` | `deleteFlow(id)` |
+| 重做流 | `POST /api/flows/:id/retry` | `retryFlow(id)` |
 | 批量暂停 | `POST /api/flows/batch/pause` | `batchPause(ids)` |
 | 批量恢复 | `POST /api/flows/batch/resume` | `batchResume(ids)` |
 | 批量停止 | `POST /api/flows/batch/stop` | `batchStop(ids)` |
@@ -574,11 +608,12 @@ class TaskFlowEngine {
   // 查询单个任务流
   getFlow(id: string): FlowSummary | undefined
 
-  // 暂停/恢复/停止/删除
+  // 暂停/恢复/停止/删除/重做
   async pauseFlow(id: string): Promise<void>
   async resumeFlow(id: string): Promise<void>
   async stopFlow(id: string): Promise<void>
   async deleteFlow(id: string): Promise<void>
+  async retryFlow(id: string): Promise<FlowSummary>
 
   // 批量操作
   async batchPause(ids: string[]): Promise<void>
@@ -603,6 +638,7 @@ class TaskFlowEngine {
 | `POST` | `/api/flows/:id/resume` | — | 恢复已暂停的任务流 |
 | `POST` | `/api/flows/:id/stop` | — | 停止任务流，记录保留 |
 | `DELETE` | `/api/flows/:id` | — | 删除任务流记录（须为终态） |
+| `POST` | `/api/flows/:id/retry` | — | 重做任务流：基于原流配置创建并启动新流 |
 | `POST` | `/api/flows/batch/pause` | `{ ids: string[] }` | 批量暂停 |
 | `POST` | `/api/flows/batch/resume` | `{ ids: string[] }` | 批量恢复 |
 | `POST` | `/api/flows/batch/stop` | `{ ids: string[] }` | 批量停止 |
@@ -902,3 +938,5 @@ destroy(): void {
 | 10. 流 ID 生成 | UUID v4 | 系统生成，全局唯一 |
 | 11. 单例管理 | 不在引擎模块内实现单例 | 由创建者管理实例生命周期，保持引擎模块业务无关 |
 | 12. 参数列表过滤 | `listFlows(type, filterParams)` 按 input 字段精确匹配 | AND 逻辑，支持任意 key-value 组合过滤 |
+| 13. 重做机制 | `retryFlow(id)` 重置当前流状态并重新启动 | 保留原 `flowId`，重置子任务状态和结果后重新执行 |
+| 14. 重启恢复 RUNNING 流 | 状态重置为 `PENDING`，不自动启动 | 避免后端崩溃后不可控的自动恢复，改为用户手动触发重做 |

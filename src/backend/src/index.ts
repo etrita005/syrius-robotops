@@ -18,7 +18,7 @@ import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
-import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, GetRobotSoftwareInfoTask, MockGetRobotSoftwareInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, UpdateRobotSoftwareInfoTask, MockUpdateRobotSoftwareInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask, RebootRobotTask, MockRebootRobotTask, MatchFileContentTask, MockMatchFileContentTask, MatchMovebaseVersionTask, MockMatchMovebaseVersionTask, TransferBUPTask, MockTransferBUPTask, UpgradeBUPTask, MockUpgradeBUPTask, MatchBUPVersionTask, MockMatchBUPVersionTask, DeleteBUPTask, MockDeleteBUPTask } from "./tasks/index.js";
+import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, GetRobotSoftwareInfoTask, MockGetRobotSoftwareInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, UpdateRobotSoftwareInfoTask, MockUpdateRobotSoftwareInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask, RebootRobotTask, MockRebootRobotTask, MatchFileContentTask, MockMatchFileContentTask, MatchMovebaseVersionTask, MockMatchMovebaseVersionTask, TransferBUPTask, MockTransferBUPTask, UpgradeBUPTask, MockUpgradeBUPTask, MatchBUPVersionTask, MockMatchBUPVersionTask, DeleteBUPTask, MockDeleteBUPTask, SleepTask, MockSleepTask } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
@@ -99,6 +99,7 @@ async function main(): Promise<void> {
     { name: "UpgradeBUPTask", real: UpgradeBUPTask, mock: MockUpgradeBUPTask },
     { name: "MatchBUPVersionTask", real: MatchBUPVersionTask, mock: MockMatchBUPVersionTask },
     { name: "DeleteBUPTask", real: DeleteBUPTask, mock: MockDeleteBUPTask },
+    { name: "SleepTask", real: SleepTask, mock: MockSleepTask },
   ]);
 
   const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);

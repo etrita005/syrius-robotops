@@ -7,7 +7,7 @@ const log = createLogger("GetRobotSoftwareInfo");
 const SOFTWARE_INFO_COMMAND =
   "MOVEBASE_VER=$(cat /opt/cosmos/etc/ota/version 2>/dev/null | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//; s/[[:space:]]*$//');" +
   "MIN_SYS_VER=$(cat /mnt/cosmos/boot/etc/ota/minimal_system_version 2>/dev/null | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//; s/[[:space:]]*$//');" +
-  "L4T_VER=$(cat /etc/l4t_jurassic_release 2>/dev/null | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//; s/[[:space:]]*$//');" +
+  "L4T_VER=$( (cat /etc/l4t_jurassic_release 2>/dev/null || cat /etc/jurassic_release 2>/dev/null) | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//; s/[[:space:]]*$//');" +
   'echo "{\\"movebaseVersion\\":\\"$MOVEBASE_VER\\",\\"minimalSystemVersion\\":\\"$MIN_SYS_VER\\",\\"l4tVersion\\":\\"$L4T_VER\\"}"';
 
 /**

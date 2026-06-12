@@ -60,6 +60,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
     pauseTask,
     resumeTask,
     stopTask,
+    retryTask,
     deleteTask,
     batchPauseTasks,
     batchResumeTasks,
@@ -135,9 +136,9 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
       case "PAUSED":
         return ["resume", "stop", "delete"];
       case "PENDING":
-        return ["stop", "delete"];
+        return ["retry", "stop", "delete"];
       default:
-        return ["delete"];
+        return ["retry", "delete"];
     }
   };
 
@@ -152,6 +153,10 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
           break;
         case "stop":
           await stopTask(task.id);
+          break;
+        case "retry":
+          await retryTask(task.id);
+          showToast("success", "Task retried", `${task.taskName} has been restarted.`);
           break;
         case "delete":
           setDeleteTarget(task);

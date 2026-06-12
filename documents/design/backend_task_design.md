@@ -35,6 +35,7 @@ Executes a shell command on a remote robot via raw SSH (ssh2 library). Supports 
 | `sshPassword` | `string` | `SSH_PASSWORD` | SSH login password |
 | `sshCommand` | `string` | (subclass-defined) | Shell command to execute |
 | `sudo` | `boolean` | `false` | Whether to wrap command with sudo |
+| `ignoreFailure` | `boolean` | `false` | If true, returns `success: false` instead of throwing on failure |
 
 ### Output Parameters
 
@@ -51,7 +52,8 @@ Executes a shell command on a remote robot via raw SSH (ssh2 library). Supports 
 - Host resolution: uses `robotMdnsDomain` if present, otherwise `robotIp`
 - Sudo wrapping: prepends `echo "<password>" | sudo -S -p ''` to each `&&`-separated segment
 - Retry uses exponential backoff: `sleep(1000 * attempt)` between attempts
-- Throws if exit code != 0 after all retries
+- Throws if exit code != 0 after all retries (unless `ignoreFailure` is true)
+- When `ignoreFailure` is true, returns `{ done: true, success: false }` with stdout/stderr/exitCode on failure
 - Subclass overrides: `getSshCommand()` defines the command, `buildParams()` customizes defaults
 
 ---
@@ -478,7 +480,7 @@ Same as `SshCommandTask`.
 
 ### Notes
 
-- Hardcoded 3-step command: (1) remove old extracted BUP package, (2) unzip new BUP package to `/mnt/sdcard/bup_offlineota`, (3) run `upgrade_bup.sh`
+- Hardcoded 4-step command: (1) remove old extracted BUP package, (2) unzip new BUP package to `/mnt/sdcard/bup_offlineota`, (3) sync `/etc/l4t_jurassic_release` and `/etc/jurassic_release` (copy whichever file is missing from the existing one), (4) run `upgrade_bup.sh`
 - Default 15-minute timeout accommodates slow upgrade scripts
 - Structure mirrors `UpgradeMovebaseTask`
 - BUP working directory: `/mnt/sdcard/bup_offlineota`
@@ -531,3 +533,30 @@ Same as `SshCommandTask`.
 - Hardcoded command: `rm -rf /mnt/sdcard/offlineota`
 - Used as the cleanup step in the BUP upgrade flow
 - Implementation mirrors `DeleteMovebaseTask`
+
+---
+
+## 18. SleepTask
+
+### Overview
+
+Pauses the task flow for a configurable number of seconds. Used to wait between dependent tasks (e.g., waiting for robot reboot to complete).
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sleepSeconds` | `number` | `0` | Duration to sleep in seconds |
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `done` | `true` | Flow completion marker |
+| `success` | `true` | Task success marker |
+
+### Notes
+
+- Does not require SSH connection or robot interaction
+- Simply awaits `setTimeout` for the specified duration
+- Mock variant returns immediately without sleeping

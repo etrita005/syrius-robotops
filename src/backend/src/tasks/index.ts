@@ -36,3 +36,5 @@ export { MatchBUPVersionTask } from "./real/matchBUPVersionTask.js";
 export { MockMatchBUPVersionTask } from "./mock/mockMatchBUPVersionTask.js";
 export { DeleteBUPTask } from "./real/deleteBUPTask.js";
 export { MockDeleteBUPTask } from "./mock/mockDeleteBUPTask.js";
+export { SleepTask } from "./real/sleepTask.js";
+export { MockSleepTask } from "./mock/mockSleepTask.js";

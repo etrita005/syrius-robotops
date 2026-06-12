@@ -700,6 +700,46 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     this.emitFlowRemoved(id);
   }
 
+  async retryFlow(id: string): Promise<FlowSummary> {
+    const record = this.flows.get(id);
+    if (!record) throw new Error("Flow not found");
+
+    if (record.state === "RUNNING" || record.state === "PAUSED") {
+      throw new Error("Cannot retry a running or paused flow");
+    }
+
+    const taskCodes = getTaskCodes(record.dag);
+    const taskStates: Record<string, TaskState> = {};
+    for (const code of taskCodes) {
+      taskStates[code] = "PENDING";
+    }
+
+    record.state = "PENDING";
+    record.taskStates = taskStates;
+    record.taskResults = {};
+    record.results = undefined;
+    record.finishedAt = undefined;
+    record.startedAt = undefined;
+    record.errorContext = undefined;
+    record.mainTaskStates = undefined;
+    record.errorTaskStates = undefined;
+    record.phase = "main";
+    record.serializedRunStatus = undefined;
+    record.serializedErrorRunStatus = undefined;
+
+    const flow = new Flow(record.dag);
+    this.flowInstances.set(id, flow);
+
+    await this.saveFlow(record);
+    this.emitFlowUpdated(record);
+
+    log.info({ flowId: id, type: record.type }, 'Flow retried');
+
+    this.startFlow(id);
+
+    return this.summarize(record);
+  }
+
   getFlow(id: string): FlowSummary | undefined {
     const record = this.flows.get(id);
     return record ? this.summarize(record) : undefined;
@@ -752,17 +792,29 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
       try {
         const isErrorPhase = record.phase === "error";
         const dag = isErrorPhase ? (record.errorDag ?? record.dag) : record.dag;
+
+        if (record.state === "RUNNING") {
+          record.state = "PENDING";
+          record.startedAt = undefined;
+          if (isErrorPhase) {
+            record.serializedErrorRunStatus = undefined;
+          } else {
+            record.serializedRunStatus = undefined;
+          }
+          const flow = new Flow(dag);
+          this.flows.set(record.id, record);
+          this.flowInstances.set(record.id, flow);
+          await this.saveFlow(record).catch(() => {});
+          log.info({ flowId: record.id, type: record.type }, 'Flow loaded from persistence as PENDING');
+          continue;
+        }
+
         const runStatus = isErrorPhase ? record.serializedErrorRunStatus : record.serializedRunStatus;
         const flow = new Flow(dag, runStatus);
         this.flows.set(record.id, record);
         this.flowInstances.set(record.id, flow);
 
         log.info({ flowId: record.id, state: record.state, type: record.type }, 'Flow loaded from persistence');
-
-        if (record.state === "RUNNING") {
-          this.ensureLogger();
-          this.startFlow(record.id);
-        }
       } catch (err) {
         log.error({ flowFileName: child.name, err: err instanceof Error ? err.message : String(err) }, 'Failed to load flow');
       }

@@ -44,6 +44,10 @@ export async function stopFlow(id: string): Promise<void> {
   await post<{ success: boolean }>(`/flows/${encodeURIComponent(id)}/stop`);
 }
 
+export async function retryFlow(id: string): Promise<FlowSummary> {
+  return post<FlowSummary>(`/flows/${encodeURIComponent(id)}/retry`);
+}
+
 export async function deleteFlow(id: string): Promise<void> {
   await del<{ success: boolean }>(`/flows/${encodeURIComponent(id)}`);
 }

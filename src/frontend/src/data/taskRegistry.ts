@@ -160,14 +160,26 @@ const UPGRADE_BUP_DAG: DagDefinition = {
         params: {
           robotIp: "robotIp",
           robotPort: "robotPort",
-          bootWaitMs: { value: 30000 },
+          ignoreFailure: { value: true },
+          retryCount: { value: 1 },
         },
         results: { done: "reboot_done" },
       },
       provides: ["reboot_done"],
     },
+    sleep: {
+      requires: ["reboot_done"],
+      resolver: {
+        name: "SleepTask",
+        params: {
+          sleepSeconds: { value: 90 },
+        },
+        results: { done: "sleep_done" },
+      },
+      provides: ["sleep_done"],
+    },
     verify_version: {
-      requires: ["robotIp", "robotPort", "reboot_done", "expectedVersion"],
+      requires: ["robotIp", "robotPort", "sleep_done", "expectedVersion"],
       resolver: {
         name: "MatchBUPVersionTask",
         params: {
