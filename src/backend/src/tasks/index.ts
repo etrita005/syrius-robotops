@@ -30,6 +30,8 @@ export { MatchMovebaseVersionTask } from "./real/matchMovebaseVersionTask.js";
 export { MockMatchMovebaseVersionTask } from "./mock/mockMatchMovebaseVersionTask.js";
 export { TransferBUPTask } from "./real/transferBUPTask.js";
 export { MockTransferBUPTask } from "./mock/mockTransferBUPTask.js";
+export { TransferBUPScriptTask } from "./real/transferBUPScriptTask.js";
+export { MockTransferBUPScriptTask } from "./mock/mockTransferBUPScriptTask.js";
 export { UpgradeBUPTask } from "./real/upgradeBUPTask.js";
 export { MockUpgradeBUPTask } from "./mock/mockUpgradeBUPTask.js";
 export { MatchBUPVersionTask } from "./real/matchBUPVersionTask.js";

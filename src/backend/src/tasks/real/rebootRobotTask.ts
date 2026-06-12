@@ -42,7 +42,11 @@ export class RebootRobotTask extends SshCommandTask {
         msg.includes("socket") ||
         msg.includes("econnreset") ||
         msg.includes("not connected") ||
-        msg.includes("connection ended")
+        msg.includes("connection ended") ||
+        msg.includes("connection closed") ||
+        msg.includes("broken pipe") ||
+        msg.includes("ssh command failed after retries") ||
+        msg.includes("command attempt failed")
       ) {
         log.warn({ err: (err as Error).message }, "Connection lost after reboot (expected)");
         result = { done: true, success: true, stdout: "", stderr: "", exitCode: 0 };

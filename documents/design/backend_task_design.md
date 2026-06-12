@@ -460,7 +460,34 @@ Same as `SshFileTransferTask`.
 
 ---
 
-## 15. UpgradeBUPTask
+## 15. TransferBUPScriptTask
+
+### Overview
+
+Transfers the `upgrade_bup.sh` script from the backend `res/` directory to `/tmp/upgrade_bup.sh` on the remote robot via SFTP. Executed after the BUP artifact transfer, before the upgrade command.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| (none task-specific) | | | |
+
+Inherits all from `SshFileTransferTask`. `localFilePath`, `remoteFilePath`, `sudo`, `verifyChecksum`, and `retryCount` are hardcoded.
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded local path: resolved to `res/upgrade_bup.sh` relative to the backend source root
+- Hardcoded remote path: `/tmp/upgrade_bup.sh`
+- `sudo` forced to `true`, `verifyChecksum` forced to `false`, `retryCount` forced to `1`
+- The remote script is consumed by `UpgradeBUPTask` which runs it in the upgrade command chain
+
+---
+
+## 16. UpgradeBUPTask
 
 ### Overview
 
@@ -480,14 +507,14 @@ Same as `SshCommandTask`.
 
 ### Notes
 
-- Hardcoded 4-step command: (1) remove old extracted BUP package, (2) unzip new BUP package to `/mnt/sdcard/bup_offlineota`, (3) sync `/etc/l4t_jurassic_release` and `/etc/jurassic_release` (copy whichever file is missing from the existing one), (4) run `upgrade_bup.sh`
+- Hardcoded command: (1) remove old extracted BUP package, (2) unzip new BUP package to `/mnt/sdcard/bup_offlineota`, (3) sync `/etc/l4t_jurassic_release` and `/etc/jurassic_release` (copy whichever file is missing from the existing one), (4) chmod both the package scripts and `/tmp/upgrade_bup.sh`, (5) run `/tmp/upgrade_bup.sh` (transferred by `TransferBUPScriptTask`)
 - Default 15-minute timeout accommodates slow upgrade scripts
 - Structure mirrors `UpgradeMovebaseTask`
 - BUP working directory: `/mnt/sdcard/bup_offlineota`
 
 ---
 
-## 16. MatchBUPVersionTask
+## 17. MatchBUPVersionTask
 
 ### Overview
 
@@ -514,7 +541,7 @@ Same as `MatchFileContentTask`.
 
 ---
 
-## 17. DeleteBUPTask
+## 18. DeleteBUPTask
 
 ### Overview
 
@@ -536,7 +563,7 @@ Same as `SshCommandTask`.
 
 ---
 
-## 18. SleepTask
+## 19. SleepTask
 
 ### Overview
 

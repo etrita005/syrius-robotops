@@ -76,6 +76,8 @@ const UPGRADE_MOVEBASE_DAG: DagDefinition = {
         params: {
           robotIp: "robotIp",
           robotPort: "robotPort",
+          ignoreFailure: { value: true },
+          retryCount: { value: 1 },
         },
         results: { done: "reboot_done" },
       },
@@ -141,8 +143,20 @@ const UPGRADE_BUP_DAG: DagDefinition = {
       },
       provides: ["transfer_done"],
     },
-    upgrade: {
+    script_transfer: {
       requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "TransferBUPScriptTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "script_transfer_done" },
+      },
+      provides: ["script_transfer_done"],
+    },
+    upgrade: {
+      requires: ["robotIp", "robotPort", "script_transfer_done"],
       resolver: {
         name: "UpgradeBUPTask",
         params: {
