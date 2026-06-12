@@ -170,7 +170,7 @@ export class SshCommandTask implements ITaskResolver {
         };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        log.error({ host, port, attempt, maxRetries, err: lastError.message }, 'Command attempt failed');
+        log.error({ host, port, attempt, maxRetries, err: lastError.message, command }, 'Command attempt failed');
         if (attempt < maxRetries) {
           await sleep(1000 * attempt);
         }
