@@ -557,6 +557,24 @@
 | Input | Observe the page after the query returns |
 | Expected Result | An inline notification appears above the entry table stating how many lines failed to parse |
 
+### TC-SL-088: Refresh button reloads all data
+
+| Item | Value |
+|------|-------|
+| Priority | Medium |
+| Precondition | System Logs page is open with "Last 30 min" time window active; file list and module list are populated |
+| Input | Click the "Refresh" button in the toolbar |
+| Expected Result | (1) File list re-fetches (may show new files); (2) Module list re-fetches; (3) Log entries re-queried with updated timestamps (from/to shifted to current now); (4) Filter settings remain unchanged; (5) Button shows loading state during refresh |
+
+### TC-SL-089: Refresh with custom absolute time window
+
+| Item | Value |
+|------|-------|
+| Priority | Low |
+| Precondition | User has set a custom absolute time window (e.g. "2026-06-01 08:00" to "2026-06-01 12:00") |
+| Input | Click the "Refresh" button |
+| Expected Result | Log entries are re-queried with the same absolute timestamps (not shifted to now); file list and module list are refreshed |
+
 ---
 
 ## 9. Performance benchmarks

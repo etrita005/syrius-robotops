@@ -29,7 +29,8 @@
 │  SystemLogsView                                           │
 │   ├── LogFileTable                                        │
 │   ├── LogQueryToolbar (TimeRange + LevelFilter +          │
-│   │                    ModuleFilter + KeywordSearch)      │
+│   │    ModuleFilter + KeywordSearch + RefreshButton +      │
+│   │    DownloadButton)                                     │
 │   ├── LogEntryTable (virtual scroll)                      │
 │   └── DownloadButton                                      │
 │         │                                                  │
@@ -437,7 +438,8 @@ export const systemLogApi = {
 │   - name             │  ├ LevelFilter (multiselect)          │
 │   - size             │  ├ ModuleFilter (multiselect)         │
 │   - mtime            │  ├ KeywordSearch                      │
-│   - Active badge     │  └ LogDownloadButton                  │
+│   - Active badge     │  ├ RefreshButton                       │
+│   - Download btn     │  └ LogDownloadButton                  │
 │   - Download btn     ├──────────────────────────────────────┤
 │                      │ LogEntryTable (virtual scroll)        │
 │                      │  - time / level / module / msg        │
@@ -450,6 +452,7 @@ export const systemLogApi = {
 
 - 工具栏状态用单一 `LogQueryRequest` 对象，置于 `useLogQuery` hook 内。
 - 工具栏字段变更 → 触发 `useLogQuery` 重新 fetch 首页（清空已有 entries，重置 cursor）。
+- 点击 Refresh 按钮 → 递增 `refreshId` 计数器，触发 `buildQueryRequest` 重新计算时间戳（相对时间窗更新为 now），并同时调用 `refreshFiles()` / `refreshModules()` 重新拉取文件列表与模块列表。
 - 滚动触底（IntersectionObserver） → 调用 `loadNextPage` 追加 entries。
 - `parseErrorCount > 0` 时表格顶部显示 Carbon `InlineNotification` 提示行数。
 
@@ -481,7 +484,33 @@ function useLogQuery(req: LogQueryRequest) {
 - 用户切换自定义时间段后，时间戳"冻结"，不再随 now 变化。
 - 时间选择器与查询同步，无需点击"Apply"按钮（防抖 300ms）。
 
-### 5.6 下载交互
+### 5.6 Refresh 交互
+
+```typescript
+const [refreshId, setRefreshId] = useState(0);
+
+// refreshId 作为 buildQueryRequest 的依赖项，用于强制重新计算时间戳
+const buildQueryRequest = useCallback((): LogQueryRequest => {
+  // ... 构建查询（每次 refreshId 变化时重新计算 to = new Date()）
+}, [quickRangeIdx, customFrom, customTo, selectedLevels, selectedModules, searchQ, refreshId]);
+
+async function handleRefresh() {
+  setRefreshLoading(true);
+  try {
+    await Promise.all([refreshFiles(), refreshModules()]);
+    setRefreshId((id) => id + 1);  // 触发 query re-fetch（相对时间窗会重新计算 now）
+  } finally {
+    setRefreshLoading(false);
+  }
+}
+```
+
+- Refresh 按钮位于工具栏右侧，与 Download zip 按钮并列。
+- 刷新过程中按钮显示 loading 状态并禁用。
+- 刷新不重置等级/模块/关键字筛选条件。
+- 相对时间窗（如"Last 30 min"）的查询时间戳更新为当前时间；自定义绝对时间窗的时间戳保持不变。
+
+### 5.7 下载交互
 
 #### 时间段打包下载
 

@@ -4,7 +4,7 @@ import {
   Loading,
   Tag,
 } from "@carbon/react";
-import { Download } from "@carbon/react/icons";
+import { Download, Renew } from "@carbon/react/icons";
 import { useLogFiles } from "../../hooks/useLogFiles.js";
 import { useLogModules } from "../../hooks/useLogModules.js";
 import { useLogQuery } from "../../hooks/useLogQuery.js";
@@ -65,9 +65,10 @@ export function SystemLogsView() {
   const textSecondary = useThemeColor("#525252", "#c6c6c6");
   const textTertiary = useThemeColor("#8d8d8d", "#a0a0a0");
 
-  const { files, loading: filesLoading, error: filesError } = useLogFiles();
-  const { modules, loading: modulesLoading } = useLogModules();
+  const { files, loading: filesLoading, error: filesError, refresh: refreshFiles } = useLogFiles();
+  const { modules, loading: modulesLoading, refresh: refreshModules } = useLogModules();
 
+  const [refreshId, setRefreshId] = useState(0);
   const [quickRangeIdx, setQuickRangeIdx] = useState(1);
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -75,6 +76,7 @@ export function SystemLogsView() {
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [searchQ, setSearchQ] = useState("");
   const [downloadLoading, setDownloadLoading] = useState(false);
+  const [refreshLoading, setRefreshLoading] = useState(false);
 
   const buildQueryRequest = useCallback((): LogQueryRequest => {
     const req: LogQueryRequest = { limit: 500 };
@@ -103,7 +105,7 @@ export function SystemLogsView() {
       req.q = searchQ.trim();
     }
     return req;
-  }, [quickRangeIdx, customFrom, customTo, selectedLevels, selectedModules, searchQ]);
+  }, [quickRangeIdx, customFrom, customTo, selectedLevels, selectedModules, searchQ, refreshId]);
 
   const queryReq = useMemo(() => buildQueryRequest(), [buildQueryRequest]);
   const { entries, truncated, parseErrorCount, loading: queryLoading, error: queryError, loadNextPage } = useLogQuery(queryReq);
@@ -139,6 +141,16 @@ export function SystemLogsView() {
     );
   };
 
+  const handleRefresh = async () => {
+    setRefreshLoading(true);
+    try {
+      await Promise.all([refreshFiles(), refreshModules()]);
+      setRefreshId((id) => id + 1);
+    } finally {
+      setRefreshLoading(false);
+    }
+  };
+
   const handleDownloadBundle = async () => {
     const req = buildQueryRequest();
     if (!req.from || !req.to) return;
@@ -160,7 +172,7 @@ export function SystemLogsView() {
   };
 
   return (
-    <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "1.5rem" }}>
+    <div>
       <div style={{ marginBottom: "1rem" }}>
         <h1 style={{ fontSize: "1.75rem", fontWeight: 600, margin: 0 }}>System Logs</h1>
         <p style={{ color: textSecondary, fontSize: "0.875rem", margin: "0.25rem 0 0" }}>
@@ -168,7 +180,7 @@ export function SystemLogsView() {
         </p>
       </div>
 
-      <div style={{ display: "flex", gap: "1.5rem" }}>
+      <div style={{ display: "flex", justifyContent: "center", gap: "1.5rem" }}>
         <div style={{ width: "300px", flexShrink: 0, background: bgPanel, border: `1px solid ${borderPanel}`, borderRadius: "4px", padding: "1rem" }}>
           <h3 style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", fontWeight: 600 }}>Log Files</h3>
           {filesLoading && <Loading small withOverlay={false} />}
@@ -212,7 +224,7 @@ export function SystemLogsView() {
           ))}
         </div>
 
-        <div style={{ flex: 1 }}>
+        <div style={{ width: "1040px", maxWidth: "calc(100vw - 396px)" }}>
           <div style={{
             background: bgPanel,
             border: `1px solid ${borderPanel}`,
@@ -258,7 +270,10 @@ export function SystemLogsView() {
                   />
                 </>
               )}
-              <div style={{ flex: 1 }} />
+              <Button size="sm" kind="tertiary" onClick={handleRefresh} disabled={refreshLoading || queryLoading}>
+                <Renew size={16} style={{ marginRight: "4px" }} />
+                Refresh
+              </Button>
               <Button size="sm" onClick={handleDownloadBundle} disabled={downloadLoading}>
                 ↓ Download zip
               </Button>

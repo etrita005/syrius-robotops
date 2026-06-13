@@ -174,7 +174,7 @@ const UPGRADE_BUP_DAG: DagDefinition = {
         params: {
           robotIp: "robotIp",
           robotPort: "robotPort",
-          timeout: { value: 180000 },
+          timeout: { value: 360000 },
         },
         results: { done: "reconnect_done" },
       },

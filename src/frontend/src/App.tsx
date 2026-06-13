@@ -248,7 +248,11 @@ export default function App() {
                 />
               </div>
             )}
-            {currentView === "system-logs" && <SystemLogsView />}
+            {currentView === "system-logs" && (
+              <div style={{ width: "100%", maxWidth: "1400px", margin: "0 auto", padding: "1.5rem", boxSizing: "border-box" }}>
+                <SystemLogsView />
+              </div>
+            )}
           </Content>
         )}
       </Theme>
