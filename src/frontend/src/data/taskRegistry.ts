@@ -167,33 +167,21 @@ const UPGRADE_BUP_DAG: DagDefinition = {
       },
       provides: ["upgrade_done"],
     },
-    reboot: {
+    wait_reconnect: {
       requires: ["robotIp", "robotPort", "upgrade_done"],
       resolver: {
-        name: "RebootRobotTask",
+        name: "WaitSshReconnectTask",
         params: {
           robotIp: "robotIp",
           robotPort: "robotPort",
-          ignoreFailure: { value: true },
-          retryCount: { value: 1 },
+          timeout: { value: 180000 },
         },
-        results: { done: "reboot_done" },
+        results: { done: "reconnect_done" },
       },
-      provides: ["reboot_done"],
-    },
-    sleep: {
-      requires: ["reboot_done"],
-      resolver: {
-        name: "SleepTask",
-        params: {
-          sleepSeconds: { value: 90 },
-        },
-        results: { done: "sleep_done" },
-      },
-      provides: ["sleep_done"],
+      provides: ["reconnect_done"],
     },
     verify_version: {
-      requires: ["robotIp", "robotPort", "sleep_done", "expectedVersion"],
+      requires: ["robotIp", "robotPort", "reconnect_done", "expectedVersion"],
       resolver: {
         name: "MatchBUPVersionTask",
         params: {

@@ -9,6 +9,14 @@ export class MatchBUPVersionTask extends MatchFileContentTask {
     return DEFAULT_BUP_VERSION_FILE_PATH;
   }
 
+  protected override doesContentMatch(actualContent: string, expectedContent: string): boolean {
+    return actualContent.trim().endsWith(expectedContent.trim());
+  }
+
+  protected override buildMismatchMessage(filePath: string, expectedContent: string, actualContent: string): string {
+    return `BUP version mismatch in ${filePath}: expected suffix "${expectedContent.trim()}", got "${actualContent.trim()}"`;
+  }
+
   protected override buildParams(params: ValueMap): SshCommandParams {
     return super.buildParams({
       ...params,

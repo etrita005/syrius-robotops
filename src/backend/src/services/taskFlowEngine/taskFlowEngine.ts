@@ -587,7 +587,9 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     this.emitFlowUpdated(record);
     this.emitFlowCompleted(record);
 
-    log.info({ flowId: record.id, state: record.state, phase: record.phase }, 'Flow finished');
+    const startedAt = record.startedAt ?? record.createdAt;
+    const durationMs = Math.max(0, new Date(record.finishedAt).getTime() - new Date(startedAt).getTime());
+    log.info({ flowId: record.id, state: record.state, phase: record.phase, durationMs }, 'Flow execution finished');
   }
 
   async pauseFlow(id: string): Promise<void> {

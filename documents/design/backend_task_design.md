@@ -352,7 +352,7 @@ Reboots the remote robot via `sudo reboot`. Tolerates expected connection-loss e
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `bootWaitMs` | `number` | `0` | Wait duration after reboot (ms) before task returns |
+| `bootWaitMs` | `number` | `0` | Wait duration before sending reboot command (ms), used to wait for async upgrade completion |
 
 Inherits all from `SshCommandTask`. `sudo` forced to `true`, `retryCount` forced to `1`.
 
@@ -364,8 +364,8 @@ Same as `SshCommandTask`.
 
 - Hardcoded command: `reboot`
 - Catches connection-loss errors (`timed out`, `connection lost`, `socket`, `econnreset`, `not connected`, `connection ended`) and treats them as success
-- If `bootWaitMs > 0`, sleeps that duration after reboot before returning
-- BUP upgrade flow configures `bootWaitMs: 30000` (30s) in the DAG
+- If `bootWaitMs > 0`, sleeps that duration before sending reboot command, allowing async upgrade scripts to complete on the robot
+- BUP upgrade flow configures `bootWaitMs: 60000` (60s) in the DAG
 
 ---
 
@@ -518,7 +518,7 @@ Same as `SshCommandTask`.
 
 ### Overview
 
-Checks the robot's BUP version file against an expected version string. Used for post-upgrade verification.
+Checks the robot's BUP version file against an expected version string. Used for post-upgrade verification. The comparison uses suffix matching because robot BUP release strings may include a prefix while the frontend supplies only the version suffix.
 
 ### Input Parameters
 
@@ -537,7 +537,8 @@ Same as `MatchFileContentTask`.
 ### Notes
 
 - Hardcoded file path: `/etc/l4t_jurassic_release`
-- Implementation mirrors `MatchMovebaseVersionTask`
+- Matches `actualContent.trim().endsWith(expectedContent.trim())`; for example, actual `xxx-1.1.945` matches expected `1.1.945`
+- Keeps retry and timeout behavior aligned with post-reboot BUP verification
 
 ---
 
@@ -567,13 +568,13 @@ Same as `SshCommandTask`.
 
 ### Overview
 
-Pauses the task flow for a configurable number of seconds. Used to wait between dependent tasks (e.g., waiting for robot reboot to complete).
+Pauses the task flow for a configurable number of milliseconds. Used to wait between dependent tasks (e.g., waiting for robot reboot to complete).
 
 ### Input Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `sleepSeconds` | `number` | `0` | Duration to sleep in seconds |
+| `sleepMs` | `number` | `0` | Duration to sleep in milliseconds |
 
 ### Output Parameters
 
@@ -585,5 +586,100 @@ Pauses the task flow for a configurable number of seconds. Used to wait between 
 ### Notes
 
 - Does not require SSH connection or robot interaction
-- Simply awaits `setTimeout` for the specified duration
+- Simply awaits `setTimeout` for the specified duration in milliseconds
 - Mock variant returns immediately without sleeping
+- BUP upgrade flow configures `sleepMs: 120000` (120s) in the DAG
+
+---
+
+## 20. WaitSshConnectedTask
+
+### Overview
+
+Waits until an SSH session can be established with the robot. The task only verifies connection readiness and closes the SSH session immediately after `ready`; it does not execute a remote command.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `robotIp` | `string` | (required) | Target robot IP address |
+| `robotPort` | `number` | `22` | SSH port |
+| `robotMdnsDomain` | `string \| undefined` | `undefined` | mDNS domain, takes precedence over IP |
+| `sshUsername` | `string` | `SSH_USERNAME` | SSH login username |
+| `sshPassword` | `string` | `SSH_PASSWORD` | SSH login password |
+| `timeout` | `number \| undefined` | `undefined` | Total wait timeout in milliseconds; undefined means wait indefinitely |
+| `ignoreFailure` | `boolean` | `false` | If true, returns `success: false` instead of throwing when the target state is not reached |
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `done` | `true` | Flow completion marker |
+| `success` | `boolean` | Whether the target state was reached |
+| `state` | `"connected" \| "disconnected" \| "unknown"` | Observed final SSH state |
+| `attempts` | `number` | Number of SSH probes performed |
+| `elapsedMs` | `number` | Total elapsed time in milliseconds |
+| `error` | `string \| undefined` | Failure message when `ignoreFailure` returns a failed result |
+
+### Notes
+
+- Uses `ssh2.Client` connection readiness as the probe signal.
+- Uses `robotMdnsDomain` when present, otherwise `robotIp`.
+- Does not log passwords or other sensitive credentials.
+- Polls until connected or until `timeout` expires.
+- Mock variant returns a successful connected state immediately.
+
+---
+
+## 21. WaitSshDisconnectedTask
+
+### Overview
+
+Waits until an SSH session can no longer be established with the robot. This is intended for reboot and upgrade flows where the current SSH service must drop before a later reconnect check.
+
+### Input Parameters
+
+Same as `WaitSshConnectedTask`.
+
+### Output Parameters
+
+Same as `WaitSshConnectedTask`; successful completion returns `state: "disconnected"`.
+
+### Notes
+
+- Uses the same shared SSH probe and wait helper as `WaitSshConnectedTask`.
+- A failed SSH connection attempt is treated as the desired disconnected state.
+- Polls until disconnected or until `timeout` expires.
+- Mock variant returns a successful disconnected state immediately.
+
+---
+
+## 22. WaitSshReconnectTask
+
+### Overview
+
+Waits for a complete SSH reconnect cycle by first waiting for SSH disconnection and then waiting for SSH connection success. This task is a composition task for robot reboot and upgrade flows.
+
+### Input Parameters
+
+Same as `WaitSshConnectedTask`.
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `done` | `true` | Flow completion marker |
+| `success` | `boolean` | Whether both disconnect and reconnect phases completed |
+| `state` | `"connected" \| "disconnected" \| "unknown"` | Final observed SSH state |
+| `disconnectResult` | `ValueMap \| undefined` | Result returned by `WaitSshDisconnectedTask` |
+| `connectResult` | `ValueMap \| undefined` | Result returned by `WaitSshConnectedTask` |
+| `elapsedMs` | `number` | Total elapsed time in milliseconds |
+| `error` | `string \| undefined` | Failure message when `ignoreFailure` returns a failed result |
+
+### Notes
+
+- Must call `WaitSshDisconnectedTask` followed by `WaitSshConnectedTask`; it must not duplicate the SSH probe loop.
+- A single `timeout` value is treated as the total budget for both phases. The reconnect phase receives the remaining timeout after the disconnect phase completes.
+- Undefined `timeout` means both phases wait indefinitely.
+- `ignoreFailure: true` converts phase failure into a failed result instead of throwing.
+- Mock variant composes the mock disconnected and connected tasks.

@@ -37,6 +37,7 @@ function createRootLogger(options: LoggerOptions = {}): Logger {
         colorize: true,
         translateTime: "SYS:HH:MM:ss.l",
         ignore: "pid,hostname",
+        singleLine: true,
       },
     });
   }

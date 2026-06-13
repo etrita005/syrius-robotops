@@ -12,16 +12,16 @@ export class MockRebootRobotTask extends RebootRobotTask {
   override async exec(params: ValueMap): Promise<ValueMap> {
     const bootWaitMs = this.getBootWaitMs(params);
 
+    if (bootWaitMs > 0) {
+      log.info({ bootWaitMs }, "Waiting before reboot (mock)");
+      await sleep(bootWaitMs);
+    }
+
     log.info("Simulating robot reboot (mock)");
 
     await sleep(5000);
 
     log.info("Reboot completed (mock)");
-
-    if (bootWaitMs > 0) {
-      log.info({ bootWaitMs }, "Waiting after reboot (mock)");
-      await sleep(bootWaitMs);
-    }
 
     return {
       done: true,

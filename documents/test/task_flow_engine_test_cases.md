@@ -549,6 +549,56 @@
 | **预期结果** | 抛出 Error("Cannot retry a running or paused flow") |
 | **验证点** | 异常消息包含 "Cannot retry a running or paused flow" |
 
+### TC-TFE-050：等待 SSH 连接成功解析器（FR-TFE-032）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 WaitSshConnectedTask 在 SSH 探测成功时返回成功状态 |
+| **前置条件** | 使用可注入的探测器模拟 SSH 可连接 |
+| **输入** | `robotIp`, `robotPort`, `sshUsername`, `sshPassword`, `timeout` |
+| **预期结果** | 返回 `done: true`, `success: true`, `state: "connected"` |
+| **验证点** | 至少执行一次探测，未记录密码 |
+
+### TC-TFE-051：等待 SSH 连接断开解析器（FR-TFE-032）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 WaitSshDisconnectedTask 在 SSH 探测失败时返回成功状态 |
+| **前置条件** | 使用可注入的探测器模拟 SSH 不可连接 |
+| **输入** | `robotIp`, `robotPort`, `sshUsername`, `sshPassword`, `timeout` |
+| **预期结果** | 返回 `done: true`, `success: true`, `state: "disconnected"` |
+| **验证点** | 失败探测被识别为断开状态 |
+
+### TC-TFE-052：等待 SSH 重连解析器组合行为（FR-TFE-032）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 WaitSshReconnectTask 先等待断开再等待连接成功 |
+| **前置条件** | 使用可注入的探测器按顺序模拟 connected、disconnected、connected |
+| **输入** | `timeout` 为总预算，其他 SSH 参数完整 |
+| **预期结果** | 返回 `done: true`, `success: true`, `state: "connected"`，包含 disconnectResult 和 connectResult |
+| **验证点** | 探测调用顺序符合先断开后重连，重连任务不重复实现探测循环 |
+
+### TC-TFE-053：等待 SSH 超时忽略错误（FR-TFE-032）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证等待任务在超时且 `ignoreFailure: true` 时不抛错 |
+| **前置条件** | 使用可注入的探测器持续返回非目标状态 |
+| **输入** | `timeout` 为短时长，`ignoreFailure: true` |
+| **预期结果** | 返回 `done: true`, `success: false`，包含 error 信息 |
+| **验证点** | 任务结果表示失败但流程可继续 |
+
+### TC-TFE-054：等待 SSH 超时抛错（FR-TFE-032）
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证等待任务在超时且 `ignoreFailure: false` 时抛出异常 |
+| **前置条件** | 使用可注入的探测器持续返回非目标状态 |
+| **输入** | `timeout` 为短时长，`ignoreFailure` 省略 |
+| **预期结果** | 抛出包含 timeout 的错误 |
+| **验证点** | 默认不忽略错误 |
+
 ---
 
 ## 3. API 路由测试

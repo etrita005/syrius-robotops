@@ -23,18 +23,25 @@ export class MatchFileContentTask extends SshCommandTask {
     });
   }
 
+  protected doesContentMatch(actualContent: string, expectedContent: string): boolean {
+    return actualContent.trim() === expectedContent.trim();
+  }
+
+  protected buildMismatchMessage(filePath: string, expectedContent: string, actualContent: string): string {
+    return `File content mismatch in ${filePath}: expected "${expectedContent.trim()}", got "${actualContent.trim()}"`;
+  }
+
   override async exec(params: ValueMap): Promise<ValueMap> {
     const expectedContent = this.getExpectedContent(params);
     const filePath = this.getFilePath(params);
     const result = await super.exec(params);
     const stdout = (result.stdout as string) ?? "";
+    const actualContent = stdout.trim();
 
-    log.info({ filePath, expectedContent, actualContent: stdout.trim() }, "Comparing file content");
+    log.info({ filePath, expectedContent, actualContent }, "Comparing file content");
 
-    if (stdout.trim() !== expectedContent.trim()) {
-      throw new Error(
-        `File content mismatch in ${filePath}: expected "${expectedContent.trim()}", got "${stdout.trim()}"`
-      );
+    if (!this.doesContentMatch(actualContent, expectedContent)) {
+      throw new Error(this.buildMismatchMessage(filePath, expectedContent, actualContent));
     }
 
     log.info({ filePath }, "File content matched");
@@ -44,7 +51,7 @@ export class MatchFileContentTask extends SshCommandTask {
       matched: true,
       filePath,
       expectedContent,
-      actualContent: stdout.trim(),
+      actualContent,
     };
   }
 }

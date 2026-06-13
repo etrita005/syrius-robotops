@@ -86,7 +86,7 @@ params: {
 ```typescript
 const TASK_DAG_MAP: Record<string, DagConfig> = {
   "upgrade-movebase": { /* 五步 DAG: transfer → upgrade → reboot → verify_version → cleanup */ },
-  "upgrade-bup":      { /* 七步 DAG: transfer → script_transfer → upgrade → reboot → sleep → verify_version → cleanup */ },
+  "upgrade-bup":      { /* 六步 DAG: transfer → script_transfer → upgrade → wait_reconnect → verify_version → cleanup */ },
 };
 ```
 
@@ -113,27 +113,25 @@ input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot] ─�
 
 #### upgrade-bup（BUP 固件升级）
 
-七步流程，含异常处理（reboot 忽略失败，reboot 后 sleep 90s，upgrade 前先传输 upgrade_bup.sh 脚本）：
+六步流程，含异常处理（upgrade 前先传输 upgrade_bup.sh 脚本，upgrade 后等待 SSH 断开并在 3 分钟内重连成功）：
 
 ```
-input variables ──→ [transfer] ──→ [script_transfer] ──→ [upgrade] ──→ [reboot(ignoreFailure)] ──→ [sleep(90s)] ──→ [verify_version] ──→ [cleanup] ──→ cleanup_done
-                       │                  │                       │                    │                       │                    │                       │
-                       └── transfer_done ─┘                       │                    │                       │                    │                       │
-                                          └── script_transfer_done┘                    │                       │                    │                       │
-                                                                                       └── upgrade_done ───────┘                    │                       │
-                                                                                                                      └── reboot_done ────────┘                       │
-                                                                                                                                                              └── sleep_done ───────┘                       │
-                                                                                                                                                                                                      └── verify_done ──────┘
+input variables ──→ [transfer] ──→ [script_transfer] ──→ [upgrade] ──→ [wait_reconnect(180s)] ──→ [verify_version] ──→ [cleanup] ──→ cleanup_done
+                       │                  │                       │                         │                         │                       │
+                       └── transfer_done ─┘                       │                         │                         │                       │
+                                          └── script_transfer_done┘                         │                         │                       │
+                                                                                       └── upgrade_done ─────────────┘                         │
+                                                                                                                              └── reconnect_done ───────┘                       │
+                                                                                                                                                                      └── verify_done ──────┘
 如果主流程任一任务失败：
 [error_cleanup] ──→ error_cleanup_done
 ```
-- 解析器：`TransferBUPTask`, `TransferBUPScriptTask`, `UpgradeBUPTask`, `RebootRobotTask`, `SleepTask`, `MatchBUPVersionTask`, `DeleteBUPTask`
+- 解析器：`TransferBUPTask`, `TransferBUPScriptTask`, `UpgradeBUPTask`, `WaitSshReconnectTask`, `MatchBUPVersionTask`, `DeleteBUPTask`
 - 输入依赖：`robotIp`, `robotPort`, `artifactId`, `expectedVersion`
 - 预期结果：`cleanup_done`
 - 异常 DAG：清理残留安装包
 - `script_transfer` 节点将 `res/upgrade_bup.sh` 传输到机器人的 `/tmp/upgrade_bup.sh`，供后续 UpgradeBUPTask 使用
-- reboot 参数：`ignoreFailure: true`（升级后机器人自动重启，reboot 命令会连接失败）
-- sleep 参数：`sleepSeconds: 90`（等待重启完成）
+- `wait_reconnect` 参数：`timeout: 180000`（等待 SSH 先断开再重连成功，单位 ms）
 
 ---
 

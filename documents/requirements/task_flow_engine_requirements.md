@@ -478,6 +478,18 @@ API 返回的流摘要信息，包含完整的状态与结果数据：
 
 - 若引用了未注册的解析器名称，返回错误提示。
 
+**FR-TFE-032**：系统应提供 SSH 连接状态等待解析器，用于机器人重启、升级和诊断流程中的连接状态同步。
+
+- 系统应提供 `WaitSshConnectedTask`，等待机器人 SSH 可成功建立连接。
+- 系统应提供 `WaitSshDisconnectedTask`，等待机器人 SSH 不可成功建立连接。
+- 系统应提供 `WaitSshReconnectTask`，先等待 SSH 断开，再等待 SSH 重新连接成功。
+- `WaitSshReconnectTask` 必须复用 `WaitSshDisconnectedTask` 和 `WaitSshConnectedTask` 实现，不允许重复实现 SSH 探测循环。
+- 三个解析器均应支持 `robotIp`、`robotMdnsDomain`、`robotPort`、`sshUsername`、`sshPassword`、`timeout`、`ignoreFailure` 参数。
+- `robotMdnsDomain` 存在时应优先于 `robotIp` 作为 SSH host。
+- `timeout` 单位为毫秒，未提供时表示无限期等待。
+- `ignoreFailure` 默认为 `false`；当为 `true` 时，超时或等待失败应返回 `success: false`，而不是抛出异常。
+- 解析器不得记录密码或其他敏感凭据。
+
 ### 6.9 引擎生命周期管理
 
 **FR-TFE-023**：系统应支持引擎的优雅关闭。

@@ -30,6 +30,12 @@ export class RebootRobotTask extends SshCommandTask {
 
   override async exec(params: ValueMap): Promise<ValueMap> {
     const bootWaitMs = this.getBootWaitMs(params);
+
+    if (bootWaitMs > 0) {
+      log.info({ bootWaitMs }, "Waiting before reboot");
+      await sleep(bootWaitMs);
+    }
+
     let result: ValueMap;
 
     try {
@@ -53,11 +59,6 @@ export class RebootRobotTask extends SshCommandTask {
       } else {
         throw err;
       }
-    }
-
-    if (bootWaitMs > 0) {
-      log.info({ bootWaitMs }, "Waiting after reboot");
-      await sleep(bootWaitMs);
     }
 
     return result;

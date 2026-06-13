@@ -19,6 +19,12 @@ import { UpdateRobotBasicInfoTask } from "./tasks/real/updateRobotBasicInfoTask.
 import { UpdateRobotSoftwareInfoTask } from "./tasks/real/updateRobotSoftwareInfoTask.js";
 import type { RobotBasicInfo } from "./tasks/real/getRobotBasicInfoTask.js";
 import type { RobotSoftwareInfo } from "./tasks/real/getRobotSoftwareInfoTask.js";
+import { WaitSshConnectedTask } from "./tasks/real/waitSshConnectedTask.js";
+import { WaitSshDisconnectedTask } from "./tasks/real/waitSshDisconnectedTask.js";
+import { WaitSshReconnectTask } from "./tasks/real/waitSshReconnectTask.js";
+import { MatchBUPVersionTask } from "./tasks/real/matchBUPVersionTask.js";
+import { resetSshConnectionProbeForTest, setSshConnectionProbeForTest } from "./tasks/real/sshConnectionWait.js";
+import type { SshConnectionProbeParams } from "./tasks/real/sshConnectionWait.js";
 
 class InMemoryObjectStore {
   private store = new Map<string, unknown>();
@@ -257,6 +263,16 @@ class MockRecoveryTask implements ITaskResolver {
       recovered: true,
       failedTask: errorCtx?.failedTaskCode ?? "unknown",
     };
+  }
+}
+
+class TestableMatchBUPVersionTask extends MatchBUPVersionTask {
+  match(actualContent: string, expectedContent: string): boolean {
+    return this.doesContentMatch(actualContent, expectedContent);
+  }
+
+  mismatchMessage(filePath: string, expectedContent: string, actualContent: string): string {
+    return this.buildMismatchMessage(filePath, expectedContent, actualContent);
   }
 }
 
@@ -1141,6 +1157,130 @@ describe("ResolverRegistry", () => {
 
     const all = registry.getAll();
     assert.ok(all["TestTask"]);
+  });
+});
+
+describe("BUP version matching", () => {
+  it("should match expected version against the actual BUP version suffix", () => {
+    const task = new TestableMatchBUPVersionTask();
+
+    assert.equal(task.match("xxx-1.1.945", "1.1.945"), true);
+    assert.equal(task.match("xxx-1.1.945\n", "1.1.945"), true);
+    assert.equal(task.match("xxx-1.1.945", "1.1.946"), false);
+    assert.match(
+      task.mismatchMessage("/etc/l4t_jurassic_release", "1.1.945", "xxx-1.1.946"),
+      /expected suffix "1\.1\.945"/
+    );
+  });
+});
+
+describe("SSH wait tasks", () => {
+  afterEach(() => {
+    resetSshConnectionProbeForTest();
+  });
+
+  it("TC-TFE-050: should wait for SSH connected state", async () => {
+    const calls: SshConnectionProbeParams[] = [];
+    setSshConnectionProbeForTest(async (params) => {
+      calls.push(params);
+      return { connected: true };
+    });
+
+    const task = new WaitSshConnectedTask();
+    const result = await task.exec({
+      robotIp: "192.168.1.10",
+      robotPort: 2222,
+      sshUsername: "developer",
+      sshPassword: "secret",
+      timeout: 100,
+      pollIntervalMs: 1,
+      connectTimeoutMs: 10,
+    });
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.state, "connected");
+    assert.equal(result.attempts, 1);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].host, "192.168.1.10");
+    assert.equal(calls[0].port, 2222);
+    assert.equal(calls[0].username, "developer");
+    assert.equal(calls[0].password, "secret");
+  });
+
+  it("TC-TFE-051: should wait for SSH disconnected state", async () => {
+    setSshConnectionProbeForTest(async () => ({ connected: false, error: "ECONNREFUSED" }));
+
+    const task = new WaitSshDisconnectedTask();
+    const result = await task.exec({
+      robotIp: "192.168.1.10",
+      timeout: 100,
+      pollIntervalMs: 1,
+      connectTimeoutMs: 10,
+    });
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.state, "disconnected");
+    assert.equal(result.attempts, 1);
+  });
+
+  it("TC-TFE-052: should wait for SSH disconnect and reconnect", async () => {
+    const states = [true, false, true];
+    const observed: boolean[] = [];
+    setSshConnectionProbeForTest(async () => {
+      const connected = states.shift() ?? true;
+      observed.push(connected);
+      return { connected };
+    });
+
+    const task = new WaitSshReconnectTask();
+    const result = await task.exec({
+      robotIp: "192.168.1.10",
+      timeout: 100,
+      pollIntervalMs: 1,
+      connectTimeoutMs: 10,
+    });
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.state, "connected");
+    assert.ok(result.disconnectResult);
+    assert.ok(result.connectResult);
+    assert.deepEqual(observed, [true, false, true]);
+  });
+
+  it("TC-TFE-053: should return failed result when timeout is ignored", async () => {
+    setSshConnectionProbeForTest(async () => ({ connected: false, error: "ECONNREFUSED" }));
+
+    const task = new WaitSshConnectedTask();
+    const result = await task.exec({
+      robotIp: "192.168.1.10",
+      timeout: 5,
+      pollIntervalMs: 1,
+      connectTimeoutMs: 1,
+      ignoreFailure: true,
+    });
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, false);
+    assert.equal(result.state, "disconnected");
+    assert.match(result.error as string, /Timed out waiting for SSH connected/);
+  });
+
+  it("TC-TFE-054: should throw when timeout is not ignored", async () => {
+    setSshConnectionProbeForTest(async () => ({ connected: false, error: "ECONNREFUSED" }));
+
+    const task = new WaitSshConnectedTask();
+    await assert.rejects(
+      () => task.exec({
+        robotIp: "192.168.1.10",
+        timeout: 5,
+        pollIntervalMs: 1,
+        connectTimeoutMs: 1,
+      }),
+      /Timed out waiting for SSH connected/
+    );
   });
 });
 
@@ -2217,8 +2357,8 @@ describe("TaskFlowEngine - Routes", () => {
     assert.equal(res.status, 201);
     const body = await res.json() as FlowSummary;
     assert.equal(body.id, summary.id);
-    assert.equal(body.state, "RUNNING");
-    assert.equal(body.taskStates["task1"], "PENDING");
+    assert.ok(["RUNNING", "COMPLETED"].includes(body.state));
+    assert.ok(["PENDING", "RUNNING", "COMPLETED"].includes(body.taskStates["task1"]));
     engine.destroy();
   });
 

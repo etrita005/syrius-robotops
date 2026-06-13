@@ -6,8 +6,8 @@ const log = createLogger("Sleep");
 
 export class MockSleepTask extends SleepTask {
   override async exec(params: ValueMap): Promise<ValueMap> {
-    const sleepSeconds = (params.sleepSeconds as number) ?? 0;
-    log.info({ sleepSeconds }, 'Simulating sleep (mock)');
+    const sleepMs = (params.sleepMs as number) ?? 0;
+    log.info({ sleepMs }, 'Simulating sleep (mock)');
     return { done: true, success: true };
   }
 }
