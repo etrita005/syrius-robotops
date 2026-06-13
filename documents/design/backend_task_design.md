@@ -1,6 +1,13 @@
 # Backend Task Resolver Technical Design
 
-All task resolver classes implement `ITaskResolver` from `flowed`:
+> **Update**: All task resolver classes now derive from `BaseTask` (directly or via secondary base classes such as `SshCommandTask` / `SshFileTransferTask`). `BaseTask` implements `ITaskResolver` from `flowed`, orchestrates the `onInitialize → onExec → onDestroy` lifecycle, owns `ignoreFailure` translation, and injects structured logging fields (`flowId`, `name`, `taskCode`, `flowPhase`). See:
+> - Requirements: `documents/requirements/backend_base_task_requirements.md`
+> - Design: `documents/design/backend_base_task_design.md`
+> - Test cases: `documents/test/backend_base_task_test_cases.md`
+>
+> Per-task sections below describe each task's input / output / notes. The `ignoreFailure` parameter is owned by `BaseTask` for tasks whose failure is expressed by **throwing** (e.g. `SshCommandTask`, `SshFileTransferTask` and their derivatives); on such a thrown failure with `ignoreFailure: true`, BaseTask returns the standardized body `{ done: true, success: false, ignored: true, error }` rather than partial results. Tasks with an explicit internal **soft-failure return path** (e.g. `WaitSshConnectedTask` / `WaitSshReconnectTask`) keep their existing partial-result fields (`state`, `attempts`, `elapsedMs`, etc.) — see the per-task notes and `backend_base_task_design.md` §5.2.
+
+All task resolver classes derive from `BaseTask`, which implements `ITaskResolver` from `flowed`:
 ```
 exec(params: ValueMap, context?: ValueMap): Promise<ValueMap>
 ```
@@ -35,7 +42,7 @@ Executes a shell command on a remote robot via raw SSH (ssh2 library). Supports 
 | `sshPassword` | `string` | `SSH_PASSWORD` | SSH login password |
 | `sshCommand` | `string` | (subclass-defined) | Shell command to execute |
 | `sudo` | `boolean` | `false` | Whether to wrap command with sudo |
-| `ignoreFailure` | `boolean` | `false` | If true, returns `success: false` instead of throwing on failure |
+| `ignoreFailure` | `boolean` | `false` | Handled by `BaseTask`; see `backend_base_task_design.md` for the standardized failure result body |
 
 ### Output Parameters
 
@@ -52,8 +59,8 @@ Executes a shell command on a remote robot via raw SSH (ssh2 library). Supports 
 - Host resolution: uses `robotMdnsDomain` if present, otherwise `robotIp`
 - Sudo wrapping: prepends `echo "<password>" | sudo -S -p ''` to each `&&`-separated segment
 - Retry uses exponential backoff: `sleep(1000 * attempt)` between attempts
-- Throws if exit code != 0 after all retries (unless `ignoreFailure` is true)
-- When `ignoreFailure` is true, returns `{ done: true, success: false }` with stdout/stderr/exitCode on failure
+- Throws if exit code != 0 after all retries; `ignoreFailure` is no longer handled here.
+- On failure, `BaseTask` performs the `ignoreFailure` translation: when `ignoreFailure: true`, the standardized body `{ done: true, success: false, ignored: true, error }` is returned (no `stdout` / `stderr` / `exitCode`); when `ignoreFailure: false` or omitted, the original error is rethrown. See `backend_base_task_design.md` §5.2 for the migration-time output change.
 - Subclass overrides: `getSshCommand()` defines the command, `buildParams()` customizes defaults
 
 ---
@@ -608,7 +615,7 @@ Waits until an SSH session can be established with the robot. The task only veri
 | `sshUsername` | `string` | `SSH_USERNAME` | SSH login username |
 | `sshPassword` | `string` | `SSH_PASSWORD` | SSH login password |
 | `timeout` | `number \| undefined` | `undefined` | Total wait timeout in milliseconds; undefined means wait indefinitely |
-| `ignoreFailure` | `boolean` | `false` | If true, returns `success: false` instead of throwing when the target state is not reached |
+| `ignoreFailure` | `boolean` | `false` | If true, on timeout this task returns a soft-failure result (`done:true, success:false, state, attempts, elapsedMs, error`) instead of throwing. Consumed by this task internally; `BaseTask`'s ignoreFailure translation does not apply to this soft-failure path. See `backend_base_task_design.md` §5.2. |
 
 ### Output Parameters
 
@@ -619,10 +626,11 @@ Waits until an SSH session can be established with the robot. The task only veri
 | `state` | `"connected" \| "disconnected" \| "unknown"` | Observed final SSH state |
 | `attempts` | `number` | Number of SSH probes performed |
 | `elapsedMs` | `number` | Total elapsed time in milliseconds |
-| `error` | `string \| undefined` | Failure message when `ignoreFailure` returns a failed result |
+| `error` | `string \| undefined` | Failure message in the soft-failure return path. Populated by this task itself, not by `BaseTask`. |
 
 ### Notes
 
+- `ignoreFailure` is consumed by this task internally to choose between "throw on timeout" and "return soft-failure with partial fields"; `BaseTask`'s ignoreFailure translation does not apply to the soft-failure path. See `backend_base_task_design.md` §5.2.
 - Uses `ssh2.Client` connection readiness as the probe signal.
 - Uses `robotMdnsDomain` when present, otherwise `robotIp`.
 - Does not log passwords or other sensitive credentials.
@@ -674,12 +682,12 @@ Same as `WaitSshConnectedTask`.
 | `disconnectResult` | `ValueMap \| undefined` | Result returned by `WaitSshDisconnectedTask` |
 | `connectResult` | `ValueMap \| undefined` | Result returned by `WaitSshConnectedTask` |
 | `elapsedMs` | `number` | Total elapsed time in milliseconds |
-| `error` | `string \| undefined` | Failure message when `ignoreFailure` returns a failed result |
+| `error` | `string \| undefined` | Failure message in the soft-failure return path. Populated by this task itself, not by `BaseTask`. See `backend_base_task_design.md` §5.2. |
 
 ### Notes
 
 - Must call `WaitSshDisconnectedTask` followed by `WaitSshConnectedTask`; it must not duplicate the SSH probe loop.
 - A single `timeout` value is treated as the total budget for both phases. The reconnect phase receives the remaining timeout after the disconnect phase completes.
 - Undefined `timeout` means both phases wait indefinitely.
-- `ignoreFailure: true` converts phase failure into a failed result instead of throwing.
+- `ignoreFailure` is consumed by this task internally (delegating to the underlying wait phases). When true, a phase failure becomes a soft-failure return (`done:true, success:false, state, ...`) instead of a thrown error; `BaseTask`'s ignoreFailure translation does not apply to this soft-failure path. See `backend_base_task_design.md` §5.2.
 - Mock variant composes the mock disconnected and connected tasks.

@@ -1,8 +1,5 @@
 import type { ValueMap } from "flowed";
 import { SshCommandTask, type SshCommandParams } from "./sshCommandTask.js";
-import { createLogger } from "../../logger/index.js";
-
-const log = createLogger("RebootRobot");
 
 const REBOOT_COMMAND = "reboot";
 
@@ -28,18 +25,18 @@ export class RebootRobotTask extends SshCommandTask {
     return REBOOT_COMMAND;
   }
 
-  override async exec(params: ValueMap): Promise<ValueMap> {
+  protected override async onExec(params: ValueMap): Promise<ValueMap> {
     const bootWaitMs = this.getBootWaitMs(params);
 
     if (bootWaitMs > 0) {
-      log.info({ bootWaitMs }, "Waiting before reboot");
+      this.log.info({ bootWaitMs }, "Waiting before reboot");
       await sleep(bootWaitMs);
     }
 
     let result: ValueMap;
 
     try {
-      result = await super.exec(params);
+      result = await super.onExec(params);
     } catch (err) {
       const msg = (err as Error).message.toLowerCase();
       if (
@@ -54,7 +51,7 @@ export class RebootRobotTask extends SshCommandTask {
         msg.includes("ssh command failed after retries") ||
         msg.includes("command attempt failed")
       ) {
-        log.warn({ err: (err as Error).message }, "Connection lost after reboot (expected)");
+        this.log.warn({ err: (err as Error).message }, "Connection lost after reboot (expected)");
         result = { done: true, success: true, stdout: "", stderr: "", exitCode: 0 };
       } else {
         throw err;

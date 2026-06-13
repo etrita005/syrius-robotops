@@ -17,7 +17,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export class MockGetRobotBasicInfoTask extends GetRobotBasicInfoTask {
-  async exec(_params: ValueMap): Promise<ValueMap> {
+  protected override async onExec(_params: ValueMap): Promise<ValueMap> {
     await sleep(3000);
     return {
       success: true,

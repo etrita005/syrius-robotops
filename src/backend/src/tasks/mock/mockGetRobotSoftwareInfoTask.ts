@@ -12,7 +12,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export class MockGetRobotSoftwareInfoTask extends GetRobotSoftwareInfoTask {
-  async exec(_params: ValueMap): Promise<ValueMap> {
+  protected override async onExec(_params: ValueMap): Promise<ValueMap> {
     await sleep(1500);
     return {
       success: true,

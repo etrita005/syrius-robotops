@@ -330,7 +330,13 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     const resolvers = this.resolverRegistry.getAll();
 
     flow
-      .start(startParams, expected, resolvers, this.flowContext, { instanceId: id })
+      .start(
+        startParams,
+        expected,
+        resolvers,
+        { ...this.flowContext, flowId: id, flowPhase: "main" },
+        { instanceId: id }
+      )
       .then((flowResults: ValueMap) => {
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           if (record.phase === "error") {
@@ -431,7 +437,13 @@ export class TaskFlowEngine implements ISseManagerEventHandler {
     log.warn({ flowId: id, failedTaskCode, errorMessage }, 'Error handling phase started');
 
     errorFlow
-      .start(inputWithError, expected, resolvers, this.flowContext, { instanceId: id })
+      .start(
+        inputWithError,
+        expected,
+        resolvers,
+        { ...this.flowContext, flowId: id, flowPhase: "error" },
+        { instanceId: id }
+      )
       .then((flowResults: ValueMap) => {
         if (record.state !== "STOPPED" && record.state !== "PAUSED") {
           record.state = "FAILED";

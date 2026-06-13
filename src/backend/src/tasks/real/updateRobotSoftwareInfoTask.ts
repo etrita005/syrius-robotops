@@ -1,9 +1,10 @@
-import type { ValueMap, ITaskResolver } from "flowed";
+import type { ValueMap } from "flowed";
+import { BaseTask } from "../baseTask.js";
 import type { RobotSoftwareInfo } from "./getRobotSoftwareInfoTask.js";
 import type { MemStore } from "../../memStore/index.js";
 
-export class UpdateRobotSoftwareInfoTask implements ITaskResolver {
-  async exec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {
+export class UpdateRobotSoftwareInfoTask extends BaseTask {
+  protected override async onExec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {
     const cacheKey = params.cacheKey as string;
     const softwareInfo = params.softwareInfo as RobotSoftwareInfo;
     const memStore = context?.memStore as MemStore | undefined;

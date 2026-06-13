@@ -1,27 +1,25 @@
-import type { ITaskResolver, ValueMap } from "flowed";
+import type { ValueMap } from "flowed";
+import { BaseTask } from "../baseTask.js";
 import { WaitSshConnectedTask } from "./waitSshConnectedTask.js";
 import { WaitSshDisconnectedTask } from "./waitSshDisconnectedTask.js";
-import { createLogger } from "../../logger/index.js";
 
-const log = createLogger("WaitSshReconnect");
-
-export class WaitSshReconnectTask implements ITaskResolver {
+export class WaitSshReconnectTask extends BaseTask {
   private readonly disconnectedTask = new WaitSshDisconnectedTask();
   private readonly connectedTask = new WaitSshConnectedTask();
 
-  async exec(params: ValueMap): Promise<ValueMap> {
+  protected override async onExec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {
     const startedAt = Date.now();
     const timeout = params.timeout as number | undefined;
     const ignoreFailure = (params.ignoreFailure as boolean) ?? false;
 
     try {
-      const disconnectResult = await this.disconnectedTask.exec(params);
+      const disconnectResult = await this.disconnectedTask.exec(params, context);
       if (disconnectResult.success === false) {
         return this.handleFailure(ignoreFailure, startedAt, "SSH disconnection phase failed", disconnectResult);
       }
 
       const connectParams = this.buildConnectParams(params, timeout, startedAt);
-      const connectResult = await this.connectedTask.exec(connectParams);
+      const connectResult = await this.connectedTask.exec(connectParams, context);
       if (connectResult.success === false) {
         return this.handleFailure(ignoreFailure, startedAt, "SSH connection phase failed", disconnectResult, connectResult);
       }
@@ -37,7 +35,7 @@ export class WaitSshReconnectTask implements ITaskResolver {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       if (ignoreFailure) {
-        log.warn({ err: error.message, elapsedMs: Date.now() - startedAt }, "SSH reconnect failed (ignored)");
+        this.log.warn({ err: error.message, elapsedMs: Date.now() - startedAt }, "SSH reconnect failed (ignored)");
         return {
           done: true,
           success: false,
@@ -69,7 +67,7 @@ export class WaitSshReconnectTask implements ITaskResolver {
     connectResult?: ValueMap
   ): ValueMap {
     if (ignoreFailure) {
-      log.warn({ elapsedMs: Date.now() - startedAt, message }, "SSH reconnect phase failed (ignored)");
+      this.log.warn({ elapsedMs: Date.now() - startedAt, message }, "SSH reconnect phase failed (ignored)");
       return {
         done: true,
         success: false,

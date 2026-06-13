@@ -4,6 +4,9 @@ import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import type { FlowSpec, ValueMap, ITaskResolver, TaskResolverClass } from "flowed";
 import { TaskFlowEngine } from "./services/taskFlowEngine/taskFlowEngine.js";
+
+// Side-effect import: registers BaseTask test cases under node:test.
+import "./baseTask.test.js";
 import type { FlowRecord, FlowSummary, FlowType, TaskState } from "./services/taskFlowEngine/taskFlowEngine.js";
 import { ResolverRegistry } from "./services/taskFlowEngine/resolverRegistry.js";
 import { SseManager } from "./services/sseManager.js";

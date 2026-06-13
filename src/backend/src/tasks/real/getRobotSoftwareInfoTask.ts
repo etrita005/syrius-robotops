@@ -1,8 +1,5 @@
 import type { ValueMap } from "flowed";
 import { SshCommandTask } from "./sshCommandTask.js";
-import { createLogger } from "../../logger/index.js";
-
-const log = createLogger("GetRobotSoftwareInfo");
 
 const SOFTWARE_INFO_COMMAND =
   "MOVEBASE_VER=$(cat /opt/cosmos/etc/ota/version 2>/dev/null | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//; s/[[:space:]]*$//');" +
@@ -25,18 +22,18 @@ export class GetRobotSoftwareInfoTask extends SshCommandTask {
     return SOFTWARE_INFO_COMMAND;
   }
 
-  async exec(params: ValueMap): Promise<ValueMap> {
-    const result = await super.exec(params);
+  protected override async onExec(params: ValueMap): Promise<ValueMap> {
+    const result = await super.onExec(params);
 
     const stdout = (result.stdout as string) ?? "";
     const stderr = (result.stderr as string) ?? "";
     if (stderr) {
-      log.info({ stderr: stderr.trim() }, "stderr output");
+      this.log.info({ stderr: stderr.trim() }, "stderr output");
     }
 
     const softwareInfo = this.parseSoftwareInfo(stdout);
 
-    log.info({ movebaseVersion: softwareInfo.movebaseVersion, l4tVersion: softwareInfo.l4tVersion }, "Parsed software info");
+    this.log.info({ movebaseVersion: softwareInfo.movebaseVersion, l4tVersion: softwareInfo.l4tVersion }, "Parsed software info");
 
     return {
       success: true,

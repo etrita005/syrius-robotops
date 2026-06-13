@@ -1,9 +1,7 @@
-import type { ValueMap, ITaskResolver } from "flowed";
+import type { ValueMap } from "flowed";
 import { Client } from "ssh2";
-import { createLogger } from "../../logger/index.js";
+import { BaseTask } from "../baseTask.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "../../config.js";
-
-const log = createLogger("SshCommand");
 
 export interface SshCommandParams {
   robotIp: string;
@@ -17,7 +15,6 @@ export interface SshCommandParams {
   sshPassword: string;
   sshCommand: string;
   sudo?: boolean;
-  ignoreFailure?: boolean;
 }
 
 export interface SshCommandResult {
@@ -34,71 +31,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function executeSshCommand(
-  host: string,
-  port: number,
-  username: string,
-  password: string,
-  command: string,
-  connectTimeout: number,
-  commandTimeout: number
-): Promise<SshCommandResult> {
-  return new Promise((resolve, reject) => {
-    const conn = new Client();
-    let commandTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const connectTimer = setTimeout(() => {
-      conn.end();
-      reject(new Error(`SSH connection timed out after ${connectTimeout}ms`));
-    }, connectTimeout);
-
-    conn
-      .on("ready", () => {
-        clearTimeout(connectTimer);
-        conn.exec(command, (err, stream) => {
-          if (err) {
-            conn.end();
-            reject(err);
-            return;
-          }
-
-          let stdout = "";
-          let stderr = "";
-
-          commandTimer = setTimeout(() => {
-            conn.end();
-            reject(new Error(`SSH command timed out after ${commandTimeout}ms`));
-          }, commandTimeout);
-
-          stream.on("data", (data: Buffer) => {
-            const text = data.toString("utf-8");
-            stdout += text;
-            log.info({ host, port, stream: "stdout" }, text.trimEnd());
-          });
-
-          stream.stderr.on("data", (data: Buffer) => {
-            const text = data.toString("utf-8");
-            stderr += text;
-            log.info({ host, port, stream: "stderr" }, text.trimEnd());
-          });
-
-          stream.on("close", (code: number | null) => {
-            if (commandTimer) clearTimeout(commandTimer);
-            conn.end();
-            resolve({ stdout, stderr, exitCode: code });
-          });
-        });
-      })
-      .on("error", (err: Error) => {
-        clearTimeout(connectTimer);
-        if (commandTimer) clearTimeout(commandTimer);
-        reject(err);
-      })
-      .connect({ host, port, username, password });
-  });
-}
-
-export class SshCommandTask implements ITaskResolver {
+export class SshCommandTask extends BaseTask {
   protected getSshCommand(_params: ValueMap): string {
     return _params.sshCommand as string;
   }
@@ -126,11 +59,75 @@ export class SshCommandTask implements ITaskResolver {
       sshPassword,
       sshCommand,
       sudo,
-      ignoreFailure: (params.ignoreFailure as boolean) ?? false,
     };
   }
 
-  async exec(params: ValueMap): Promise<ValueMap> {
+  private executeSshCommand(
+    host: string,
+    port: number,
+    username: string,
+    password: string,
+    command: string,
+    connectTimeout: number,
+    commandTimeout: number
+  ): Promise<SshCommandResult> {
+    const log = this.log;
+    return new Promise((resolve, reject) => {
+      const conn = new Client();
+      let commandTimer: ReturnType<typeof setTimeout> | undefined;
+
+      const connectTimer = setTimeout(() => {
+        conn.end();
+        reject(new Error(`SSH connection timed out after ${connectTimeout}ms`));
+      }, connectTimeout);
+
+      conn
+        .on("ready", () => {
+          clearTimeout(connectTimer);
+          conn.exec(command, (err, stream) => {
+            if (err) {
+              conn.end();
+              reject(err);
+              return;
+            }
+
+            let stdout = "";
+            let stderr = "";
+
+            commandTimer = setTimeout(() => {
+              conn.end();
+              reject(new Error(`SSH command timed out after ${commandTimeout}ms`));
+            }, commandTimeout);
+
+            stream.on("data", (data: Buffer) => {
+              const text = data.toString("utf-8");
+              stdout += text;
+              log.info({ host, port, stream: "stdout" }, text.trimEnd());
+            });
+
+            stream.stderr.on("data", (data: Buffer) => {
+              const text = data.toString("utf-8");
+              stderr += text;
+              log.info({ host, port, stream: "stderr" }, text.trimEnd());
+            });
+
+            stream.on("close", (code: number | null) => {
+              if (commandTimer) clearTimeout(commandTimer);
+              conn.end();
+              resolve({ stdout, stderr, exitCode: code });
+            });
+          });
+        })
+        .on("error", (err: Error) => {
+          clearTimeout(connectTimer);
+          if (commandTimer) clearTimeout(commandTimer);
+          reject(err);
+        })
+        .connect({ host, port, username, password });
+    });
+  }
+
+  protected override async onExec(params: ValueMap, _context?: ValueMap): Promise<ValueMap> {
     const sshParams = this.buildParams(params);
     const host = resolveHost(sshParams);
     const port = sshParams.robotPort!;
@@ -138,16 +135,14 @@ export class SshCommandTask implements ITaskResolver {
     const connectTimeout = sshParams.connectTimeout!;
     const commandTimeout = sshParams.commandTimeout!;
     const command = sshParams.sshCommand;
-    const ignoreFailure = sshParams.ignoreFailure ?? false;
 
-    log.info({ host, port, username: sshParams.sshUsername }, 'Connecting');
+    this.log.info({ host, port, username: sshParams.sshUsername }, 'Connecting');
 
     let lastError: Error | undefined;
-    let lastResult: ValueMap | undefined;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const result = await executeSshCommand(
+        const result = await this.executeSshCommand(
           host,
           port,
           sshParams.sshUsername,
@@ -158,23 +153,21 @@ export class SshCommandTask implements ITaskResolver {
         );
 
         if (result.exitCode !== 0) {
-          const err = new Error(
+          throw new Error(
             `SSH command exited with code ${result.exitCode}. Output logged above.`
           );
-          if (ignoreFailure) {
-            log.warn({ host, port, exitCode: result.exitCode }, 'Command failed (ignored)');
-            return {
-              done: true,
-              success: false,
-              stdout: result.stdout,
-              stderr: result.stderr,
-              exitCode: result.exitCode,
-            };
-          }
-          throw err;
         }
 
-        log.info({ host, port, exitCode: result.exitCode, stdoutLen: result.stdout.length, stderrLen: result.stderr.length }, 'Command succeeded');
+        this.log.info(
+          {
+            host,
+            port,
+            exitCode: result.exitCode,
+            stdoutLen: result.stdout.length,
+            stderrLen: result.stderr.length,
+          },
+          'Command succeeded'
+        );
 
         return {
           done: true,
@@ -185,22 +178,14 @@ export class SshCommandTask implements ITaskResolver {
         };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        log.error({ host, port, attempt, maxRetries, err: lastError.message, command }, 'Command attempt failed');
+        this.log.error(
+          { host, port, attempt, maxRetries, err: lastError.message, command },
+          'Command attempt failed'
+        );
         if (attempt < maxRetries) {
           await sleep(1000 * attempt);
         }
       }
-    }
-
-    if (ignoreFailure && lastError) {
-      log.warn({ host, port, err: lastError.message }, 'Command failed after retries (ignored)');
-      return {
-        done: true,
-        success: false,
-        stdout: "",
-        stderr: lastError.message,
-        exitCode: null,
-      };
     }
 
     throw lastError ?? new Error("SSH command failed after retries");

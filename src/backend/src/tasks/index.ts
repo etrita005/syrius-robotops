@@ -1,3 +1,5 @@
+export { BaseTask } from "./baseTask.js";
+export type { BaseTaskFailureBody } from "./baseTask.js";
 export { SshCommandTask } from "./real/sshCommandTask.js";
 export type { SshCommandParams, SshCommandResult } from "./real/sshCommandTask.js";
 export { MockSshCommandTask } from "./mock/mockSshCommandTask.js";

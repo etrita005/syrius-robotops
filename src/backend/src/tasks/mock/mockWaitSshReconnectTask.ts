@@ -1,14 +1,15 @@
-import type { ITaskResolver, ValueMap } from "flowed";
+import type { ValueMap } from "flowed";
+import { BaseTask } from "../baseTask.js";
 import { MockWaitSshConnectedTask } from "./mockWaitSshConnectedTask.js";
 import { MockWaitSshDisconnectedTask } from "./mockWaitSshDisconnectedTask.js";
 
-export class MockWaitSshReconnectTask implements ITaskResolver {
+export class MockWaitSshReconnectTask extends BaseTask {
   private readonly disconnectedTask = new MockWaitSshDisconnectedTask();
   private readonly connectedTask = new MockWaitSshConnectedTask();
 
-  async exec(params: ValueMap): Promise<ValueMap> {
-    const disconnectResult = await this.disconnectedTask.exec(params);
-    const connectResult = await this.connectedTask.exec(params);
+  protected override async onExec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {
+    const disconnectResult = await this.disconnectedTask.exec(params, context);
+    const connectResult = await this.connectedTask.exec(params, context);
 
     return {
       done: true,

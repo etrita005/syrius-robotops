@@ -3,9 +3,6 @@ import { SshFileTransferTask, type SshFileTransferParams } from "./sshFileTransf
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLogger } from "../../logger/index.js";
-
-const log = createLogger("TransferBUP");
 
 const REMOTE_TARGET_PATH = "/mnt/sdcard/bup_offlineota/bup_offline_package.tar.gz";
 
@@ -17,7 +14,7 @@ export class TransferBUPTask extends SshFileTransferTask {
     };
   }
 
-  override async exec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {
+  protected override async onExec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {
     const artifactService = context?.artifactService as { download(artifactId: string, destinationPath: string): Promise<string> } | undefined;
     const artifactId = params.artifactId as string | undefined;
 
@@ -27,10 +24,10 @@ export class TransferBUPTask extends SshFileTransferTask {
 
       try {
         const localFilePath = await artifactService.download(artifactId, tmpDir);
-        log.info({ artifactId, localFilePath }, 'Resolved artifact');
+        this.log.info({ artifactId, localFilePath }, 'Resolved artifact');
 
         const augmentedParams = { ...params, localFilePath };
-        const result = await super.exec(augmentedParams);
+        const result = await super.onExec(augmentedParams, context);
 
         await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 
@@ -41,6 +38,6 @@ export class TransferBUPTask extends SshFileTransferTask {
       }
     }
 
-    return super.exec(params);
+    return super.onExec(params, context);
   }
 }

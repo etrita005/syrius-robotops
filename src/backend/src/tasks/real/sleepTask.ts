@@ -1,14 +1,12 @@
-import type { ValueMap, ITaskResolver } from "flowed";
-import { createLogger } from "../../logger/index.js";
+import type { ValueMap } from "flowed";
+import { BaseTask } from "../baseTask.js";
 
-const log = createLogger("Sleep");
-
-export class SleepTask implements ITaskResolver {
-  async exec(params: ValueMap): Promise<ValueMap> {
+export class SleepTask extends BaseTask {
+  protected override async onExec(params: ValueMap): Promise<ValueMap> {
     const sleepMs = (params.sleepMs as number) ?? 0;
-    log.info({ sleepMs }, 'Sleeping');
+    this.log.info({ sleepMs }, 'Sleeping');
     await new Promise((resolve) => setTimeout(resolve, sleepMs));
-    log.info('Sleep completed');
+    this.log.info('Sleep completed');
     return { done: true, success: true };
   }
 }

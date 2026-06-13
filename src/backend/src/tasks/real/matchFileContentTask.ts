@@ -1,8 +1,5 @@
 import type { ValueMap } from "flowed";
 import { SshCommandTask, type SshCommandParams } from "./sshCommandTask.js";
-import { createLogger } from "../../logger/index.js";
-
-const log = createLogger("MatchFileContent");
 
 export class MatchFileContentTask extends SshCommandTask {
   protected getFilePath(params: ValueMap): string {
@@ -31,20 +28,20 @@ export class MatchFileContentTask extends SshCommandTask {
     return `File content mismatch in ${filePath}: expected "${expectedContent.trim()}", got "${actualContent.trim()}"`;
   }
 
-  override async exec(params: ValueMap): Promise<ValueMap> {
+  protected override async onExec(params: ValueMap): Promise<ValueMap> {
     const expectedContent = this.getExpectedContent(params);
     const filePath = this.getFilePath(params);
-    const result = await super.exec(params);
+    const result = await super.onExec(params);
     const stdout = (result.stdout as string) ?? "";
     const actualContent = stdout.trim();
 
-    log.info({ filePath, expectedContent, actualContent }, "Comparing file content");
+    this.log.info({ filePath, expectedContent, actualContent }, "Comparing file content");
 
     if (!this.doesContentMatch(actualContent, expectedContent)) {
       throw new Error(this.buildMismatchMessage(filePath, expectedContent, actualContent));
     }
 
-    log.info({ filePath }, "File content matched");
+    this.log.info({ filePath }, "File content matched");
 
     return {
       ...result,

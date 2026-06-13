@@ -1,13 +1,12 @@
-import type { ValueMap, ITaskResolver } from "flowed";
+import type { ValueMap } from "flowed";
 import { Client, type SFTPWrapper } from "ssh2";
 import { stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
 import { posix as pathPosix } from "node:path";
-import { createLogger } from "../../logger/index.js";
+import { BaseTask } from "../baseTask.js";
+import type { Logger } from "../../logger/index.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "../../config.js";
-
-const log = createLogger("SshFileTransfer");
 
 export interface SshFileTransferParams {
   // --- Connection ---
@@ -104,7 +103,8 @@ function ensureRemoteParentDir(
   timeout: number,
   username: string,
   sshPassword: string,
-  sudo: boolean
+  sudo: boolean,
+  log: Logger
 ): Promise<void> {
   const parentDir = pathPosix.dirname(remotePath);
   if (!parentDir || parentDir === "." || parentDir === "/") {
@@ -157,7 +157,8 @@ function ensureRemoteParentDir(
 function transferFile(
   conn: Client,
   localPath: string,
-  remotePath: string
+  remotePath: string,
+  log: Logger
 ): Promise<number> {  return new Promise((resolve, reject) => {
     conn.sftp((err: Error | undefined, sftp: SFTPWrapper) => {
       if (err) {
@@ -257,7 +258,7 @@ function execRemoteChecksum(
   });
 }
 
-export class SshFileTransferTask implements ITaskResolver {
+export class SshFileTransferTask extends BaseTask {
   protected buildParams(params: ValueMap): SshFileTransferParams {
     return {
       robotIp: params.robotIp as string,
@@ -275,7 +276,8 @@ export class SshFileTransferTask implements ITaskResolver {
     };
   }
 
-  async exec(params: ValueMap): Promise<ValueMap> {
+  protected override async onExec(params: ValueMap, _context?: ValueMap): Promise<ValueMap> {
+    const log = this.log;
     const transferParams = this.buildParams(params);
     const host = resolveHost(transferParams);
     const port = transferParams.robotPort!;
@@ -331,7 +333,8 @@ export class SshFileTransferTask implements ITaskResolver {
           timeout,
           transferParams.sshUsername,
           transferParams.sshPassword,
-          transferParams.sudo ?? false
+          transferParams.sudo ?? false,
+          log
         );
 
         log.info({ localFilePath: transferParams.localFilePath, remoteFilePath: transferParams.remoteFilePath }, 'Transferring');
@@ -339,7 +342,8 @@ export class SshFileTransferTask implements ITaskResolver {
         bytesTransferred = await transferFile(
           conn,
           transferParams.localFilePath,
-          transferParams.remoteFilePath
+          transferParams.remoteFilePath,
+          log
         );
 
         if (transferParams.verifyChecksum !== false) {
