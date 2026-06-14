@@ -42,14 +42,15 @@ syrius-robotops/
 │   │       ├── services/         # Business logic (SolutionService, ArtifactService, etc.)
 │   │       ├── types/            # TypeScript type definitions
 │   │       └── errors/           # Custom error classes
-│   └── frontend/             # React application (Vite + Carbon Design)
-│       └── src/
-│           ├── main.tsx, App.tsx  # App entry & root component
-│           ├── api/               # Backend API client layer
-│           ├── state/             # Client-side state (ActiveSolutionManager, RecentSolutionsManager)
-│           ├── hooks/             # React hooks (useActiveSolution, useSolutions, etc.)
-│           ├── types/             # TypeScript type definitions
-│           └── components/        # UI components (solution/, artifact/, common/)
+│   ├── frontend/             # React application (Vite + Carbon Design)
+│   │   └── src/
+│   │       ├── main.tsx, App.tsx  # App entry & root component
+│   │       ├── api/               # Backend API client layer
+│   │       ├── state/             # Client-side state (ActiveSolutionManager, RecentSolutionsManager)
+│   │       ├── hooks/             # React hooks (useActiveSolution, useSolutions, etc.)
+│   │       ├── types/             # TypeScript type definitions
+│   │       └── components/        # UI components (solution/, artifact/, common/)
+│   └── e2e-test/              # Playwright end-to-end tests (mock backend + browser automation)
 ├── playground/                    # Standalone test/demo projects (not a dependency)
 │   ├── object_store/              # Independent Object Store demo
 │   └── task_flow/
@@ -79,10 +80,11 @@ cd src
 npm install
 ```
 
-This installs dependencies for both workspaces:
+This installs dependencies for all workspaces:
 
 - `src/frontend`
 - `src/backend`
+- `src/e2e-test`
 
 Legacy per-package installs under `src/frontend` or `src/backend` are no longer recommended for product packaging.
 
@@ -247,6 +249,67 @@ npm test
 
 The test runner starts a temporary embedded Object Store instance and API server automatically, runs all test cases, then cleans up. No external services required.
 
+### End-to-End (E2E) Tests
+
+E2E tests use **Playwright** for browser automation against the React frontend, with the backend running in **mock mode** (`--mock` flag). All 25 backend task resolvers use mock variants that return canned responses instead of connecting to real robots via SSH.
+
+#### First-Time Setup
+
+Install Chromium browser for Playwright:
+
+```bash
+cd src
+npm run test:e2e:install
+```
+
+#### Running E2E Tests
+
+All commands run from the `src/` workspace root:
+
+```bash
+cd src
+
+npm run test:e2e           # Run all 40 tests (auto-starts servers)
+npm run test:e2e:headed    # Run with browser visible
+npm run test:e2e:debug     # Run in debug mode (step-through)
+```
+
+The test runner (`playwright.config.ts`) automatically:
+1. Starts the mock backend on port 30002 with `--mock` flag
+2. Starts the Vite frontend dev server on port 5174 with `VITE_API_TARGET=http://localhost:30002`
+3. Runs all test specs
+4. Stops both servers on completion
+
+#### Running Against Already-Running Servers
+
+For debugging or iterative development, start servers manually then run tests:
+
+```bash
+# Terminal 1: Start mock backend
+cd src/backend && npx tsx src/index.ts --port 30002 --mock
+
+# Terminal 2: Start frontend with proxy to mock backend
+cd src/frontend && VITE_API_TARGET=http://localhost:30002 npx vite --port 5174
+
+# Terminal 3: Run E2E tests
+cd src/e2e-test && npx playwright test --config=playwright.manual.config.ts
+```
+
+#### E2E Test Structure
+
+Tests are organized by business module, mapping to `documents/test/` test cases:
+
+| Test Suite | File | Tests | Test Case IDs |
+|-----------|------|-------|--------------|
+| Solution Management | `tests/solution-management.spec.ts` | 7 | TC-E2E-SOL-001 ~ 007 |
+| Robot Management | `tests/robot-management.spec.ts` | 9 | TC-E2E-ROB-001 ~ 009 |
+| Task Management | `tests/task-management.spec.ts` | 6 | TC-E2E-TASK-001 ~ 006 |
+| Artifact Management | `tests/artifact-management.spec.ts` | 5 | TC-E2E-ART-001 ~ 005 |
+| System Logs | `tests/system-logs.spec.ts` | 7 | TC-E2E-SL-001 ~ 007 |
+| Cross-Module | `tests/cross-module.spec.ts` | 6 | TC-E2E-CROSS-001 ~ 006 |
+
+Shared fixtures and API utility helpers are in `fixtures/test-fixture.ts`.
+
 ### Test Coverage
 
 | Module | Test Cases | Description |
@@ -255,6 +318,7 @@ The test runner starts a temporary embedded Object Store instance and API server
 | Artifact Management | TC-ART-001 ~ TC-ART-015 | Upload, deduplication, refCount, delete protection, audit |
 | Task Flow Engine | TC-TFE-001 ~ TC-TFE-035 | Flow lifecycle, SSE, persistence, recovery, resolver registry |
 | Cross-Module | TC-CROSS-001 ~ TC-CROSS-005 | Solution delete → refCount decrement, clone → refCount increment |
+| E2E (Playwright) | TC-E2E-SOL/ROB/TASK/ART/SL/CROSS | 40 browser-based tests against mock backend |
 
 Test case documents: `documents/test/solution_management_test_cases.md`, `documents/test/artifact_management_test_cases.md`, `documents/test/task_flow_engine_test_cases.md`, `documents/test/cross_module_test_cases.md`
 

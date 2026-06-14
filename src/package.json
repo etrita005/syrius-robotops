@@ -5,7 +5,8 @@
   "type": "module",
   "workspaces": [
     "frontend",
-    "backend"
+    "backend",
+    "e2e-test"
   ],
   "scripts": {
     "build:frontend": "npm --workspace frontend run build",
@@ -14,7 +15,11 @@
     "package:pkg": "npm --workspace backend run package:pkg",
     "compress": "tsx scripts/compress-binaries.ts",
     "verify": "tsx scripts/verify-release.ts",
-    "package:all": "npm run build:frontend && npm run prepare:assets && npm run build:backend && npm run package:pkg && npm run compress && npm run verify"
+    "package:all": "npm run build:frontend && npm run prepare:assets && npm run build:backend && npm run package:pkg && npm run compress && npm run verify",
+    "test:e2e": "npm --workspace e2e-test run test",
+    "test:e2e:headed": "npm --workspace e2e-test run test:headed",
+    "test:e2e:debug": "npm --workspace e2e-test run test:debug",
+    "test:e2e:install": "npm --workspace e2e-test run install:browsers"
   },
   "devDependencies": {
     "@yao-pkg/pkg": "^6.20.0",

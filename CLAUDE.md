@@ -46,11 +46,13 @@ RobotOps Studio (Robot Commissioning & Operations Studio) is a field robot manag
 
 ```
 syrius-robotops/
-├── frontend/          # React application
-├── backend/           # Node.js service
-├── documents/         # Requirements and design docs
-├── playground/        # Sandbox/testing code
-└── CLAUDE.md          # This file
+├── src/                # npm workspace root
+│   ├── frontend/       # React application (Vite + Carbon)
+│   ├── backend/        # Node.js service (Hono)
+│   └── e2e-test/       # Playwright E2E test suite
+├── documents/          # Requirements and design docs
+├── playground/         # Sandbox/testing code
+└── CLAUDE.md           # This file
 ```
 
 ### Key Dependencies
@@ -62,14 +64,31 @@ syrius-robotops/
 
 ## 3. Development Commands
 
-(TBD - to be documented after project structure is established)
-
 ### Common Commands
 
-- Install dependencies: `npm install` (within project directories only)
-- Development mode: (TBD)
-- Build: (TBD)
-- Test: (TBD)
+- Install dependencies: `npm install` (from `src/` directory)
+- Install e2e browsers: `npm run test:e2e:install` (from `src/`)
+
+### Backend
+
+- Development mode: `cd src/backend && npx tsx src/index.ts`
+- Development with watch: `cd src/backend && npx tsx watch src/index.ts`
+- Mock mode: `cd src/backend && npx tsx src/index.ts --mock`
+- Unit/integration tests: `npm --workspace backend run test`
+
+### Frontend
+
+- Development mode: `cd src/frontend && npx vite`
+- Production build: `npm run build:frontend` (from `src/`)
+
+### E2E Testing
+
+- Run all tests (auto-starts servers): `npm run test:e2e` (from `src/`)
+- Run in headed mode: `npm run test:e2e:headed`
+- Debug mode: `npm run test:e2e:debug`
+- Against already-running servers: `cd src/e2e-test && npx playwright test --config=playwright.manual.config.ts`
+
+E2E tests use mock backend (`--mock` flag) via `playwright.config.ts` webServer config. The backend runs on port 30002, frontend on port 5174, with `VITE_API_TARGET=http://localhost:30002` for API proxy.
 
 ---
 
@@ -119,3 +138,20 @@ syrius-robotops/
 - UI/UX wireframe sketches under `documents/ui-ux/` MUST be organized by module and sub-module hierarchy. Each module gets its own directory; sub-modules are nested as sub-directories reflecting the parent-child relationship (e.g., `solution-management/robots/`, `artifact-management/`).
 - After writing code, check code formatting and eliminate warnings and unused imports.
 - When creating, modifying, or deleting a backend task resolver (files under `src/backend/src/tasks/`, excluding mock tasks), you MUST update `documents/design/backend_task_design.md` to keep it consistent. Each task entry includes: functional overview, input parameters, output parameters, and notes.
+
+### 9.1 Document Synchronization After Code Changes
+
+After any non-trivial code change (feature addition, modification, deletion, refactoring), the agent MUST:
+
+1. **Check for document consistency**: Review the following document categories against the changed code:
+   - `documents/requirements/` — requirement specifications
+   - `documents/design/` — software design documents
+   - `documents/ui-ux/` — UI/UX wireframe sketches
+   - `documents/test/` — test case design documents
+   - `README.md` — project overview and usage manual
+
+2. **Update inconsistent documents**: If any document is found to be out of sync with the code (e.g., describes removed functionality, lacks new features, has incorrect API specs, or references outdated behavior), the agent MUST update that document to reflect the current code state.
+
+3. **Sync test code**: Ensure unit tests (`src/backend/src/test.ts` etc.) and E2E tests (`src/e2e-test/tests/`) cover the changed behavior. Add new tests for new functionality, update existing tests for changed behavior, and remove tests for removed functionality.
+
+4. **E2E test update scope**: When test cases in `documents/test/` change, the corresponding E2E test specs in `src/e2e-test/tests/` MUST be updated to match. E2E test case IDs (e.g., `TC-E2E-SOL-001`) should map to documented test cases.
