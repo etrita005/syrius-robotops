@@ -111,7 +111,10 @@ test.describe("Solution Management", () => {
   }) => {
     const meta = await createSolutionViaAPI(apiURL, "API Created Solution", "From API");
 
+    await appPage.reload({ waitUntil: "domcontentloaded" });
+    await appPage.waitForSelector("header", { timeout: 10000 });
     await navigateToSolutions(appPage);
+    await appPage.waitForTimeout(1000);
     await appPage.getByPlaceholder("Search solutions...").fill("API Created");
     await appPage.waitForTimeout(300);
 
