@@ -75,7 +75,9 @@ export function parsePinoLine(
   const module =
     typeof obj.module === "string" && obj.module.length > 0
       ? obj.module
-      : undefined;
+      : typeof obj.name === "string" && obj.name.length > 0 && obj.name !== "robotops"
+        ? obj.name
+        : undefined;
   const msg =
     typeof obj.msg === "string"
       ? obj.msg
