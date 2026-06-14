@@ -511,6 +511,22 @@ project/solution 的目标是把现场环境、机器人清单、包版本、配
 - 清理命令应直接执行删除动作，不额外输出 `echo`、`df -h`、`du -sh` 等辅助信息。
 - 任务失败时应保留标准任务流失败状态，支持在任务列表中重试。
 
+### 9.6.2 Alpha2 地图应用任务
+
+系统应提供 Alpha2 格式地图应用任务，用于将 Alpha2 地图压缩包自动部署到机器人上。
+
+功能要求：
+- 任务类型名称为 `Apply Alpha2 Map`，可从任务创建向导中选择。
+- 采用单机器人模式，前端为选中的机器人创建独立任务流。
+- 后端执行四步流程：
+  - 传输地图压缩包：从 Artifact Service 下载地图压缩包并通过 SFTP 传输到机器人 `/home/developer/alpha2_map_package.zip`。
+  - 应用地图：通过 SSH 执行以下命令链：清除 `/opt/cosmos/map/ws/*` 旧地图数据 → 解压新地图包到 `/opt/cosmos/map/ws` → 修正目录所有权 `chown -R pivot:pivot /opt/cosmos/map/`。
+  - 清理传输文件：删除机器人上的 `/home/developer/alpha2_map_package.zip`。
+  - 等待 30 秒：marie 每 10 秒检查 `/opt/cosmos/map/ws/` 目录更新，等待 30 秒确保新地图已被加载。
+- 地图应用命令使用 `sudo` 执行。
+- 任务失败时应保留标准任务流失败状态，支持在任务列表中重试。
+- 异常处理 DAG：主流程任一任务失败时自动清理已传输的地图压缩包。
+
 ### 9.7 日志、审计与导出
 
 系统应支持：

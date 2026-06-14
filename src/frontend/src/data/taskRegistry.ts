@@ -264,6 +264,76 @@ const SSH_FILE_TRANSFER_DAG: DagDefinition = {
   },
 };
 
+const APPLY_ALPHA2_MAP_DAG: DagDefinition = {
+  tasks: {
+    transfer: {
+      requires: ["robotIp", "robotPort", "artifactId"],
+      resolver: {
+        name: "TransferAlpha2MapTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    apply: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "ApplyAlpha2MapTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "apply_done" },
+      },
+      provides: ["apply_done"],
+    },
+    delete_package: {
+      requires: ["robotIp", "robotPort", "apply_done"],
+      resolver: {
+        name: "DeleteAlpha2MapTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "delete_done" },
+      },
+      provides: ["delete_done"],
+    },
+    wait: {
+      requires: ["delete_done"],
+      resolver: {
+        name: "SleepTask",
+        params: {
+          sleepMs: { value: 30000 },
+        },
+        results: { done: "wait_done" },
+      },
+      provides: ["wait_done"],
+    },
+  },
+};
+
+const APPLY_ALPHA2_MAP_ERROR_DAG: DagDefinition = {
+  tasks: {
+    error_cleanup: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "DeleteAlpha2MapTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "error_cleanup_done" },
+      },
+      provides: ["error_cleanup_done"],
+    },
+  },
+};
+
 export const TASK_REGISTRY: TaskRegistry = {
   version: "1.0.0",
   taskTypes: [
@@ -335,6 +405,26 @@ export const TASK_REGISTRY: TaskRegistry = {
         expectedVersion: {
           type: "text",
           label: "Expected version",
+          required: true,
+        },
+      },
+    },
+    {
+      type: "apply-alpha2-map",
+      name: "Apply Alpha2 Map",
+      description: "Apply an Alpha2 format map package to the robot.",
+      robotSelection: {
+        mode: "single",
+        description:
+          "Select a single target robot to apply the Alpha2 map.",
+      },
+      dag: APPLY_ALPHA2_MAP_DAG,
+      expectedResults: ["wait_done"],
+      errorDag: APPLY_ALPHA2_MAP_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "Artifact file",
           required: true,
         },
       },

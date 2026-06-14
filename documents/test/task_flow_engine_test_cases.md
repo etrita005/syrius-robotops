@@ -619,6 +619,46 @@
 | **预期结果** | 生成命令中 `CLEAN_USER_HOMES=true`，并包含两个 home 目录的内容清理逻辑 |
 | **验证点** | 参数控制生效 |
 
+### TC-TFE-057：Alpha2 地图传输任务传输到指定路径
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 `TransferAlpha2MapTask` 将地图压缩包上传到机器人 `/home/developer/alpha2_map_package.zip` |
+| **前置条件** | 实例化可测试子类，使用模拟的 artifactService 和 SFTP |
+| **输入** | `artifactId` 指向有效的地图压缩包 |
+| **预期结果** | 远程文件路径为 `/home/developer/alpha2_map_package.zip`，`sudo` 为 true |
+| **验证点** | 传输路径正确，结果包含 `done`、`success` 等标准字段 |
+
+### TC-TFE-058：Alpha2 地图应用任务生成正确的命令序列
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 `ApplyAlpha2MapTask` 生成的远程命令覆盖清旧地图、解压新地图、修正目录所有权三步操作 |
+| **前置条件** | 实例化可测试子类，直接读取生成的 SSH 命令字符串 |
+| **输入** | 不传递额外参数 |
+| **预期结果** | 命令包含 `rm -rf /opt/cosmos/map/ws/*`、`unzip -o /home/developer/alpha2_map_package.zip -d /opt/cosmos/map/ws`、`chown -R pivot:pivot /opt/cosmos/map/`，通过 `&&` 链式连接；`sudo` 为 true、`commandTimeout` 默认为 60000 |
+| **验证点** | 命令步骤正确且安全，遵循 SOP 规范 |
+
+### TC-TFE-059：Alpha2 地图清理任务删除传输的压缩包
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 `DeleteAlpha2MapTask` 执行清理命令删除机器人上的地图压缩包 |
+| **前置条件** | 实例化可测试子类，直接读取生成的 SSH 命令字符串 |
+| **输入** | 不传递额外参数 |
+| **预期结果** | 命令为 `rm -rf /home/developer/alpha2_map_package.zip`；`sudo` 为 true |
+| **验证点** | 清理路径正确，不涉及其他系统目录 |
+
+### TC-TFE-060：Alpha2 地图应用任务 DAG 定义正确
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 `apply-alpha2-map` DAG 包含 transfer → apply → delete_package → wait 四步流程及异常处理 DAG |
+| **前置条件** | 读取前端 taskRegistry 中 type 为 `apply-alpha2-map` 的定义 |
+| **输入** | taskType = `apply-alpha2-map` |
+| **预期结果** | dag 包含 transfer（TransferAlpha2MapTask）、apply（ApplyAlpha2MapTask）、delete_package（DeleteAlpha2MapTask）、wait（SleepTask，sleepMs=30000）四个节点；expectedResults 为 `wait_done`；errorDag 包含 error_cleanup（DeleteAlpha2MapTask）节点 |
+| **验证点** | DAG 拓扑正确，解析器映射无误，异常回滚路径完整 |
+
 ---
 
 ## 3. API 路由测试

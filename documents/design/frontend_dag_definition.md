@@ -88,6 +88,7 @@ const TASK_DAG_MAP: Record<string, DagConfig> = {
   "upgrade-movebase":        { /* 五步 DAG: transfer → upgrade → reboot → verify_version → cleanup */ },
   "upgrade-bup":             { /* 六步 DAG: transfer → script_transfer → upgrade → wait_reconnect → verify_version → cleanup */ },
   "movebase-disk-cleanup":   { /* 单步 DAG: cleanup */ },
+  "apply-alpha2-map":        { /* 四步 DAG: transfer → apply → delete_package → wait */ },
 };
 ```
 
@@ -105,6 +106,28 @@ input variables ──→ [cleanup] ──→ cleanup_done
 - 预期结果：`cleanup_done`
 - `cleanUserHomes` 默认为 `false`，前端以复选框呈现；勾选后才清理 `/home/developer` 和 `/home/factory` 下用户生成文件。
 - 任务不需要 Artifact 参数，任务创建向导的参数步骤只展示清理范围确认项。
+
+#### apply-alpha2-map（应用 Alpha2 地图）
+
+四步流程，含异常处理：
+
+```
+input variables ──→ [transfer] ──→ [apply] ──→ [delete_package] ──→ [wait (30s)] ──→ wait_done
+                       │               │               │
+                       └── transfer_done               │
+                                       └── apply_done ──┘
+                                                       └── delete_done
+如果主流程任一任务失败：
+[error_cleanup] ──→ error_cleanup_done
+```
+- 解析器：`TransferAlpha2MapTask`, `ApplyAlpha2MapTask`, `DeleteAlpha2MapTask`, `SleepTask`
+- 输入依赖：`robotIp`, `robotPort`, `artifactId`
+- 预期结果：`wait_done`
+- `transfer` 节点将 Alpha2 地图压缩包传输到机器人 `/home/developer/alpha2_map_package.zip`
+- `apply` 节点执行三步操作：清除旧地图 (`rm -rf /opt/cosmos/map/ws/*`)、解压新地图 (`unzip -o`)、修正目录所有权 (`chown -R pivot:pivot`)
+- `delete_package` 节点清理已传输的地图压缩包 (`rm -rf /home/developer/alpha2_map_package.zip`)
+- `wait` 节点等待 30 秒让 marie 检测并加载新地图 (marie 每 10 秒检查 `/opt/cosmos/map/ws/` 目录更新)
+- 异常 DAG：清理残留地图包
 
 #### upgrade-movebase（Movebase 升级）
 

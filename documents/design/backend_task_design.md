@@ -725,3 +725,90 @@ Same as `WaitSshConnectedTask`.
 - Undefined `timeout` means both phases wait indefinitely.
 - `ignoreFailure` is consumed by this task internally (delegating to the underlying wait phases). When true, a phase failure becomes a soft-failure return (`done:true, success:false, state, ...`) instead of a thrown error; `BaseTask`'s ignoreFailure translation does not apply to this soft-failure path. See `backend_base_task_design.md` §5.2.
 - Mock variant composes the mock disconnected and connected tasks.
+
+---
+
+## 24. TransferAlpha2MapTask
+
+### Overview
+
+Downloads an Alpha2 map artifact from the artifact service to a temp directory, then uploads it to the robot via SFTP.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID to download |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ download(id, dest): Promise<string> }` | Service for artifact download |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/home/developer/alpha2_map_package.zip`
+- Creates temp directory at `/tmp/alpha2map-transfer-<timestamp>`
+- Cleans up temp directory in both success and failure paths
+- If `artifactId` or `artifactService` is absent, falls through to `super.exec()` directly
+- Implementation mirrors `TransferMovebaseTask`
+
+---
+
+## 25. ApplyAlpha2MapTask
+
+### Overview
+
+Executes the Alpha2 map application commands on the remote robot: clears existing map data, extracts the new map zip, and updates directory ownership.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `60000` (1 min) | Override for map extraction |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded 3-step command:
+  1. `rm -rf /opt/cosmos/map/ws/*` — clear existing map data
+  2. `unzip -o /home/developer/alpha2_map_package.zip -d /opt/cosmos/map/ws` — extract new map package
+  3. `chown -R pivot:pivot /opt/cosmos/map/` — update directory ownership
+- Commands are `&&`-chained; any step failure fails the entire task
+- Default 60-second timeout accommodates map extraction
+- The map package is expected at `/home/developer/alpha2_map_package.zip` (transferred by `TransferAlpha2MapTask`)
+- After successful application, marie detects the map directory change within ~20 seconds and loads the new map
+
+---
+
+## 26. DeleteAlpha2MapTask
+
+### Overview
+
+Deletes the transferred Alpha2 map package (`/home/developer/alpha2_map_package.zip`) on the remote robot after successful map application.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. No additional parameters. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -rf /home/developer/alpha2_map_package.zip`
+- Used as the cleanup step in the Alpha2 map application flow
+- Implementation mirrors `DeleteMovebaseTask`

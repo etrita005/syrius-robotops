@@ -384,6 +384,9 @@ interface LogBundleRequest {
 - UpgradeMovebase
 - TransferMovebase
 - DeleteMovebase
+- TransferAlpha2Map
+- ApplyAlpha2Map
+- DeleteAlpha2Map
 - （建议补充）RobotService、MemStore、MemStoreScheduler
 
 虚拟模块 `(none)`：用于匹配无 `module` 字段的日志条目。

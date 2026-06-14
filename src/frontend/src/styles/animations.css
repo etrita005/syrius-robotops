@@ -61,7 +61,9 @@
 
 .inline-action-loading {
   min-width: 20px;
-  height: 16px;
+  height: 1rem;
+  display: inline-flex;
+  align-items: center;
 }
 
 .inline-action-loading .cds--inline-loading__animation {

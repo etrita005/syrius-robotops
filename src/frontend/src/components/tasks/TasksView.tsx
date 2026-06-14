@@ -280,7 +280,7 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
     resultSummary: t.resultSummary,
     elapsedTime: t.elapsedTime,
     actions: (
-      <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", alignItems: "center" }}>
         {getActionsForState(t.state).map((action) => {
           const isPending = pendingActions.has(t.id);
           return (
