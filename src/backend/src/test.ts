@@ -26,6 +26,7 @@ import { WaitSshConnectedTask } from "./tasks/real/waitSshConnectedTask.js";
 import { WaitSshDisconnectedTask } from "./tasks/real/waitSshDisconnectedTask.js";
 import { WaitSshReconnectTask } from "./tasks/real/waitSshReconnectTask.js";
 import { MatchBUPVersionTask } from "./tasks/real/matchBUPVersionTask.js";
+import { MovebaseDiskCleanupTask } from "./tasks/real/movebaseDiskCleanupTask.js";
 import { resetSshConnectionProbeForTest, setSshConnectionProbeForTest } from "./tasks/real/sshConnectionWait.js";
 import type { SshConnectionProbeParams } from "./tasks/real/sshConnectionWait.js";
 
@@ -1174,6 +1175,45 @@ describe("BUP version matching", () => {
       task.mismatchMessage("/etc/l4t_jurassic_release", "1.1.945", "xxx-1.1.946"),
       /expected suffix "1\.1\.945"/
     );
+  });
+});
+
+class TestableMovebaseDiskCleanupTask extends MovebaseDiskCleanupTask {
+  public command(params: ValueMap = {}): string {
+    return this.getSshCommand(params);
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("Movebase disk cleanup task", () => {
+  it("TC-TFE-055: should generate SOP cleanup command with conservative defaults", () => {
+    const task = new TestableMovebaseDiskCleanupTask();
+    const command = task.command();
+
+    assert.match(command, / && /);
+    assert.match(command, /rm -rf -- \/etc\/l4t_ota/);
+    assert.match(command, /find \/opt\/cosmos\/ota\/recovery .*\.deb.*\.apk/);
+    assert.match(command, /rm -rf -- \/opt\/cosmos\/lib\/vendor/);
+    assert.match(command, /find \/mnt\/cosmos\/boot\/lib\/bootstrapper -mindepth 1 -maxdepth 1/);
+    assert.doesNotMatch(command, /echo|df -h|du -sh/);
+    assert.doesNotMatch(command, /\/home\/developer \/home\/factory/);
+    assert.doesNotMatch(command, /rm -rf -- \/(?:\s|&&|$)/);
+
+    const built = task.params({ robotIp: "192.168.1.10", sshUsername: "u", sshPassword: "p" });
+    assert.equal(built.sudo, true);
+    assert.equal(built.retryCount, 1);
+    assert.equal(built.commandTimeout, 10000);
+  });
+
+  it("TC-TFE-056: should enable user home cleanup only when requested", () => {
+    const task = new TestableMovebaseDiskCleanupTask();
+    const command = task.command({ cleanUserHomes: true });
+
+    assert.doesNotMatch(command, /echo|df -h|du -sh/);
+    assert.match(command, /find \/home\/developer \/home\/factory -mindepth 1 -maxdepth 1/);
   });
 });
 

@@ -493,6 +493,24 @@ project/solution 的目标是把现场环境、机器人清单、包版本、配
 - 支持失败设备单独重试
 - 支持任务暂停/取消（若底层协议支持）
 
+### 9.6.1 Alpha2 Movebase 升级后磁盘空间清理任务
+
+系统应提供 Alpha2 Movebase 升级后磁盘空间清理任务，用于按照 `Alpha2 Movebase 升级后磁盘空间清理SOP.md` 对机器人残留文件进行自动化清理。
+
+功能要求：
+- 任务类型名称为 `Movebase Disk Cleanup`，可从任务创建向导中选择。
+- 支持选择一台或多台机器人执行，前端为每台机器人创建独立任务流，任务结果独立展示。
+- 后端通过 SSH 在机器人上执行清理脚本，默认使用 `sudo`。
+- 必须清理以下安全确定的残留项：
+  - `/etc/l4t_ota`：删除目录。
+  - `/opt/cosmos/ota/recovery`：删除目录下 `.deb` 和 `.apk` 包。
+  - `/opt/cosmos/lib/vendor`：删除 Alpha1.8 遗留 vendor 目录。
+  - `/mnt/cosmos/boot/lib/bootstrapper`：删除目录下所有内容。
+- `/home/developer` 和 `/home/factory` 下的用户生成文件默认不清理；只有在用户显式勾选确认后才清理目录内容。
+- `/opt/cosmos/bin` 不自动删除，避免误删可执行程序。
+- 清理命令应直接执行删除动作，不额外输出 `echo`、`df -h`、`du -sh` 等辅助信息。
+- 任务失败时应保留标准任务流失败状态，支持在任务列表中重试。
+
 ### 9.7 日志、审计与导出
 
 系统应支持：

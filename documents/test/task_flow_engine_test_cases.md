@@ -599,6 +599,26 @@
 | **预期结果** | 抛出包含 timeout 的错误 |
 | **验证点** | 默认不忽略错误 |
 
+### TC-TFE-055：Movebase 磁盘清理任务生成 SOP 清理命令
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 `MovebaseDiskCleanupTask` 生成的远程命令覆盖 SOP 中的自动清理路径，并采用保守默认值 |
+| **前置条件** | 实例化可测试子类，直接读取生成的 SSH 命令 |
+| **输入** | 不传 `cleanUserHomes` |
+| **预期结果** | 命令包含 `/etc/l4t_ota`、`/opt/cosmos/ota/recovery`、`/opt/cosmos/lib/vendor`、`/mnt/cosmos/boot/lib/bootstrapper` 清理逻辑；默认跳过 `/home/developer` 和 `/home/factory`；`sudo` 为 true、`retryCount` 为 1、`commandTimeout` 为 120000 |
+| **验证点** | 命令不包含删除根目录等危险操作，关键 SOP 路径均被覆盖 |
+
+### TC-TFE-056：Movebase 磁盘清理任务可显式开启 home 目录清理
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证只有用户显式确认后才清理 `/home/developer` 与 `/home/factory` |
+| **前置条件** | 实例化可测试子类 |
+| **输入** | `cleanUserHomes: true` |
+| **预期结果** | 生成命令中 `CLEAN_USER_HOMES=true`，并包含两个 home 目录的内容清理逻辑 |
+| **验证点** | 参数控制生效 |
+
 ---
 
 ## 3. API 路由测试

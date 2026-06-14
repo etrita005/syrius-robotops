@@ -571,7 +571,41 @@ Same as `SshCommandTask`.
 
 ---
 
-## 19. SleepTask
+## 19. MovebaseDiskCleanupTask
+
+### Overview
+
+Runs the Alpha2 Movebase post-upgrade disk cleanup SOP on a remote robot through SSH. The task removes known upgrade residue with a compact `&&`-chained cleanup command.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `cleanUserHomes` | `boolean \| string` | `false` | When true, also cleans contents of `/home/developer` and `/home/factory`. Kept false by default because those locations can contain user-generated FAE or factory files. |
+| `commandTimeout` | `number` | `10000` | Command execution timeout (ms) |
+| `retryCount` | `number` | `1` | Max retry attempts |
+
+Inherits all connection and credential parameters from `SshCommandTask`. `sudo` is forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Deletes `/etc/l4t_ota` when present.
+- Deletes only `.deb` and `.apk` files under `/opt/cosmos/ota/recovery`.
+- Deletes `/opt/cosmos/lib/vendor` when present.
+- Cleans contents of `/mnt/cosmos/boot/lib/bootstrapper` when present.
+- Cleans `/home/developer` and `/home/factory` contents only when `cleanUserHomes` is true.
+- Does not automatically delete files under `/opt/cosmos/bin` to avoid removing executable programs.
+- Uses a direct cleanup command chain joined by `&&`; it does not emit extra `echo`, `df -h`, or `du -sh` output.
+- Missing optional directories are tolerated through `find ... 2>/dev/null || true` where needed.
+- Mock variant returns a successful SSH-style result without connecting to a robot.
+
+---
+
+## 20. SleepTask
 
 ### Overview
 
@@ -599,7 +633,7 @@ Pauses the task flow for a configurable number of milliseconds. Used to wait bet
 
 ---
 
-## 20. WaitSshConnectedTask
+## 21. WaitSshConnectedTask
 
 ### Overview
 
@@ -639,7 +673,7 @@ Waits until an SSH session can be established with the robot. The task only veri
 
 ---
 
-## 21. WaitSshDisconnectedTask
+## 22. WaitSshDisconnectedTask
 
 ### Overview
 
@@ -662,7 +696,7 @@ Same as `WaitSshConnectedTask`; successful completion returns `state: "disconnec
 
 ---
 
-## 22. WaitSshReconnectTask
+## 23. WaitSshReconnectTask
 
 ### Overview
 

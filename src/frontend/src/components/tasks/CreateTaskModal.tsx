@@ -6,6 +6,7 @@ import {
   InlineLoading,
   Select,
   SelectItem,
+  Checkbox,
 } from "@carbon/react";
 import type { TaskTypeDefinition } from "../../data/taskRegistry.js";
 import type { StoredRobotData } from "../../types/robot.js";
@@ -70,7 +71,14 @@ export default function CreateTaskModal({
       setStep(1);
       setSelectedRobotIds(new Set());
       setSelectedTaskType(null);
-      setParams({});
+      const defaultParams = Object.fromEntries(
+        taskTypes.flatMap((tt) =>
+          Object.entries(tt.params)
+            .filter(([, desc]) => desc.defaultValue !== undefined)
+            .map(([key, desc]) => [key, desc.defaultValue as string])
+        )
+      );
+      setParams(defaultParams);
       setError(null);
       setSubmitting(false);
       setRobotSearch("");
@@ -155,7 +163,13 @@ export default function CreateTaskModal({
   const handleSelectTaskType = (tt: TaskTypeDefinition) => {
     setSelectedTaskType(tt);
     setSelectedRobotIds(new Set());
-    setParams({});
+    setParams(
+      Object.fromEntries(
+        Object.entries(tt.params)
+          .filter(([, desc]) => desc.defaultValue !== undefined)
+          .map(([key, desc]) => [key, desc.defaultValue as string])
+      )
+    );
   };
 
   const canNext = (): boolean => {
@@ -405,10 +419,17 @@ export default function CreateTaskModal({
       </p>
       {Object.entries(selectedTypeParams).map(([paramKey, paramDesc]) => (
         <div key={paramKey} style={{ marginBottom: "1.5rem" }}>
-          <p style={{ marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: 500 }}>
-            {paramDesc.label}
-            {paramDesc.required && <span style={{ color: "#fa4d56", marginLeft: "0.25rem" }}>*</span>}
-          </p>
+          {paramDesc.type !== "checkbox" && (
+            <p style={{ marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: 500 }}>
+              {paramDesc.label}
+              {paramDesc.required && <span style={{ color: "#fa4d56", marginLeft: "0.25rem" }}>*</span>}
+            </p>
+          )}
+          {paramDesc.description && paramDesc.type !== "checkbox" && (
+            <p style={{ marginBottom: "0.5rem", color: textSecondary, fontSize: "0.8125rem" }}>
+              {paramDesc.description}
+            </p>
+          )}
           {paramDesc.type === "artifact" && (
             <div>
               <TextInput
@@ -509,6 +530,21 @@ export default function CreateTaskModal({
               ))}
             </Select>
           )}
+          {paramDesc.type === "checkbox" && (
+            <Checkbox
+              id={`param-${paramKey}`}
+              labelText={paramDesc.label}
+              checked={(params[paramKey] ?? paramDesc.defaultValue ?? "false") === "true"}
+              onChange={(_, data) =>
+                setParams({ ...params, [paramKey]: data.checked ? "true" : "false" })
+              }
+            />
+          )}
+          {paramDesc.description && paramDesc.type === "checkbox" && (
+            <p style={{ marginTop: "0.5rem", color: textSecondary, fontSize: "0.8125rem" }}>
+              {paramDesc.description}
+            </p>
+          )}
         </div>
       ))}
     </div>
@@ -521,7 +557,10 @@ export default function CreateTaskModal({
       .join(", ");
 
     const paramSummary = Object.entries(selectedTypeParams).map(([paramKey, paramDesc]) => {
-      let value = params[paramKey] ?? "(not set)";
+      let value = params[paramKey] ?? paramDesc.defaultValue ?? "(not set)";
+      if (paramDesc.type === "checkbox") {
+        value = value === "true" ? "Yes" : "No";
+      }
       if (paramDesc.type === "artifact" && params[paramKey]) {
         const art = artifacts.find((a) => a.id === params[paramKey]);
         if (art) value = `${art.fileName} (${formatFileSize(art.size)})`;

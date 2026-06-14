@@ -4,9 +4,11 @@ export interface RobotSelection {
 }
 
 export interface TaskParamDescriptor {
-  type: "artifact" | "text" | "number" | "select";
+  type: "artifact" | "text" | "number" | "select" | "checkbox";
   label: string;
   required: boolean;
+  description?: string;
+  defaultValue?: string;
   options?: string[];
 }
 
@@ -225,6 +227,24 @@ const UPGRADE_BUP_ERROR_DAG: DagDefinition = {
   },
 };
 
+const MOVEBASE_DISK_CLEANUP_DAG: DagDefinition = {
+  tasks: {
+    cleanup: {
+      requires: ["robotIp", "robotPort", "cleanUserHomes"],
+      resolver: {
+        name: "MovebaseDiskCleanupTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          cleanUserHomes: "cleanUserHomes",
+        },
+        results: { done: "cleanup_done" },
+      },
+      provides: ["cleanup_done"],
+    },
+  },
+};
+
 const SSH_FILE_TRANSFER_DAG: DagDefinition = {
   tasks: {
     upgrade: {
@@ -269,6 +289,28 @@ export const TASK_REGISTRY: TaskRegistry = {
           type: "text",
           label: "Expected version",
           required: true,
+        },
+      },
+    },
+    {
+      type: "movebase-disk-cleanup",
+      name: "Movebase Disk Cleanup",
+      description: "Clean residual disk files after Alpha2 Movebase upgrades.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more Alpha2 Movebase robots that require post-upgrade disk cleanup.",
+      },
+      dag: MOVEBASE_DISK_CLEANUP_DAG,
+      expectedResults: ["cleanup_done"],
+      params: {
+        cleanUserHomes: {
+          type: "checkbox",
+          label: "Clean /home/developer and /home/factory user-generated files",
+          required: true,
+          defaultValue: "false",
+          description:
+            "Disabled by default because home directories may contain FAE or factory files that require confirmation before removal.",
         },
       },
     },

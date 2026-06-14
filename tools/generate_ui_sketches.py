@@ -577,7 +577,7 @@ def page_tasks_list():
 
     rows = [
         (True, "AGV-01, AGV-02", "Upgrade BUP", "RUNNING", "In progress", "00:05:32"),
-        (True, "AGV-03", "Upgrade Movebase", "PAUSED", "Paused", "00:12:45"),
+        (True, "AGV-03", "Movebase Disk Cleanup", "PAUSED", "Paused", "00:12:45"),
         (False, "AGV-04", "Upgrade BUP", "COMPLETED", "Success", "00:08:10"),
         (False, "AGV-05", "Upgrade Movebase", "FAILED", "Failed", "00:03:22"),
         (False, "AGV-01", "Upgrade BUP", "STOPPED", "Stopped", "00:01:05"),
@@ -637,6 +637,7 @@ def page_create_task_step1():
 
     types = [
         ("Upgrade BUP", "Upgrade the BUP firmware on selected robots.", "Multiple robots"),
+        ("Movebase Disk Cleanup", "Clean residual disk files after Alpha2 Movebase upgrades.", "Multiple robots"),
         ("Upgrade Movebase", "Upgrade the Movebase software on selected robots.", "Single robot"),
     ]
     for i, (name, desc, mode_label) in enumerate(types):
@@ -726,32 +727,18 @@ def page_create_task_step3():
     draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 3)
 
     draw.text((mx + 24, my + 110), "Step 3: Configure Parameters", fill="#161616", font=FONT_MD)
-    draw.text((mx + 24, my + 132), "Task: Upgrade BUP", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 132), "Task: Movebase Disk Cleanup", fill="#525252", font=FONT_SM)
     draw.text((mx + 24, my + 148), "Parameters are rendered dynamically based on task type.", fill="#8d8d8d", font=FONT_SM)
-    draw.text((mx + 24, my + 172), "Artifact file *", fill="#161616", font=FONT_MD)
 
-    y = my + 200
-    draw.rectangle([mx + 24, y, mx + mw - 24, y + 36], fill="#e0e0e0")
-    for text, cx in [("Name", mx + 40), ("Type", mx + 240), ("Size", mx + 380), ("Created", mx + 480)]:
-        draw.text((cx, y + 8), text, fill="#161616", font=FONT_MD)
-
-    artifacts = [
-        (True, "bup_v2.3.1.bin", "Firmware", "12.5 MB", "2026-05-27"),
-        (False, "bup_v2.4.0.bin", "Firmware", "13.1 MB", "2026-05-28"),
-        (False, "map_floor_2.zip", "Map", "45.2 MB", "2026-05-26"),
-    ]
-    for i, (checked, name, typ, size, created) in enumerate(artifacts):
-        y = my + 240 + i * 44
-        fill = "white" if i % 2 == 0 else "#fafafa"
-        draw.rectangle([mx + 24, y, mx + mw - 24, y + 40], fill=fill, outline="#e0e0e0", width=1)
-        cb_x, cb_y = mx + 40, y + 10
-        draw.ellipse([cb_x, cb_y, cb_x + 16, cb_y + 16], fill="#0f62fe" if checked else "white", outline="#555", width=1)
-        if checked:
-            draw.ellipse([cb_x + 4, cb_y + 4, cb_x + 12, cb_y + 12], fill="white")
-        draw.text((mx + 70, y + 10), name, fill="#161616", font=FONT_SM)
-        draw.text((mx + 240, y + 10), typ, fill="#525252", font=FONT_SM)
-        draw.text((mx + 380, y + 10), size, fill="#525252", font=FONT_SM)
-        draw.text((mx + 480, y + 10), created, fill="#525252", font=FONT_SM)
+    y = my + 190
+    draw.rectangle([mx + 24, y, mx + mw - 24, y + 150], fill="white", outline="#e0e0e0", width=1)
+    draw.text((mx + 44, y + 22), "Cleanup scope", fill="#161616", font=FONT_MD)
+    draw.text((mx + 44, y + 50), "Always cleans L4T OTA residue, recovery APK/DEB packages,", fill="#525252", font=FONT_SM)
+    draw.text((mx + 44, y + 70), "legacy vendor libraries, and bootstrapper temporary files.", fill="#525252", font=FONT_SM)
+    cb_x, cb_y = mx + 44, y + 104
+    draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], outline="#555", width=1)
+    draw.text((cb_x + 26, cb_y - 2), "Clean /home/developer and /home/factory", fill="#161616", font=FONT_SM)
+    draw.text((cb_x + 26, cb_y + 18), "Disabled by default; enable only after confirming user-generated files can be removed.", fill="#8d8d8d", font=FONT_SM)
 
     draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
     draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
@@ -777,9 +764,9 @@ def page_create_task_step4():
     draw.text((mx + 24, my + 110), "Step 4: Confirm", fill="#161616", font=FONT_MD)
 
     fields = [
-        ("Task Type", "Upgrade BUP"),
+        ("Task Type", "Movebase Disk Cleanup"),
         ("Target Robots", "AGV-01, AGV-03"),
-        ("Artifact", "bup_v2.3.1.bin (12.5 MB)"),
+        ("Clean user homes", "No"),
     ]
     fy = my + 160
     for label, value in fields:

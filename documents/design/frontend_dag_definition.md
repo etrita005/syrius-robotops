@@ -85,12 +85,26 @@ params: {
 
 ```typescript
 const TASK_DAG_MAP: Record<string, DagConfig> = {
-  "upgrade-movebase": { /* 五步 DAG: transfer → upgrade → reboot → verify_version → cleanup */ },
-  "upgrade-bup":      { /* 六步 DAG: transfer → script_transfer → upgrade → wait_reconnect → verify_version → cleanup */ },
+  "upgrade-movebase":        { /* 五步 DAG: transfer → upgrade → reboot → verify_version → cleanup */ },
+  "upgrade-bup":             { /* 六步 DAG: transfer → script_transfer → upgrade → wait_reconnect → verify_version → cleanup */ },
+  "movebase-disk-cleanup":   { /* 单步 DAG: cleanup */ },
 };
 ```
 
 ### 4.1 已有 DAG 配置
+
+#### movebase-disk-cleanup（Alpha2 Movebase 升级后磁盘空间清理）
+
+单步流程：
+
+```
+input variables ──→ [cleanup] ──→ cleanup_done
+```
+- 解析器：`MovebaseDiskCleanupTask`
+- 输入依赖：`robotIp`, `robotPort`, `cleanUserHomes`
+- 预期结果：`cleanup_done`
+- `cleanUserHomes` 默认为 `false`，前端以复选框呈现；勾选后才清理 `/home/developer` 和 `/home/factory` 下用户生成文件。
+- 任务不需要 Artifact 参数，任务创建向导的参数步骤只展示清理范围确认项。
 
 #### upgrade-movebase（Movebase 升级）
 
