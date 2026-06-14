@@ -16,11 +16,9 @@ interface TargetBinary {
 }
 
 const targets: TargetBinary[] = [
-  { raw: "robotops-studio-windows-amd64.exe", finalDir: "windows-amd64", finalName: "robotops-studio.exe" },
-  { raw: "robotops-studio-macos-amd64", finalDir: "macos-amd64", finalName: "robotops-studio" },
-  { raw: "robotops-studio-macos-arm64", finalDir: "macos-arm64", finalName: "robotops-studio" },
-  { raw: "robotops-studio-linux-amd64", finalDir: "linux-amd64", finalName: "robotops-studio" },
-  { raw: "robotops-studio-linux-arm64", finalDir: "linux-arm64", finalName: "robotops-studio" },
+  { raw: "robotops-studio-win.exe", finalDir: "windows-amd64", finalName: "robotops-studio.exe" },
+  { raw: "robotops-studio-macos", finalDir: "macos-amd64", finalName: "robotops-studio" },
+  { raw: "robotops-studio-linux", finalDir: "linux-amd64", finalName: "robotops-studio" },
 ];
 
 function run(command: string, args: string[]): Promise<boolean> {

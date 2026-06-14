@@ -7,7 +7,7 @@
     "dev": "npx tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "test": "npx tsx src/test.ts",
-    "package:pkg": "node ../node_modules/@yao-pkg/pkg/lib-es5/bin.js dist/index.js --config pkg.config.json --out-path ../../release/_raw --output robotops-studio"
+    "package:pkg": "node ../node_modules/@yao-pkg/pkg/lib-es5/bin.js dist/index.js --config pkg.config.json"
   },
   "bin": "dist/index.js",
   "dependencies": {

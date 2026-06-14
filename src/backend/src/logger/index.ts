@@ -1,7 +1,7 @@
 import pino from "pino";
 import type { Logger as PinoLogger, TransportTargetOptions } from "pino";
 import { pathToFileURL } from "node:url";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, createWriteStream } from "node:fs";
 import { join } from "node:path";
 
 import "pino-pretty";
@@ -20,12 +20,23 @@ function isPkgRuntime(): boolean {
 let rootLogger: Logger = createRootLogger();
 
 function createRootLogger(options: LoggerOptions = {}): Logger {
-  const isDev = process.env.NODE_ENV !== "production" && !isPkgRuntime();
+  const isPkg = isPkgRuntime();
+  const isDev = process.env.NODE_ENV !== "production" && !isPkg;
   const level = options.level ?? process.env.LOG_LEVEL ?? (isDev ? "debug" : "info");
   const logsDir = options.logsDir ?? "./logs";
 
   mkdirSync(logsDir, { recursive: true });
   const logFile = join(logsDir, "app.log");
+
+  if (isPkg) {
+    const fileDest = pino.destination({ dest: logFile, sync: true });
+    const stdoutDest = pino.destination({ dest: 1, sync: true });
+    return pino({
+      name: "robotops",
+      level,
+      timestamp: pino.stdTimeFunctions.isoTime,
+    }, pino.multistream([{ stream: stdoutDest, level: "info" }, { stream: fileDest }]));
+  }
 
   const transports: TransportTargetOptions[] = [];
 
