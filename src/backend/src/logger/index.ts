@@ -1,7 +1,6 @@
 import pino from "pino";
 import type { Logger as PinoLogger, TransportTargetOptions } from "pino";
-import { pathToFileURL } from "node:url";
-import { mkdirSync, createWriteStream } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import "pino-pretty";
@@ -42,7 +41,7 @@ function createRootLogger(options: LoggerOptions = {}): Logger {
 
   if (isDev) {
     transports.push({
-      target: pathToFileURL(require.resolve("pino-pretty")).href,
+      target: "pino-pretty",
       level: "debug",
       options: {
         colorize: true,
