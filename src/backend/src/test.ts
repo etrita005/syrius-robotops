@@ -2415,19 +2415,29 @@ describe("TaskFlowEngine - Routes", () => {
 
 import { SolutionService } from "./services/solutionService.js";
 import { RobotService } from "./services/robotService.js";
+import { ArtifactService } from "./services/artifactService.js";
 import { createSolutionRoutes } from "./routes/solutionRoutes.js";
 import { createRobotRoutes } from "./routes/robotRoutes.js";
 import type { SolutionMeta } from "./types/solution.js";
 import type { StoredRobotData } from "./types/robot.js";
+import type { ArtifactMeta } from "./types/artifact.js";
+
+class MockChecksumService {
+  async computeSha256(_filePath: string): Promise<string> {
+    return "mock-sha256-" + Math.random().toString(36).slice(2, 10);
+  }
+}
 
 function createEnhancedTestServices() {
   const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
-  const solutionService = new SolutionService(objStore);
+  const checksumService = new MockChecksumService() as unknown as import("./services/checksumService.js").ChecksumService;
+  const artifactService = new ArtifactService(objStore, checksumService);
+  const solutionService = new SolutionService(objStore, artifactService);
   const engine = createTestTaskFlowEngine(objStore);
   const sseManager = new SseManager();
   const memStore = new MemStore();
   const robotService = new RobotService(objStore, engine, sseManager, memStore);
-  return { solutionService, robotService, engine, sseManager, memStore, objStore: objStore as unknown as EnhancedObjectStore };
+  return { solutionService, robotService, engine, sseManager, memStore, objStore: objStore as unknown as EnhancedObjectStore, artifactService };
 }
 
 function createTestTaskFlowEngine(objectStore?: unknown): TaskFlowEngine {
@@ -2671,6 +2681,123 @@ describe("SolutionService - Core", () => {
   });
 });
 
+describe("SolutionService - Import/Export", () => {
+  async function makeZipBuffer(name: string, solutionId: string, entries: Record<string, unknown>): Promise<Buffer> {
+    const { default: AdmZip } = await import("adm-zip");
+    const zip = new AdmZip();
+    for (const [path, content] of Object.entries(entries)) {
+      zip.addFile(`${solutionId}/${path}.json`, Buffer.from(JSON.stringify(content, null, 2)));
+    }
+    return zip.toBuffer();
+  }
+
+  it("TC-SOL-EXP-001: should import a solution from a valid ZIP buffer", async () => {
+    const { solutionService } = createEnhancedTestServices();
+    const zipBuffer = await makeZipBuffer("Test Import", "import-test-1", {
+      meta: { id: "import-test-1", name: "Test Import", description: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", version: "1.0.0", tags: [], metadata: {} },
+      "robots/robot-1": { id: "robot-1", address: "10.0.0.1", addressType: "ip", alias: "R1", port: 22, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" },
+    });
+
+    const result = await solutionService.importFromBuffer(zipBuffer, "rename");
+    assert.equal(result.ok, true);
+    assert.equal(result.solution.name, "Test Import");
+    assert.equal(result.warnings.length, 0);
+
+    const meta = await solutionService.get(result.solution.id);
+    assert.ok(meta);
+    assert.equal(meta.name, "Test Import");
+  });
+
+  it("TC-SOL-EXP-002: should handle conflict resolution — rename", async () => {
+    const { solutionService } = createEnhancedTestServices();
+    await solutionService.create({ id: "conflict-test", name: "Existing" });
+
+    const zipBuffer = await makeZipBuffer("Conflict Test", "conflict-test", {
+      meta: { id: "conflict-test", name: "Conflict Test", description: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", version: "1.0.0", tags: [], metadata: {} },
+    });
+
+    const result = await solutionService.importFromBuffer(zipBuffer, "rename");
+    assert.equal(result.ok, true);
+    assert.notEqual(result.solution.id, "conflict-test");
+    assert.equal(result.solution.name, "Conflict Test");
+
+    const existingMeta = await solutionService.get("conflict-test");
+    assert.equal(existingMeta.name, "Existing");
+  });
+
+  it("TC-SOL-EXP-003: should handle conflict resolution — overwrite", async () => {
+    const { solutionService } = createEnhancedTestServices();
+    await solutionService.create({ id: "overwrite-test", name: "Existing" });
+
+    const zipBuffer = await makeZipBuffer("Overwritten", "overwrite-test", {
+      meta: { id: "overwrite-test", name: "Overwritten", description: "updated", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", version: "2.0.0", tags: [], metadata: {} },
+    });
+
+    const result = await solutionService.importFromBuffer(zipBuffer, "overwrite");
+    assert.equal(result.ok, true);
+    assert.equal(result.solution.id, "overwrite-test");
+    assert.equal(result.solution.name, "Overwritten");
+    assert.equal(result.solution.description, "updated");
+  });
+
+  it("TC-SOL-EXP-004: should throw on conflict resolution — cancel", async () => {
+    const { solutionService } = createEnhancedTestServices();
+    await solutionService.create({ id: "cancel-test", name: "Existing" });
+
+    const zipBuffer = await makeZipBuffer("Cancel Test", "cancel-test", {
+      meta: { id: "cancel-test", name: "Cancel Test", description: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", version: "1.0.0", tags: [], metadata: {} },
+    });
+
+    await assert.rejects(
+      () => solutionService.importFromBuffer(zipBuffer, "cancel"),
+      { code: "IMPORT_ID_COLLISION" }
+    );
+  });
+
+  it("TC-SOL-EXP-005: should reject ZIP without meta.json", async () => {
+    const { solutionService } = createEnhancedTestServices();
+    const { default: AdmZip } = await import("adm-zip");
+    const zip = new AdmZip();
+    zip.addFile("some-file.json", Buffer.from("{}"));
+    const zipBuffer = zip.toBuffer();
+
+    await assert.rejects(
+      () => solutionService.importFromBuffer(zipBuffer, "rename"),
+      { code: "IMPORT_INVALID_ARCHIVE" }
+    );
+  });
+
+  it("TC-SOL-EXP-006: should extract solution with sub-resources", async () => {
+    const { solutionService, objStore } = createEnhancedTestServices();
+    const zipBuffer = await makeZipBuffer("Full Solution", "full-sol-1", {
+      meta: { id: "full-sol-1", name: "Full Solution", description: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", version: "1.0.0", tags: [], metadata: {} },
+      "robots/robot-a": { id: "robot-a", address: "10.0.0.1", alias: "A" },
+      "configs/config-1": { id: "config-1", name: "Config 1" },
+    });
+
+    const result = await solutionService.importFromBuffer(zipBuffer, "rename");
+    assert.equal(result.ok, true);
+
+    const robotData = await objStore.getJson(`v1/solutions/${result.solution.id}/robots/robot-a`);
+    assert.ok(robotData);
+    const configData = await objStore.getJson(`v1/solutions/${result.solution.id}/configs/config-1`);
+    assert.ok(configData);
+  });
+
+  it("TC-SOL-EXP-007: should warn about unresolvable artifact references", async () => {
+    const { solutionService } = createEnhancedTestServices();
+    const zipBuffer = await makeZipBuffer("Artifact Ref Test", "art-ref-test", {
+      meta: { id: "art-ref-test", name: "Artifact Ref Test", description: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", version: "1.0.0", tags: [], metadata: {} },
+      "upgrade-packages/pkg-1": { artifactId: "nonexistent-artifact", purpose: "upgrade" },
+    });
+
+    const result = await solutionService.importFromBuffer(zipBuffer, "rename");
+    assert.equal(result.ok, true);
+    assert.ok(result.warnings.length > 0);
+    assert.match(result.warnings[0], /not found/);
+  });
+});
+
 describe("RobotService - Core", () => {
   const robotServiceInstances: RobotService[] = [];
 
@@ -2911,7 +3038,9 @@ describe("RobotService - Core", () => {
 describe("Solution Routes - API", () => {
   function setupSolutionApp() {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
-    const solutionService = new SolutionService(objStore);
+    const checksumService = new MockChecksumService() as unknown as import("./services/checksumService.js").ChecksumService;
+    const artifactService = new ArtifactService(objStore, checksumService);
+    const solutionService = new SolutionService(objStore, artifactService);
     const engine = createTestTaskFlowEngine(objStore);
     const sseManager = new SseManager();
     const memStore = new MemStore();
@@ -2919,14 +3048,97 @@ describe("Solution Routes - API", () => {
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
     app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
-    return { app, solutionService, robotService };
+    return { app, solutionService, robotService, artifactService };
   }
+
+  it("TC-SOL-API-EXP-001: POST /api/solutions/:id/export returns ZIP stream", async () => {
+    const { app, solutionService } = setupSolutionApp();
+    const meta = await solutionService.create({ id: "export-api-test", name: "Export API Test" });
+
+    const res = await app.request(`/api/solutions/${meta.id}/export`, { method: "POST" });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("Content-Type"), "application/zip");
+    assert.ok(res.headers.get("Content-Disposition")?.includes("attachment"));
+
+    const buf = await res.arrayBuffer();
+    assert.ok(buf.byteLength > 0);
+  });
+
+  it("TC-SOL-API-EXP-002: POST /api/solutions/import with valid ZIP file", async () => {
+    const { app } = setupSolutionApp();
+
+    const { default: AdmZip } = await import("adm-zip");
+    const zip = new AdmZip();
+    const metaJson = JSON.stringify({ id: "import-api-test", name: "Import API Test", description: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", version: "1.0.0", tags: [], metadata: {} });
+    zip.addFile("import-api-test/meta.json", Buffer.from(metaJson));
+    const zipBuffer = zip.toBuffer();
+
+    const formData = new FormData();
+    formData.append("file", new Blob([zipBuffer], { type: "application/zip" }), "test.zip");
+
+    const res = await app.request("/api/solutions/import", {
+      method: "POST",
+      body: formData,
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as any;
+    assert.equal(body.ok, true);
+    assert.equal(body.solution.name, "Import API Test");
+    assert.ok(body.warnings);
+  });
+
+  it("TC-SOL-API-EXP-003: POST /api/solutions/import rejects non-ZIP file", async () => {
+    const { app } = setupSolutionApp();
+
+    const formData = new FormData();
+    formData.append("file", new Blob(["not a zip"], { type: "text/plain" }), "test.txt");
+
+    const res = await app.request("/api/solutions/import", {
+      method: "POST",
+      body: formData,
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as any;
+    assert.equal(body.error, "UNSUPPORTED_FILE_TYPE");
+  });
+
+  it("TC-SOL-API-EXP-004: POST /api/solutions/import rejects empty request body", async () => {
+    const { app } = setupSolutionApp();
+    const res = await app.request("/api/solutions/import", { method: "POST" });
+    assert.equal(res.status, 400);
+  });
+
+  it("TC-SOL-API-EXP-005: POST /api/solutions/import handles conflict with rename", async () => {
+    const { app, solutionService } = setupSolutionApp();
+    await solutionService.create({ id: "api-conflict", name: "Existing Solution" });
+
+    const { default: AdmZip } = await import("adm-zip");
+    const zip = new AdmZip();
+    const metaJson = JSON.stringify({ id: "api-conflict", name: "Imported Solution", description: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", version: "1.0.0", tags: [], metadata: {} });
+    zip.addFile("api-conflict/meta.json", Buffer.from(metaJson));
+    const zipBuffer = zip.toBuffer();
+
+    const formData = new FormData();
+    formData.append("file", new Blob([zipBuffer], { type: "application/zip" }), "test.zip");
+    formData.append("conflictResolution", "rename");
+
+    const res = await app.request("/api/solutions/import", {
+      method: "POST",
+      body: formData,
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as any;
+    assert.equal(body.ok, true);
+    assert.notEqual(body.solution.id, "api-conflict");
+  });
 });
 
 describe("RobotService - MemStore & TaskFlow Integration", () => {
   function createIntegrationServices() {
     const objStore = new EnhancedObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
-    const solutionService = new SolutionService(objStore);
+    const checksumService = new MockChecksumService() as unknown as import("./services/checksumService.js").ChecksumService;
+    const artifactService = new ArtifactService(objStore, checksumService);
+    const solutionService = new SolutionService(objStore, artifactService);
 
     const sse = new SpySseManager() as unknown as SseManager;
     const registry = new ResolverRegistry();

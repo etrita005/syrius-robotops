@@ -27,3 +27,22 @@ export interface RecentSolutionEntry {
   name: string;
   accessedAt: string;
 }
+
+export interface ImportResult {
+  ok: boolean;
+  solution: SolutionMeta;
+  warnings?: string[];
+}
+
+export interface ImportConflictInfo {
+  existingSolution: {
+    id: string;
+    name: string;
+  };
+  archiveSolution: {
+    id: string;
+    name: string;
+  };
+}
+
+export type ConflictResolution = "overwrite" | "rename" | "cancel";

@@ -1092,6 +1092,220 @@ def page_system_logs_bundle_download():
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
+# Solution Management: 05 — Export Progress (card-level inline loading)
+# ---------------------------------------------------------------------------
+def page_export_progress():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+
+    draw_common_header(draw, W)
+    draw_active_solution_bar(draw, W)
+
+    draw.text((40, 120), "Solutions", fill="#161616", font=FONT_LG)
+    draw_button(draw, (W-340, 120, W-180, 152), "Import solution", bg="#0f62fe", fg="white")
+    draw_button(draw, (W-170, 120, W-40, 152), "Create solution", bg="#0f62fe", fg="white")
+    draw_input(draw, (40, 120, 400, 152), placeholder="Search solutions...")
+
+    # Card 1: normal
+    draw_card(draw, (40, 180, W-40, 280),
+              "Customer A — Site Alpha",
+              "3号楼2层初次部署，共12台机器人。",
+              ["customer-a", "building-3"])
+    # Export button on card 1 — normal state
+    draw_button(draw, (W-240, 198, W-170, 226), "Export")
+
+    # Card 2: exporting — with spinner overlay (NOT progress bar per D11)
+    cx1, cy1, cx2, cy2 = 40, 300, W-40, 400
+    draw.rectangle([cx1, cy1, cx2, cy2], fill="white", outline="#e0e0e0", width=1)
+    draw.text((cx1+16, cy1+12), "Customer B — Beta", fill="#161616", font=FONT_MD)
+    draw.text((cx1+16, cy1+36), "Beta site deployment with 5 robots.", fill="#525252", font=FONT_SM)
+    draw_button(draw, (cx2-140, cy1+14, cx2-70, cy1+42), "Open")
+    # Export button replaced with spinner
+    spinner_cx, spinner_cy = cx2-172, cy1+26
+    draw.arc([spinner_cx-10, spinner_cy-10, spinner_cx+10, spinner_cy+10], 0, 270, fill="#0f62fe", width=2)
+    draw.text((cx2-140, cy1+18), "Exporting...", fill="#0f62fe", font=FONT_SM)
+    draw_button(draw, (cx2-60, cy1+14, cx2-16, cy1+42), "Cancel")
+
+    # Card 3: success toast overlay
+    toast_x, toast_y, toast_w, toast_h = W-380, 420, 340, 60
+    draw.rounded_rectangle([toast_x, toast_y, toast_x+toast_w, toast_y+toast_h], radius=4, fill="#24a148")
+    draw.text((toast_x+16, toast_y+10), "✓ Export complete", fill="white", font=FONT_MD)
+    draw.text((toast_x+16, toast_y+32), "customer-a-site-3f2a-v1.0.3-2026-06-14T07-47-11Z.zip", fill="#c8e6c9", font=FONT_SM)
+
+    path = os.path.join(SOL_DIR, "05_export_progress.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Solution Management: 06 — Import Modal (File Selection / Drop Zone)
+# ---------------------------------------------------------------------------
+def page_import_modal_select():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_solution_selector()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+
+    mx, my, mw, mh = 250, 150, 700, 500
+    draw.rectangle([mx, my, mx+mw, my+mh], fill="white", outline="#c6c6c6", width=1)
+
+    draw.text((mx+24, my+20), "Import solution", fill="#161616", font=FONT_LG)
+    draw.text((mx+24, my+56), "Select a solution archive (.zip) to import.", fill="#525252", font=FONT_MD)
+
+    # Drop zone
+    dz_x1, dz_y1 = mx+24, my+100
+    dz_x2, dz_y2 = mx+mw-24, my+320
+    draw.rectangle([dz_x1, dz_y1, dz_x2, dz_y2], fill="#f4f4f4", outline="#8d8d8d", width=2)
+    # dashed border effect
+    for i in range(dz_x1+5, dz_x2-5, 15):
+        draw.line([(i, dz_y1), (i+8, dz_y1)], fill="#8d8d8d", width=1)
+        draw.line([(i, dz_y2), (i+8, dz_y2)], fill="#8d8d8d", width=1)
+    for i in range(dz_y1+5, dz_y2-5, 15):
+        draw.line([(dz_x1, i), (dz_x1, i+8)], fill="#8d8d8d", width=1)
+        draw.line([(dz_x2, i), (dz_x2, i+8)], fill="#8d8d8d", width=1)
+
+    # Upload icon (simplified)
+    icon_cx = (dz_x1 + dz_x2) // 2
+    icon_cy = dz_y1 + 80
+    draw.ellipse([icon_cx-30, icon_cy-30, icon_cx+30, icon_cy+30], fill="white", outline="#0f62fe", width=2)
+    draw.text((icon_cx-18, icon_cy-10), "⬆", fill="#0f62fe", font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24) if os.path.exists("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") else FONT)
+
+    draw.text((icon_cx-80, icon_cy+36), "Click to browse files", fill="#0f62fe", font=FONT_MD)
+    draw.text((icon_cx-80, icon_cy+56), "or drag and drop", fill="#525252", font=FONT_SM)
+    draw.text((icon_cx-120, icon_cy+78), "Only .zip archives are accepted.", fill="#8d8d8d", font=FONT_SM)
+
+    # File selected state (shown after selection)
+    sel_x1, sel_y1 = mx+24, my+340
+    sel_x2, sel_y2 = mx+mw-24, my+390
+    draw.rectangle([sel_x1, sel_y1, sel_x2, sel_y2], fill="#f0f8ff", outline="#0f62fe", width=1)
+    draw.text((sel_x1+16, sel_y1+12), "📦  customer-a-site-3f2a-v1.0.3.zip", fill="#161616", font=FONT_MD)
+    draw.text((sel_x1+16, sel_y1+32), "1.2 MB · contains 23 resources · valid solution archive", fill="#24a148", font=FONT_SM)
+
+    # Footer
+    draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Cancel")
+    draw_button(draw, (mx+mw-110, my+mh-60, mx+mw-24, my+mh-28), "Next", bg="#0f62fe", fg="white")
+
+    path = os.path.join(SOL_DIR, "06_import_modal_select.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Solution Management: 07 — Import Conflict Resolution Modal
+# ---------------------------------------------------------------------------
+def page_import_conflict_modal():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_import_modal_select()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+
+    mx, my, mw, mh = 250, 170, 700, 460
+    draw.rectangle([mx, my, mx+mw, my+mh], fill="white", outline="#c6c6c6", width=1)
+
+    draw.text((mx+24, my+20), "Import solution — ID conflict", fill="#161616", font=FONT_LG)
+    draw.text((mx+24, my+56), "A solution with the same ID already exists.", fill="#e0822c", font=FONT_MD)
+
+    # Existing solution info box
+    box_x1, box_y1 = mx+24, my+84
+    box_x2, box_y2 = mx+mw-24, my+178
+    draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill="#fff8e1", outline="#f1c21b", width=1)
+    draw.text((box_x1+16, box_y1+14), "⚠ Existing solution:", fill="#e0822c", font=FONT_MD)
+    draw.text((box_x1+16, box_y1+38), "Name: Customer A — Site Alpha", fill="#161616", font=FONT_SM)
+    draw.text((box_x1+16, box_y1+58), "ID: customer-a-site-3f2a", fill="#525252", font=FONT_SM)
+    draw.text((box_x1+16, box_y1+78), "Version: 1.0.3 · Updated: 2026-06-10T08:30:00Z", fill="#8d8d8d", font=FONT_SM)
+
+    # Resolution options
+    opt_y = my + 200
+    draw.text((mx+24, opt_y), "Choose how to resolve:", fill="#161616", font=FONT_MD)
+
+    # Option 1: Rename (recommended)
+    o1_y = opt_y + 30
+    draw.rectangle([mx+24, o1_y, mx+mw-24, o1_y+68], fill="#f0f8ff", outline="#0f62fe", width=2)
+    draw.ellipse([mx+40, o1_y+14, mx+56, o1_y+30], fill="#0f62fe")
+    draw.text((mx+68, o1_y+12), "Rename imported solution (recommended)", fill="#161616", font=FONT_MD)
+    draw.text((mx+68, o1_y+36), "Keep both solutions. A new unique ID will be auto-generated.", fill="#525252", font=FONT_SM)
+
+    # Option 2: Overwrite
+    o2_y = o1_y + 80
+    draw.rectangle([mx+24, o2_y, mx+mw-24, o2_y+68], fill="white", outline="#c6c6c6", width=1)
+    draw.ellipse([mx+40, o2_y+14, mx+56, o2_y+30], outline="#8d8d8d", width=1)
+    draw.text((mx+68, o2_y+12), "Overwrite existing solution", fill="#161616", font=FONT_MD)
+    draw.text((mx+68, o2_y+36), "Delete the existing solution and replace with imported data. All existing data will be lost.", fill="#da1e28", font=FONT_SM)
+
+    # Option 3: Cancel
+    o3_y = o2_y + 80
+    draw.rectangle([mx+24, o3_y, mx+mw-24, o3_y+68], fill="white", outline="#c6c6c6", width=1)
+    draw.ellipse([mx+40, o3_y+14, mx+56, o3_y+30], outline="#8d8d8d", width=1)
+    draw.text((mx+68, o3_y+12), "Cancel import", fill="#161616", font=FONT_MD)
+    draw.text((mx+68, o3_y+36), "Discard this import without making any changes.", fill="#525252", font=FONT_SM)
+
+    draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Back")
+    draw_button(draw, (mx+mw-110, my+mh-60, mx+mw-24, my+mh-28), "Continue", bg="#0f62fe", fg="white")
+
+    path = os.path.join(SOL_DIR, "07_import_conflict_modal.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Solution Management: 08 — Import Progress Modal
+# ---------------------------------------------------------------------------
+def page_import_progress():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_solution_selector()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+
+    mx, my, mw, mh = 300, 180, 600, 440
+    draw.rectangle([mx, my, mx+mw, my+mh], fill="white", outline="#c6c6c6", width=1)
+
+    draw.text((mx+24, my+20), "Importing solution", fill="#161616", font=FONT_LG)
+
+    # Step indicators
+    steps = ["Select file", "Validation", "Import resources", "Complete"]
+    step_y = my + 60
+    step_start_x = mx + 24
+    for i, step in enumerate(steps):
+        sx = step_start_x + i * 140
+        if i < 2:
+            color = "#24a148"
+            draw.ellipse([sx, step_y, sx+24, step_y+24], fill=color)
+            draw.text((sx+7, step_y+3), "✓", fill="white", font=FONT_SM)
+        elif i == 2:
+            color = "#0f62fe"
+            draw.ellipse([sx, step_y, sx+24, step_y+24], fill=color)
+            draw.text((sx+8, step_y+3), "3", fill="white", font=FONT_SM)
+        else:
+            color = "#c6c6c6"
+            draw.ellipse([sx, step_y, sx+24, step_y+24], outline=color, width=1)
+            draw.text((sx+8, step_y+3), "4", fill="#c6c6c6", font=FONT_SM)
+        draw.text((sx+30, step_y+5), step, fill=color, font=FONT_SM)
+        if i < len(steps) - 1:
+            line_color = "#0f62fe" if i < 2 else "#c6c6c6"
+            draw.line([(sx+26, step_y+12), (sx+138, step_y+12)], fill=line_color, width=2)
+
+    # Progress bar
+    bar_y = my + 140
+    bar_w = mw - 48
+    draw.rectangle([mx+24, bar_y, mx+24+bar_w, bar_y+8], fill="#e0e0e0")
+    draw.rectangle([mx+24, bar_y, mx+24+int(bar_w*0.45), bar_y+8], fill="#0f62fe")
+
+    draw.text((mx+24, bar_y+24), "Importing resources... 10 of 23", fill="#161616", font=FONT_MD)
+    draw.text((mx+24, bar_y+50), "Writing v1/solutions/customer-a-site-3f2a/configs/config-001.json", fill="#525252", font=FONT_SM)
+
+    # Warnings area (if any)
+    draw.text((mx+24, bar_y+80), "Warnings", fill="#161616", font=FONT_MD)
+    draw.text((mx+40, bar_y+104), "• artifact-bup-002: artifact not found, reference left unresolved", fill="#e0822c", font=FONT_SM)
+
+    # Footer
+    draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Cancel import", bg="#fa4d56", fg="white")
+
+    path = os.path.join(SOL_DIR, "08_import_progress.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
@@ -1100,6 +1314,10 @@ if __name__ == "__main__":
     page_create_solution()
     page_delete_solution_confirm()
     page_main_workspace()
+    page_export_progress()
+    page_import_modal_select()
+    page_import_conflict_modal()
+    page_import_progress()
 
     # Robots (sub-module of Solution Management)
     page_robots_grid_view()

@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import { SolutionService } from "../services/solutionService.js";
 import { AppError } from "../errors/appErrors.js";
+import { withRetry } from "../utils/retry.js";
+import { createLogger } from "../logger/index.js";
+
+const log = createLogger("SolutionRoutes");
 
 export function createSolutionRoutes(solutionService: SolutionService): Hono {
   const router = new Hono();
@@ -109,31 +113,95 @@ export function createSolutionRoutes(solutionService: SolutionService): Hono {
 
   router.post("/:id/export", async (c) => {
     const id = c.req.param("id");
-    const { destinationPath } = await c.req.json().catch(() => ({ destinationPath: undefined }));
+    const signal = c.req.raw.signal;
+
     try {
-      const result = await solutionService.exportSolution(id, destinationPath);
-      return c.json(result);
+      const meta = await solutionService.get(id);
+      const slug = meta.name
+        .toLowerCase()
+        .replace(/[^a-zA-Z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const fileName = `${slug}-v${meta.version}-${timestamp}.zip`;
+
+      const archiver = (await import("archiver")).default;
+      const archive = archiver("zip", { zlib: { level: 9 } });
+
+      const chunks: Buffer[] = [];
+      archive.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+      signal.addEventListener("abort", () => {
+        archive.abort();
+        log.warn({ solutionId: id }, "Export aborted by client");
+      });
+
+      await withRetry(() =>
+        solutionService.archiveToStream(archive, `v1/solutions/${id}`)
+      );
+
+      await archive.finalize();
+
+      const buffer = Buffer.concat(chunks);
+
+      return new Response(buffer, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+        },
+      });
     } catch (err) {
       if (err instanceof AppError) {
         return c.json({ error: err.code, message: err.message }, err.statusCode);
       }
-      throw err;
+      log.error({ solutionId: id, err }, "Export failed");
+      return c.json({ error: "EXPORT_FAILED", message: "Export failed." }, 500);
     }
   });
 
   router.post("/import", async (c) => {
-    const { zipPath, targetPath } = await c.req.json();
-    if (!zipPath || !targetPath) {
-      return c.json({ error: "INVALID_INPUT", message: "zipPath and targetPath are required." }, 400);
-    }
+    let body: Record<string, unknown>;
     try {
-      const result = await solutionService.importSolution(zipPath, targetPath);
-      return c.json(result);
+      body = (await c.req.parseBody()) as Record<string, unknown>;
+    } catch {
+      return c.json({ error: "INVALID_INPUT", message: "Failed to parse request body." }, 400);
+    }
+
+    const file = body["file"] as { name?: string; arrayBuffer?: () => Promise<ArrayBuffer> } | undefined;
+    const conflictResolution = (body["conflictResolution"] as string) || "rename";
+
+    if (!file) {
+      return c.json({ error: "INVALID_INPUT", message: "No file provided." }, 400);
+    }
+
+    const fileName = file.name ?? "";
+    if (!fileName.endsWith(".zip")) {
+      return c.json({ error: "UNSUPPORTED_FILE_TYPE", message: "Only .zip files are supported." }, 400);
+    }
+
+    try {
+      const arrayBuffer = file.arrayBuffer ? await file.arrayBuffer() : new ArrayBuffer(0);
+      if (arrayBuffer.byteLength === 0) {
+        return c.json({ error: "INVALID_INPUT", message: "File is empty." }, 400);
+      }
+
+      const buffer = Buffer.from(arrayBuffer);
+
+      const result = await withRetry(() =>
+        solutionService.importFromBuffer(
+          buffer,
+          conflictResolution as "overwrite" | "rename" | "cancel"
+        )
+      );
+
+      return c.json(result, 200);
     } catch (err) {
       if (err instanceof AppError) {
         return c.json({ error: err.code, message: err.message }, err.statusCode);
       }
-      throw err;
+      log.error({ err }, "Import failed");
+      return c.json({ error: "IMPORT_FAILED", message: "Import failed." }, 500);
     }
   });
 

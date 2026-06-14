@@ -52,4 +52,36 @@ export const solutionApi = {
   async importSolution(zipPath: string, targetPath: string): Promise<{ ok: boolean }> {
     return post<{ ok: boolean }>("/solutions/import", { zipPath, targetPath });
   },
+
+  async exportSolutionBlob(id: string, signal?: AbortSignal): Promise<Blob> {
+    const response = await fetch(`/api/solutions/${id}/export`, {
+      method: "POST",
+      signal,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
+      throw new Error(err.message);
+    }
+    return response.blob();
+  },
+
+  async importSolutionFile(
+    file: File,
+    conflictResolution: string,
+    signal?: AbortSignal
+  ): Promise<{ ok: boolean; solution: SolutionMeta; warnings?: string[] }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("conflictResolution", conflictResolution);
+    const response = await fetch("/api/solutions/import", {
+      method: "POST",
+      body: formData,
+      signal,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
+      throw new Error(err.message);
+    }
+    return response.json();
+  },
 };

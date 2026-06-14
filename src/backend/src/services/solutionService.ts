@@ -1,4 +1,5 @@
 import { ObjectStore } from "./objectStore.js";
+import { ArtifactService } from "./artifactService.js";
 import {
   SolutionMeta,
   CreateSolutionInput,
@@ -9,6 +10,8 @@ import {
   SolutionNotFoundError,
   SolutionAlreadyExistsError,
   InvalidSolutionIdError,
+  ImportInvalidArchiveError,
+  ImportIdCollisionError,
 } from "../errors/appErrors.js";
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
@@ -48,12 +51,14 @@ function validateSolutionId(id: string): void {
 
 export class SolutionService {
   private obs: ObjectStore;
+  private artifactService: ArtifactService;
   private openedSolutions: Map<string, OpenedSolutionEntry> = new Map();
   private onSolutionRemoveCallbacks: Array<(solutionId: string) => void> = [];
   private onSolutionCloseCallbacks: Array<(solutionId: string) => void> = [];
 
-  constructor(obs: ObjectStore) {
+  constructor(obs: ObjectStore, artifactService: ArtifactService) {
     this.obs = obs;
+    this.artifactService = artifactService;
   }
 
   onSolutionRemove(callback: (solutionId: string) => void): void {
@@ -267,6 +272,94 @@ export class SolutionService {
     return { ok: true };
   }
 
+  async archiveToStream(
+    archive: import("archiver").Archiver,
+    rootPath: string
+  ): Promise<void> {
+    await this.archiveDirectory(archive, rootPath, rootPath);
+  }
+
+  async importFromBuffer(
+    zipBuffer: Buffer,
+    conflictResolution: "overwrite" | "rename" | "cancel"
+  ): Promise<{ ok: boolean; solution: SolutionMeta; warnings: string[] }> {
+    const { default: AdmZip } = await import("adm-zip");
+    const zip = new AdmZip(zipBuffer);
+    const entries = zip.getEntries();
+
+    const jsonEntries = entries.filter(
+      (e) => !e.isDirectory && e.entryName.endsWith(".json")
+    );
+
+    const metaEntry = jsonEntries.find((e) =>
+      e.entryName.match(/(^|\/)meta\.json$/)
+    );
+    if (!metaEntry) {
+      throw new ImportInvalidArchiveError();
+    }
+
+    const meta = JSON.parse(metaEntry.getData().toString("utf-8")) as SolutionMeta;
+    let solutionId: string = meta.id;
+
+    const rootPrefix = findCommonPrefix(jsonEntries.map((e) => e.entryName));
+
+    const exists = await this.obs.exists(`v1/solutions/${solutionId}/meta`);
+    if (exists) {
+      switch (conflictResolution) {
+        case "cancel":
+          throw new ImportIdCollisionError(solutionId);
+        case "overwrite":
+          await this.remove(solutionId);
+          break;
+        case "rename":
+          solutionId = generateId(meta.name);
+          break;
+      }
+    }
+
+    const warnings: string[] = [];
+    const artifactRefs: Array<{ artifactId: string }> = [];
+
+    for (const entry of jsonEntries) {
+      const content = JSON.parse(entry.getData().toString("utf-8"));
+
+      const relativePath = entry.entryName
+        .replace(/\.json$/, "")
+        .slice(rootPrefix.length);
+      const objectPath = `v1/solutions/${solutionId}/${relativePath}`;
+
+      if (content.artifactId && content.purpose) {
+        artifactRefs.push({ artifactId: content.artifactId });
+      }
+
+      await this.obs.putJson(objectPath, content);
+    }
+
+    const finalMeta: SolutionMeta = {
+      ...meta,
+      id: solutionId,
+      name: meta.name,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: "1.0.0",
+      tags: meta.tags ?? [],
+      metadata: meta.metadata ?? {},
+    };
+    await this.obs.putJson(`v1/solutions/${solutionId}/meta`, finalMeta);
+
+    for (const ref of artifactRefs) {
+      try {
+        await this.artifactService.incrementRefCount(ref.artifactId);
+      } catch {
+        warnings.push(
+          `Artifact '${ref.artifactId}' not found; reference left unresolved.`
+        );
+      }
+    }
+
+    return { ok: true, solution: finalMeta, warnings };
+  }
+
   getOpenedSolutions(): OpenedSolutionEntry[] {
     return Array.from(this.openedSolutions.values());
   }
@@ -324,4 +417,19 @@ export class SolutionService {
       }
     }
   }
+}
+
+function findCommonPrefix(paths: string[]): string {
+  if (paths.length === 0) return "";
+  const parts = paths[0].split("/");
+  let prefixLen = 0;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const segment = parts.slice(0, i + 1).join("/") + "/";
+    if (paths.every((p) => p.startsWith(segment))) {
+      prefixLen = segment.length;
+    } else {
+      break;
+    }
+  }
+  return paths[0].slice(0, prefixLen);
 }

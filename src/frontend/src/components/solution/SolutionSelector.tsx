@@ -11,12 +11,14 @@ import {
   ModalBody,
   ModalFooter,
   Loading,
+  InlineLoading,
 } from "@carbon/react";
-import { Add, Export, Copy, TrashCan } from "@carbon/react/icons";
+import { Add, Export, Copy, TrashCan, DocumentImport } from "@carbon/react/icons";
 import { SolutionMeta, CreateSolutionInput } from "../../types/solution.js";
 import { solutionApi } from "../../api/solutionApi.js";
 import { useToast } from "../../hooks/useToast.js";
 import { useThemeColor } from "../../hooks/useThemeColors.js";
+import { ImportSolutionModal } from "./ImportSolutionModal.js";
 
 interface SolutionSelectorProps {
   solutions: SolutionMeta[];
@@ -38,6 +40,9 @@ export function SolutionSelector({
   const [deleting, setDeleting] = useState(false);
   const [searchName, setSearchName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
   const [createInput, setCreateInput] = useState<CreateSolutionInput>({
     name: "",
     description: "",
@@ -101,11 +106,30 @@ export function SolutionSelector({
   };
 
   const handleExport = async (id: string) => {
+    setExportingId(id);
     try {
-      await solutionApi.exportSolution(id);
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      const blob = await solutionApi.exportSolutionBlob(id, controller.signal);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const solution = solutions.find((s) => s.id === id);
+      a.download = `${solution?.name ?? id}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("success", "Export complete", "Solution exported successfully.");
     } catch (err) {
-      console.error("Failed to export solution:", err);
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      showToast("error", "Export failed", "Failed to export solution.");
+    } finally {
+      setExportingId(null);
+      abortControllerRef.current = null;
     }
+  };
+
+  const handleCancelExport = () => {
+    abortControllerRef.current?.abort();
   };
 
   if (loading) {
@@ -132,12 +156,21 @@ export function SolutionSelector({
             <h1 style={{ fontSize: "1.75rem", fontWeight: 600 }}>
               Solutions
             </h1>
-            <Button
-              renderIcon={Add}
-              onClick={() => setShowCreate(true)}
-            >
-              Create solution
-            </Button>
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <Button
+                kind="tertiary"
+                renderIcon={DocumentImport}
+                onClick={() => setShowImport(true)}
+              >
+                Import solution
+              </Button>
+              <Button
+                renderIcon={Add}
+                onClick={() => setShowCreate(true)}
+              >
+                Create solution
+              </Button>
+            </div>
           </div>
 
           <TextInput
@@ -251,14 +284,33 @@ export function SolutionSelector({
                       >
                         Open
                       </Button>
-                      <Button
-                        size="sm"
-                        kind="ghost"
-                        renderIcon={Export}
-                        iconDescription="Export"
-                        hasIconOnly
-                        onClick={() => handleExport(solution.id)}
-                      />
+                      {exportingId === solution.id ? (
+                        <>
+                          <Button
+                            size="sm"
+                            kind="ghost"
+                            disabled
+                          >
+                            Exporting...
+                          </Button>
+                          <Button
+                            size="sm"
+                            kind="ghost"
+                            onClick={handleCancelExport}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          size="sm"
+                          kind="ghost"
+                          renderIcon={Export}
+                          iconDescription="Export"
+                          hasIconOnly
+                          onClick={() => handleExport(solution.id)}
+                        />
+                      )}
                       <Button
                         size="sm"
                         kind="ghost"
@@ -378,6 +430,17 @@ export function SolutionSelector({
           </Button>
         </ModalFooter>
       </ComposedModal>
+
+      {showImport && (
+        <ImportSolutionModal
+          onClose={() => setShowImport(false)}
+          onImportComplete={(meta) => {
+            setShowImport(false);
+            onActivate(meta.id);
+            onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

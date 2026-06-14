@@ -122,3 +122,15 @@ export class RobotAddressExistsError extends AppError {
     super("ROBOT_ADDRESS_EXISTS", "A robot with this address already exists in the current solution.", 409);
   }
 }
+
+export class ImportInvalidArchiveError extends AppError {
+  constructor() {
+    super("IMPORT_INVALID_ARCHIVE", "The selected file is not a valid solution archive.", 400);
+  }
+}
+
+export class ImportIdCollisionError extends AppError {
+  constructor(id: string) {
+    super("IMPORT_ID_COLLISION", `Import cancelled due to ID conflict with '${id}'.`, 409);
+  }
+}

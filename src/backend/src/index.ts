@@ -60,7 +60,7 @@ async function main(): Promise<void> {
   const objectStore = new ObjectStore();
   const checksumService = new ChecksumService();
   const artifactService = new ArtifactService(objectStore, checksumService);
-  const solutionService = new SolutionService(objectStore);
+  const solutionService = new SolutionService(objectStore, artifactService);
 
   const sseManager = new SseManager();
   const resolverRegistry = new ResolverRegistry();
