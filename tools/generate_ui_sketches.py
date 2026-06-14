@@ -324,7 +324,7 @@ def page_add_robot_modal():
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
-# Robots: 04 — Robot Detail Modal
+# Robots: 04 — Robot Detail Modal (section-based layout)
 # ---------------------------------------------------------------------------
 def page_robot_detail_modal():
     W, H = 1200, 800
@@ -332,39 +332,84 @@ def page_robot_detail_modal():
     draw = ImageDraw.Draw(img)
     page_robots_grid_view()
     draw.rectangle([0, 0, W, H], fill="#00000080")
-    mx, my, mw, mh = 200, 80, 800, 640
+    mx, my, mw, mh = 180, 40, 840, 720
     draw.rectangle([mx, my, mx+mw, my+mh], fill="white", outline="#c6c6c6", width=1)
     draw.text((mx+24, my+20), "Robot Details — AGV-01", fill="#161616", font=FONT_LG)
 
-    tabs = ["Basic Info", "Other Info", "Software Versions", "Hardware Versions"]
-    tx = mx + 24
-    for i, tab in enumerate(tabs):
-        bg = "#e0e0e0" if i == 0 else None
-        if bg:
-            draw.rectangle([tx-4, my+52, tx+120, my+78], fill=bg)
-        draw.text((tx, my+56), tab, fill="#161616" if i == 0 else "#525252", font=FONT_SM)
-        tx += 160
+    cy = my + 56
+    card_w = mw - 48
+    card_x = mx + 24
 
-    fields = [
-        ("Alias", "AGV-01", True),
-        ("Address", "192.168.1.101:22", True),
-        ("Model", "X100", False),
-        ("Robot SN", "SN-123456", False),
-        ("Things ID", "THING-789012", False),
-        ("Vendor ID", "SYRIUS", False),
-        ("Product ID", "X100-STD", False),
-    ]
-    fy = my + 90
-    for label, value, editable in fields:
-        draw.text((mx+24, fy), label, fill="#525252", font=FONT_MD)
-        if editable:
-            draw_input(draw, (mx+180, fy-4, mx+mw-24, fy+22), placeholder=value)
-        else:
-            draw.text((mx+180, fy), value, fill="#161616", font=FONT_MD)
-        fy += 36
+    def draw_section_card(header_text, body_height, has_read_button=False, draw_body_fn=None):
+        nonlocal cy
+        header_h = 32
+        body_y = cy + header_h
+        card_h = header_h + body_height
+        # Card outline
+        draw.rounded_rectangle([card_x, cy, card_x + card_w, cy + card_h], radius=4, outline="#e0e0e0", width=1)
+        # Header bar
+        draw.rectangle([card_x + 1, cy + 1, card_x + card_w - 1, cy + header_h - 1], fill="#f4f4f4")
+        draw.line([(card_x, cy + header_h), (card_x + card_w, cy + header_h)], fill="#e0e0e0", width=1)
+        # Header text
+        draw.text((card_x + 14, cy + 8), header_text, fill="#161616", font=FONT_MD)
+        if has_read_button:
+            draw_button(draw, (card_x + card_w - 80, cy + 5, card_x + card_w - 20, cy + 27), "Read", bg="#e0e0e0", fg="#161616", font=FONT_SM)
+        if draw_body_fn:
+            draw_body_fn(card_x + 14, body_y + 10)
+        cy += card_h + 12
 
-    draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Close")
-    draw_button(draw, (mx+mw-110, my+mh-60, mx+mw-24, my+mh-28), "Save", bg="#0f62fe", fg="white")
+    # Section 1: Basic Info
+    def draw_basic_info(bx, by):
+        y = by
+        fields = [
+            ("Alias", "AGV-01", True),
+            ("Address", "192.168.1.101:22", True),
+            ("Model", "X100", False),
+            ("Robot SN", "SN-123456", False),
+            ("Things ID", "THING-789012", False),
+            ("Vendor ID", "SYRIUS", False),
+            ("Product ID", "X100-STD", False),
+            ("Mainboard SN", "SyriusRobotics", False),
+            ("Mainboard ID", "WWVU0100", False),
+            ("Main SOM SN", "1420124249", False),
+        ]
+        for label, value, editable in fields:
+            draw.text((bx, y), label, fill="#525252", font=FONT_SM)
+            if editable:
+                draw_input(draw, (bx + 140, y - 2, card_x + card_w - 16, y + 20), placeholder=value)
+            else:
+                draw.text((bx + 140, y), value, fill="#161616", font=FONT_SM)
+            y += 23
+    draw_section_card("Basic Info", 240, draw_body_fn=draw_basic_info)
+
+    # Section 2: Software Versions
+    def draw_software_versions(bx, by):
+        y = by
+        for name, ver in [("megacosmOS", "2.3.1"), ("Movebase", "3.0.0"), ("GGR", "R35.4.1")]:
+            draw.text((bx, y), name + ":", fill="#525252", font=FONT_SM)
+            draw.text((bx + 140, y), ver, fill="#161616", font=FONT_SM)
+            y += 23
+    draw_section_card("Software Versions", 80, draw_body_fn=draw_software_versions)
+
+    # Section 3: Hardware Versions
+    def draw_hardware_versions(bx, by):
+        y = by
+        cols = [("Name", 100), ("Firmware version", 220), ("Hardware version", 340), ("SN", 460), ("Hardware ID", 540), ("Status", 640)]
+        draw.rectangle([bx, y, card_x + card_w - 16, y + 22], fill="#e0e0e0")
+        for label, cx in cols:
+            draw.text((bx + cx - 100 + 4, y + 4), label, fill="#161616", font=FONT_SM)
+        y += 28
+        draw.text((bx + 40, y), "(empty)", fill="#a8a8a8", font=FONT_SM)
+    draw_section_card("Hardware Versions", 60, has_read_button=True, draw_body_fn=draw_hardware_versions)
+
+    # Section 4: Other Info
+    def draw_other_info(bx, by):
+        draw.text((bx, by), "No data", fill="#a8a8a8", font=FONT_SM)
+    draw_section_card("Other Info", 36, has_read_button=True, draw_body_fn=draw_other_info)
+
+    # Footer buttons
+    draw_button(draw, (mx+mw-240, my+mh-60, mx+mw-140, my+mh-28), "Close")
+    draw_button(draw, (mx+mw-130, my+mh-60, mx+mw-36, my+mh-28), "Save", bg="#0f62fe", fg="white")
 
     path = os.path.join(ROBOTS_DIR, "04_robot_detail_modal.png")
     img.save(path)

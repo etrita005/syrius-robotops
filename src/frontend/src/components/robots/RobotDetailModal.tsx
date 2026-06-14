@@ -1,10 +1,6 @@
 import { useState, useEffect } from "react";
 import {
   Modal,
-  Tabs,
-  Tab,
-  TabPanels,
-  TabPanel,
   TextInput,
   Button,
   DataTable,
@@ -17,7 +13,6 @@ import {
   Tag,
 } from "@carbon/react";
 import { RobotDefinition, formatAddressDisplay, parseAddressInput, formatInfoValue } from "../../types/robot.js";
-import { useThemeColor } from "../../hooks/useThemeColors.js";
 
 interface RobotDetailModalProps {
   open: boolean;
@@ -26,21 +21,50 @@ interface RobotDetailModalProps {
   onSave: (patch: Partial<Pick<RobotDefinition, "alias" | "address" | "port">>) => Promise<void>;
 }
 
+const sectionCardStyle: React.CSSProperties = {
+  marginBottom: "1rem",
+  border: "1px solid var(--cds-border-subtle, #e0e0e0)",
+  borderRadius: "4px",
+  overflow: "hidden",
+};
+
+const sectionHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  padding: "0.625rem 1rem",
+  backgroundColor: "var(--cds-layer-02, #f4f4f4)",
+  borderBottom: "1px solid var(--cds-border-subtle, #e0e0e0)",
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  fontSize: "0.9375rem",
+  fontWeight: 600,
+  color: "var(--cds-text-primary, #161616)",
+  margin: 0,
+};
+
+const sectionBodyStyle: React.CSSProperties = {
+  padding: "1rem",
+};
+
+const fieldsGroupStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+};
+
 export default function RobotDetailModal({ open, robot, onClose, onSave }: RobotDetailModalProps) {
-  const [activeTab, setActiveTab] = useState(0);
   const [editedAlias, setEditedAlias] = useState("");
   const [editedAddress, setEditedAddress] = useState("");
   const [addressInvalid, setAddressInvalid] = useState(false);
   const [addressInvalidText, setAddressInvalidText] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const textSecondary = useThemeColor("#525252", "#c6c6c6");
-
   useEffect(() => {
     if (open && robot) {
       setEditedAlias(robot.alias);
       setEditedAddress(formatAddressDisplay(robot.address, robot.port));
-      setActiveTab(0);
       setAddressInvalid(false);
       setAddressInvalidText("");
     }
@@ -83,8 +107,8 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
 
   const deviceHeaders = [
     { key: "name", header: "Name" },
-    { key: "firmwareVersion", header: "Firmware" },
-    { key: "hardwareVersion", header: "Hardware" },
+    { key: "firmwareVersion", header: "Firmware version" },
+    { key: "hardwareVersion", header: "Hardware version" },
     { key: "serialNumber", header: "SN" },
     { key: "hardwareId", header: "Hardware ID" },
     { key: "online", header: "Status" },
@@ -107,15 +131,6 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
     ),
   }));
 
-  const renderKeyValueList = (obj: Record<string, string>) => {
-    return Object.entries(obj).map(([k, v]) => (
-      <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "0.25rem 0" }}>
-        <span style={{ color: textSecondary }}>{k}</span>
-        <span>{v}</span>
-      </div>
-    ));
-  };
-
   return (
     <Modal
       open={open}
@@ -124,142 +139,128 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
       onRequestClose={onClose}
       passiveModal
     >
-      <div className="modal-content-enter">
-        <Tabs
-        selectedIndex={activeTab}
-        onChange={({ selectedIndex }) => setActiveTab(selectedIndex)}
-      >
-        <Tab>Basic Info</Tab>
-        <Tab>Other Info</Tab>
-        <Tab>Software Versions</Tab>
-        <Tab>Hardware Versions</Tab>
-        <TabPanels>
-          <TabPanel>
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
-              <TextInput
-                id="rd-alias"
-                labelText="Alias"
-                value={editedAlias}
-                onChange={(e) => setEditedAlias(e.target.value)}
-              />
-              <TextInput
-                id="rd-address"
-                labelText="Address"
-                placeholder="IP:port or mDNS:port (e.g. 192.168.1.101:22)"
-                value={editedAddress}
-                onChange={(e) => {
-                  setEditedAddress(e.target.value);
-                  if (addressInvalid) {
-                    const parsed = parseAddressInput(e.target.value);
-                    if (parsed) {
-                      setAddressInvalid(false);
-                      setAddressInvalidText("");
-                    }
+      <div className="modal-content-enter" style={{ maxHeight: "70vh", overflowY: "auto", paddingRight: "0.5rem" }}>
+        {/* Section 1: Basic Info */}
+        <section style={sectionCardStyle}>
+          <div style={sectionHeaderStyle}>
+            <h4 style={sectionTitleStyle}>Basic Info</h4>
+          </div>
+          <div style={{ ...sectionBodyStyle, ...fieldsGroupStyle }}>
+            <TextInput
+              id="rd-alias"
+              labelText="Alias"
+              value={editedAlias}
+              onChange={(e) => setEditedAlias(e.target.value)}
+            />
+            <TextInput
+              id="rd-address"
+              labelText="Address"
+              placeholder="IP:port or mDNS:port (e.g. 192.168.1.101:22)"
+              value={editedAddress}
+              onChange={(e) => {
+                setEditedAddress(e.target.value);
+                if (addressInvalid) {
+                  const parsed = parseAddressInput(e.target.value);
+                  if (parsed) {
+                    setAddressInvalid(false);
+                    setAddressInvalidText("");
                   }
-                }}
-                invalid={addressInvalid}
-                invalidText={addressInvalidText}
-                onBlur={() => {
-                  if (editedAddress.trim()) {
-                    const parsed = parseAddressInput(editedAddress);
-                    if (!parsed) {
-                      setAddressInvalid(true);
-                      setAddressInvalidText("Format: <IP>:<port> or <mDNS>:<port> (port defaults to 22).");
-                    } else {
-                      setAddressInvalid(false);
-                      setAddressInvalidText("");
-                    }
+                }
+              }}
+              invalid={addressInvalid}
+              invalidText={addressInvalidText}
+              onBlur={() => {
+                if (editedAddress.trim()) {
+                  const parsed = parseAddressInput(editedAddress);
+                  if (!parsed) {
+                    setAddressInvalid(true);
+                    setAddressInvalidText("Format: <IP>:<port> or <mDNS>:<port> (port defaults to 22).");
+                  } else {
+                    setAddressInvalid(false);
+                    setAddressInvalidText("");
                   }
-                }}
-              />
-              <TextInput id="rd-model" labelText="Model" value={formatInfoValue(robot.model)} readOnly />
-              <TextInput id="rd-robotsn" labelText="Robot SN" value={formatInfoValue(robot.robotSN)} readOnly />
-              <TextInput id="rd-thingsid" labelText="Things ID" value={formatInfoValue(robot.thingsId)} readOnly />
-              <TextInput id="rd-vendorid" labelText="Vendor ID" value={formatInfoValue(robot.vendorId)} readOnly />
-              <TextInput id="rd-productid" labelText="Product ID" value={formatInfoValue(robot.productId)} readOnly />
-              <TextInput id="rd-mainboardsn" labelText="Mainboard SN" value={formatInfoValue(robot.mainboardSN)} readOnly />
-              <TextInput id="rd-mainboardid" labelText="Mainboard ID" value={formatInfoValue(robot.mainboardId)} readOnly />
-              <TextInput id="rd-mainsomsn" labelText="Main SOM SN" value={formatInfoValue(robot.mainSOMSN)} readOnly />
-            </div>
-          </TabPanel>
-           <TabPanel>
-             <div style={{ marginTop: "1rem" }}>
-               <DataTable rows={deviceRows} headers={deviceHeaders}>
-                 {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
-                   <Table {...getTableProps()} size="sm">
-                     <TableHead>
-                       <TableRow>
-                         {headers.map((h) => {
-                           const { key, ...headerProps } = getHeaderProps({ header: h });
-                           return (
-                             <TableHeader key={key} {...headerProps}>
-                               {h.header}
-                             </TableHeader>
-                           );
-                         })}
-                       </TableRow>
-                     </TableHead>
-                     <TableBody>
-                       {rows.map((r) => {
-                         const { key, ...rowProps } = getRowProps({ row: r });
-                         return (
-                           <TableRow key={key} {...rowProps}>
-                             {r.cells.map((cell) => (
-                               <TableCell key={cell.id}>{cell.value}</TableCell>
-                             ))}
-                           </TableRow>
-                         );
-                       })}
-                     </TableBody>
-                   </Table>
-                 )}
-               </DataTable>
-             </div>
-           </TabPanel>
-           <TabPanel>
-             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1rem" }}>
-                <section>
-                  <h5 style={{ marginBottom: "0.5rem" }}>OS Versions</h5>
-                  <TextInput id="sw-megacosmos" labelText="megacosmOS" value={formatInfoValue(robot.megaCosmOSVersion)} readOnly />
-                  <TextInput id="sw-movebase" labelText="Movebase" value={formatInfoValue(robot.movebaseVersion)} readOnly />
-                  <TextInput id="sw-ggr" labelText="GGR" value={formatInfoValue(robot.ggrVersion)} readOnly />
-                </section>
-               <section>
-                 <h5 style={{ marginBottom: "0.5rem" }}>MCU Firmware</h5>
-                 {renderKeyValueList(robot.mcuFirmwareVersions)}
-               </section>
-               <section>
-                 <h5 style={{ marginBottom: "0.5rem" }}>Actuator Firmware</h5>
-                 {renderKeyValueList(robot.actuatorFirmwareVersions)}
-               </section>
-               <section>
-                 <h5 style={{ marginBottom: "0.5rem" }}>Sensor Firmware</h5>
-                 {renderKeyValueList(robot.sensorFirmwareVersions)}
-               </section>
-             </div>
-           </TabPanel>
-           <TabPanel>
-             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1rem" }}>
-                <section>
-                  <h5 style={{ marginBottom: "0.5rem" }}>Main Control</h5>
-                  <TextInput id="hw-maincontrol" labelText="Main Control Hardware Version" value={formatInfoValue(robot.mainControlHardwareVersion)} readOnly />
-                </section>
-               <section>
-                 <h5 style={{ marginBottom: "0.5rem" }}>MCU Hardware</h5>
-                 {renderKeyValueList(robot.mcuHardwareVersions)}
-               </section>
-               <section>
-                 <h5 style={{ marginBottom: "0.5rem" }}>Actuator Hardware</h5>
-                 {renderKeyValueList(robot.actuatorHardwareVersions)}
-               </section>
-               <section>
-                 <h5 style={{ marginBottom: "0.5rem" }}>Sensor Hardware</h5>
-                 {renderKeyValueList(robot.sensorHardwareVersions)}
-               </section>
-             </div>
-           </TabPanel>
-         </TabPanels>
-       </Tabs>
+                }
+              }}
+            />
+            <TextInput id="rd-model" labelText="Model" value={formatInfoValue(robot.model)} readOnly />
+            <TextInput id="rd-robotsn" labelText="Robot SN" value={formatInfoValue(robot.robotSN)} readOnly />
+            <TextInput id="rd-thingsid" labelText="Things ID" value={formatInfoValue(robot.thingsId)} readOnly />
+            <TextInput id="rd-vendorid" labelText="Vendor ID" value={formatInfoValue(robot.vendorId)} readOnly />
+            <TextInput id="rd-productid" labelText="Product ID" value={formatInfoValue(robot.productId)} readOnly />
+            <TextInput id="rd-mainboardsn" labelText="Mainboard SN" value={formatInfoValue(robot.mainboardSN)} readOnly />
+            <TextInput id="rd-mainboardid" labelText="Mainboard ID" value={formatInfoValue(robot.mainboardId)} readOnly />
+            <TextInput id="rd-mainsomsn" labelText="Main SOM SN" value={formatInfoValue(robot.mainSOMSN)} readOnly />
+          </div>
+        </section>
+
+        {/* Section 2: Software Versions */}
+        <section style={sectionCardStyle}>
+          <div style={sectionHeaderStyle}>
+            <h4 style={sectionTitleStyle}>Software Versions</h4>
+          </div>
+          <div style={{ ...sectionBodyStyle, ...fieldsGroupStyle }}>
+            <TextInput id="sw-megacosmos" labelText="megacosmOS" value={formatInfoValue(robot.megaCosmOSVersion)} readOnly />
+            <TextInput id="sw-movebase" labelText="Movebase" value={formatInfoValue(robot.movebaseVersion)} readOnly />
+            <TextInput id="sw-ggr" labelText="GGR" value={formatInfoValue(robot.ggrVersion)} readOnly />
+          </div>
+        </section>
+
+        {/* Section 3: Hardware Versions */}
+        <section style={sectionCardStyle}>
+          <div style={sectionHeaderStyle}>
+            <h4 style={sectionTitleStyle}>Hardware Versions</h4>
+            <Button kind="ghost" size="sm" onClick={() => {}}>
+              Read
+            </Button>
+          </div>
+          <div style={sectionBodyStyle}>
+            <DataTable rows={deviceRows} headers={deviceHeaders}>
+              {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
+                <Table {...getTableProps()} size="sm">
+                  <TableHead>
+                    <TableRow>
+                      {headers.map((h) => {
+                        const { key, ...headerProps } = getHeaderProps({ header: h });
+                        return (
+                          <TableHeader key={key} {...headerProps}>
+                            {h.header}
+                          </TableHeader>
+                        );
+                      })}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rows.map((r) => {
+                      const { key, ...rowProps } = getRowProps({ row: r });
+                      return (
+                        <TableRow key={key} {...rowProps}>
+                          {r.cells.map((cell) => (
+                            <TableCell key={cell.id}>{cell.value}</TableCell>
+                          ))}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </DataTable>
+          </div>
+        </section>
+
+        {/* Section 4: Other Info */}
+        <section style={sectionCardStyle}>
+          <div style={sectionHeaderStyle}>
+            <h4 style={sectionTitleStyle}>Other Info</h4>
+            <Button kind="ghost" size="sm" onClick={() => {}}>
+              Read
+            </Button>
+          </div>
+          <div style={sectionBodyStyle}>
+            <span style={{ color: "var(--cds-text-secondary, #525252)", fontSize: "0.875rem" }}>No data</span>
+          </div>
+        </section>
+      </div>
+
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem", marginTop: "1.5rem" }}>
         <Button kind="secondary" onClick={onClose}>
           Close
@@ -267,7 +268,6 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
         <Button kind="primary" onClick={handleSave} disabled={!hasChanges || saving}>
           {saving ? "Saving..." : "Save"}
         </Button>
-      </div>
       </div>
     </Modal>
   );
