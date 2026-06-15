@@ -164,6 +164,13 @@ async function main(): Promise<void> {
 
   app.get("/api/health", (c) => c.json({ status: "ok" }));
 
+  app.post("/api/shutdown", async (c) => {
+    log.info("Shutdown requested via API");
+    c.json({ message: "Server shutting down..." });
+    setTimeout(() => process.exit(0), 300);
+    return c.body(null);
+  });
+
   const systemLogService = new SystemLogService({
     logsDir: config.logs.dir,
     studioVersion: "1.0.0",
@@ -212,6 +219,8 @@ async function main(): Promise<void> {
       const displayHost = config.server.host === "0.0.0.0" ? "127.0.0.1" : config.server.host;
       const url = `http://${displayHost}:${config.server.port}`;
       log.info({ host: config.server.host, port: config.server.port, url }, "RobotOps Studio started");
+      process.stdout.write(`\n  RobotOps Studio is running at ${url}\n`);
+      process.stdout.write(`  Press Ctrl+C or send POST ${url}/api/shutdown to stop\n\n`);
       openBrowser(url);
     });
     server.on("error", (err: NodeJS.ErrnoException) => {
