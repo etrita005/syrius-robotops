@@ -389,9 +389,9 @@ export const TASK_REGISTRY: TaskRegistry = {
       name: "Upgrade Movebase",
       description: "Upgrade the Movebase software on selected robots.",
       robotSelection: {
-        mode: "single",
+        mode: "multiple",
         description:
-          "Select a single target robot to upgrade Movebase software.",
+          "Select one or more target robots to upgrade Movebase software.",
       },
       dag: UPGRADE_MOVEBASE_DAG,
       expectedResults: ["cleanup_done"],
@@ -412,11 +412,11 @@ export const TASK_REGISTRY: TaskRegistry = {
     {
       type: "apply-alpha2-map",
       name: "Apply Alpha2 Map",
-      description: "Apply an Alpha2 format map package to the robot.",
+      description: "Apply an Alpha2 format map package to selected robots.",
       robotSelection: {
-        mode: "single",
+        mode: "multiple",
         description:
-          "Select a single target robot to apply the Alpha2 map.",
+          "Select one or more target robots to apply the Alpha2 map.",
       },
       dag: APPLY_ALPHA2_MAP_DAG,
       expectedResults: ["wait_done"],

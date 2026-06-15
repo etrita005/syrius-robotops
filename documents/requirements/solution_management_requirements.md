@@ -414,7 +414,9 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 - 任务类型、DAG、任务参数模板等元数据集中存储在前端结构化数据文件（Task Registry）中，前端通过标准解析函数读取并自动生成界面，无需为每种新任务类型硬编码界面逻辑。
 - 当前支持的任务类型：
   - **Upgrade BUP**：可多选机器人，需选择 Artifact 资源文件（`artifactId`）。
-  - **Upgrade Movebase**：仅单选机器人，需选择 Artifact 资源文件（`artifactId`）。
+  - **Movebase Disk Cleanup**：可多选机器人，需确认清理选项（`cleanUserHomes`）。
+  - **Upgrade Movebase**：可多选机器人，需选择 Artifact 资源文件（`artifactId`）。
+  - **Apply Alpha2 Map**：可多选机器人，需选择 Artifact 资源文件（`artifactId`）。
 - 系统通过 `POST /api/flows` 创建每个任务，前端从 Task Registry 中获取对应任务类型的 DAG 并逐个调用 `TaskFlowEngine.createFlow("user", dag, input)`。
 - 每个 taskFlow 的 `input` 中必须包含以下元数据字段：
   - `solutionId`：当前解决方案 ID。
