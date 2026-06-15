@@ -85,8 +85,21 @@ const UPGRADE_MOVEBASE_DAG: DagDefinition = {
       },
       provides: ["reboot_done"],
     },
+    wait_reconnect: {
+      requires: ["robotIp", "robotPort", "reboot_done"],
+      resolver: {
+        name: "WaitSshReconnectTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          timeout: { value: 360000 },
+        },
+        results: { done: "reconnect_done" },
+      },
+      provides: ["reconnect_done"],
+    },
     verify_version: {
-      requires: ["robotIp", "robotPort", "reboot_done", "expectedVersion"],
+      requires: ["robotIp", "robotPort", "reconnect_done", "expectedVersion"],
       resolver: {
         name: "MatchMovebaseVersionTask",
         params: {

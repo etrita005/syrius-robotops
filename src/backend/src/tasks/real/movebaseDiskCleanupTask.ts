@@ -29,6 +29,7 @@ export class MovebaseDiskCleanupTask extends SshCommandTask {
       "find /opt/cosmos/ota/recovery -maxdepth 1 -type f \\( -name '*.deb' -o -name '*.apk' \\) -delete 2>/dev/null || true",
       "rm -rf -- /opt/cosmos/lib/vendor",
       "find /mnt/cosmos/boot/lib/bootstrapper -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true",
+      "rm -rf -- /mnt/cosmos/boot/l4t_ota",
       cleanUserHomes
         ? "find /home/developer /home/factory -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true"
         : "true",
