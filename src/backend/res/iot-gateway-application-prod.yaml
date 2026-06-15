@@ -1,0 +1,671 @@
+############################ common configuration #############################################
+env: prod
+logLevel: info
+grpc:
+  server:
+    address: 0.0.0.0:9000
+    network: tcp
+db:
+  badger:
+    data:
+      path: /opt/cosmos/data/iot-gateway/db/badger/data
+      numMemTables: 2
+      memTableSizeOfMB: 8
+      valueLogFileSizeOfMB: 64
+      valueLogGc: 0.3
+monitor:
+  enabled: false
+http:
+  server:
+    listenAddress: 0.0.0.0:18820
+dbus:
+  enable: true
+  isSystemBus: true
+  name: com.syriusrobotics.iot.iotgateway
+############################ common configuration #############################################
+
+attribute:
+  bootstrapper:
+    syncThingIdCron: "@every 20s"
+    syncOtaTokenCron: "@every 20s"
+    dbus:
+      dbusDest: "com.syriusrobotics.bootstrapper.iotdevice"
+      dbusPath: "/com/syriusrobotics/bootstrapper/iotdevice"
+      getThingInfoMethod: "com.syriusrobotics.bootstrapper.iotdevice.GetThingInfo"
+      GetSharedAttributesByKeysMethod: "com.syriusrobotics.bootstrapper.iotdevice.GetSharedAttributesByKeys"
+    mock:
+      enabled: false
+  uploader:
+    uploadAttributesCron: "@every 3m"
+  deviceIdLocalStoragePath: "/opt/cosmos/etc/secure/iot-gateway/device_id"
+ota:
+  controller:
+    downloadedBaseDir: /opt/cosmos/ota/upgrade
+    checkAndDownloadCron: "@every 30s"
+    maxReDownloadTimes: 5
+  downloader:
+    minRemainingDiskSpaceTimesOfTotalDownloadedFile: 2
+    bufSize: 32768
+    sleepSecsBeforeRetryDownload: 1
+    wakeupCountDuringBeforeRetryDownloadSleep: 5
+  ddi:
+    ddiFeedbackDeploymentCron: "@every 1m"
+    feedbackMaxFailedTimesPerAction: 10000
+    feedbackUnauthenticatedTimesPerAction: 5
+    feedbackQueueMaxCapacity: 10
+  checker:
+    uploadOtaAttributesCron: "@every 30s"
+credential:
+  toBeDeleted:
+    blackboxS3MockCredentials:
+      - key: aws_access_key_id
+        value: <AWS_ACCESS_KEY_ID_PLACEHOLDER>
+        residencyCodeExpression: 'NewCNDev|NewCNSqa'
+      - key: aws_secret_access_key
+        value: <AWS_SECRET_ACCESS_KEY_PLACEHOLDER>
+        residencyCodeExpression: 'NewCNDev|NewCNSqa'
+      - key: aws_region
+        value: 'cn-northwest-1'
+        residencyCodeExpression: 'NewCNDev|NewCNSqa'
+      - key: aws_bucket_name
+        value: 'blackbox-report-context-no-prod'
+        residencyCodeExpression: 'NewCNDev|NewCNSqa'
+      - key: aws_access_key_id
+        value: '<AWS_ACCESS_KEY_ID_PLACEHOLDER>'
+        residencyCodeExpression: 'NewFwsCNProd'
+      - key: aws_secret_access_key
+        value: '<AWS_SECRET_ACCESS_KEY_PLACEHOLDER>'
+        residencyCodeExpression: 'NewFwsCNProd'
+      - key: aws_region
+        value: 'cn-northwest-1'
+        residencyCodeExpression: 'NewFwsCNProd'
+      - key: aws_bucket_name
+        value: 'blackbox-report-context-fws-cn-cn-northwest-1'
+        residencyCodeExpression: 'NewFwsCNProd'
+      - key: aws_access_key_id
+        value: '<AWS_ACCESS_KEY_ID_PLACEHOLDER>'
+        residencyCodeExpression: 'NewFwsProd'
+      - key: aws_secret_access_key
+        value: '<AWS_SECRET_ACCESS_KEY_PLACEHOLDER>'
+        residencyCodeExpression: 'NewFwsProd'
+      - key: aws_region
+        value: 'ap-northeast-1'
+        residencyCodeExpression: 'NewFwsProd'
+      - key: aws_bucket_name
+        value: 'blackbox-report-context-fws-ap-northeast-1'
+        residencyCodeExpression: 'NewFwsProd'
+    blackboxMqttMockCredentials:
+      - key: aws_mqtt_ca_cert
+        value: |
+          -----BEGIN CERTIFICATE-----
+          MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF
+          ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6
+          b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL
+          MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv
+          b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj
+          ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM
+          9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw
+          IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6
+          VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L
+          93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm
+          jgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC
+          AYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA
+          A4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI
+          U5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs
+          N+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv
+          o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU
+          5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy
+          rqXRfboQnoZsG4q5WTP468SQvvG5
+          -----END CERTIFICATE-----
+        residencyCodeExpression: 'NewCNDev|NewCNSqa'
+      - key: aws_mqtt_client_cert
+        value: |
+          -----BEGIN CERTIFICATE-----
+          MIIDWjCCAkKgAwIBAgIVAJIJnZK/abTK1U0IkFLYj6NIsQjRMA0GCSqGSIb3DQEB
+          CwUAME0xSzBJBgNVBAsMQkFtYXpvbiBXZWIgU2VydmljZXMgTz1BbWF6b24uY29t
+          IEluYy4gTD1TZWF0dGxlIFNUPVdhc2hpbmd0b24gQz1VUzAeFw0yNDExMTMwNTQx
+          MTVaFw00OTEyMzEyMzU5NTlaMB4xHDAaBgNVBAMME0FXUyBJb1QgQ2VydGlmaWNh
+          dGUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDJMXAuTa3hi+EEGyaL
+          CgMkmFl3pPLu0BtQk1R92pQrjrSrKynx5IFeW4f1syF/hZOryJG6hE6Wq91Eo32p
+          Gmkb8tFW7YJbi9VhE33S6fi1ihioZ8Pno93QrkQL3LFIVoycYObyoqlOFlEjA6gx
+          0oZiYk5nmyCKqDCqVC7ixrHpifscKkreIbv6QYp8jY5JP+XrWj99kdr2R1SkQ5/w
+          AxPgkI43Lx07jrzd+v32bzjBBQq5l3Hf0mZW44uQ6DhsmEC6E6u+tYO3AyIR0ByQ
+          gVkUS08YDUTcriyBNtQH916zQcpBF6LjpZz1GvJCI4n32WeRT/kOrzE9fWebk3Rc
+          2NHvAgMBAAGjYDBeMB8GA1UdIwQYMBaAFFjdzJmgsAHDd8rT2e0ssET7wjYsMB0G
+          A1UdDgQWBBRTnsqWs4RZcDVK7U83XS9eGWC8jjAMBgNVHRMBAf8EAjAAMA4GA1Ud
+          DwEB/wQEAwIHgDANBgkqhkiG9w0BAQsFAAOCAQEAZXnBN3oH3N/q86TckKZqpJio
+          GzEZZfLAb1Ekt9MnCR6n4stnm/gQ7BK6yVOf1DU8+FDWspoHBo7seWYBUWdVVF+q
+          SYceUh9xPhyJtkS+ANpUo8Vc4jrJUe6KREQ+eRt22o1xFILeBeWt3UOsQJhF5bP1
+          NrtZZorMbgP+K0L6JTqZhIy5/k4eLshXSM14TCqmaUA4CnkYJWRUC73XmkuyX+UE
+          djtjlUCfZcZ/s1QBSphWWgoCu05HyzMJ+Q2ikC5afmcvDnkeksDAOlJtQLw9YCFF
+          ENvoYYD3EQV4cobbOfa/g/DD/cBAwwQLDW2O0o1uD+EtiqY+RMPUaaE2nIlimg==
+          -----END CERTIFICATE-----
+        residencyCodeExpression: 'NewCNDev|NewCNSqa'
+      - key: aws_mqtt_client_key
+        value: |
+          -----BEGIN RSA PRIVATE KEY-----
+          MIIEpAIBAAKCAQEAyTFwLk2t4YvhBBsmiwoDJJhZd6Ty7tAbUJNUfdqUK460qysp
+          8eSBXluH9bMhf4WTq8iRuoROlqvdRKN9qRppG/LRVu2CW4vVYRN90un4tYoYqGfD
+          56Pd0K5EC9yxSFaMnGDm8qKpThZRIwOoMdKGYmJOZ5sgiqgwqlQu4sax6Yn7HCpK
+          3iG7+kGKfI2OST/l61o/fZHa9kdUpEOf8AMT4JCONy8dO4683fr99m84wQUKuZdx
+          39JmVuOLkOg4bJhAuhOrvrWDtwMiEdAckIFZFEtPGA1E3K4sgTbUB/des0HKQRei
+          46Wc9RryQiOJ99lnkU/5Dq8xPX1nm5N0XNjR7wIDAQABAoIBAGC/mF1710Ddvf/2
+          emtkDizb4jIJrRSwGGJ/5qJ6qMPlZPXm1M3Qf3F7fH7nfBVRi7iQw5s4on4L+WRX
+          ZkcaPy9EbexqXERfkuWStO/muUW7Oa5J78gFYdZG5sv5fXr2u7k7U/ObyuSVEMFQ
+          seH7hcnr0h46V8S1qmlOABnnSIivijyvD3FrbKJLJZ6lI0K+rgl4qdnfkq3TYCv0
+          tTyWyIJG0ar8NR8TC8t0IIb8b9KA345tFx+3XeEioAMCQSQjsE40sqEY/YGdJBKS
+          GMrGmvoC4I+CXFmpyGiMOcHmiPBuc2LgYF3Hr8ISoG8Ief/ijgk7NGs3O5K6lscd
+          q9yN0TECgYEA5S+MqNNmwknAQRZu7J9tJgpt1+K3ZoiqUxgL993AAMLikBc5ZMMK
+          kN6+DPVr0R4cvgxSQ/xjlvHLkmJDQTt5fCp1fJPTE5UTx04aN+YoC7eNtDBAqV8v
+          K/WYuUsBhLweRO0XzmDYmjeTOx0Lv/mI0yTBaTc9XaQ88RvN2OvPfBkCgYEA4Lt3
+          7ryJ0FZEYVsMwNdBnZb3BN0zEtFMu8JkNdNOxWr36+4/VNalRk3BuNb+Im2KgFye
+          YgIFQOc64JBjP5T2eTpj4Lt8uTxWhUqV2ksR0Aq9LZTYvICbLj5L78g1YCCF2kTV
+          3Te36zGCRNCWwMl4KhP0wvs2qukHEacsad1Ff0cCgYAMBA4v28WLcipuPyrZpRIn
+          6GwR4YUUDx4+9QfLmwiyAYW3YEBWFBO9vK/iJgvdDuMa47J8dgMSquKtbhFwnhmk
+          dOVr/qQWZr5+uI2PWLXIx3rac50wRBlJCLtVG6Wcu/AqVPPmkhVJIJjLhJ5VFlQi
+          Hc82IPtKqY24ZmjIcrSSIQKBgQDBw6GCq/i/MsI+lryGQJKIh7Nv9DCnFuLsOI0i
+          g5C1Uqd0OrVMNs3FsiFHd8cidAQo7LJ6mndhIH15RcTs+0kP+TJIgB7nr4iB4G8Y
+          CgXPtJKsDFxbGx+xXXEnyx2KRkBik1s6I2JmXQeOwbJZgtwim5Y7z1GxRr4bkGIQ
+          3QGg3QKBgQCE1fPbe16OiWrKBGovjzjHvP14FuCNRSqT1TaAc0JqMlMtX5oZveJQ
+          gJI981jA/VIhCp3ZFVToFJDlc16kw2/SmMJf53HPreR4UWEwX0WzGGoiM95u1aaw
+          aBe0A2r6LIbIc4rnl+/AgDVEDM93otr0b79WhKgSyl580TdgJxjoKw==
+          -----END RSA PRIVATE KEY-----
+        residencyCodeExpression: 'NewCNDev|NewCNSqa'
+      - key: aws_mqtt_topic_prefix
+        value: 'snapshot/blackbox'
+        residencyCodeExpression: 'NewCNDev|NewCNSqa'
+      - key: aws_mqtt_uri
+        value: 'ssl://ap9nlrsyck6rm-ats.iot.cn-northwest-1.amazonaws.com.cn:8883'
+        residencyCodeExpression: 'NewCNDev|NewCNSqa'
+      - key: aws_mqtt_client_id_prefix
+        value: 'blackbox_'
+        residencyCodeExpression: 'NewCNDev|NewCNSqa'
+      - key: aws_mqtt_ca_cert
+        value: |
+          -----BEGIN CERTIFICATE-----
+          MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF
+          ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6
+          b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL
+          MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv
+          b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj
+          ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM
+          9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw
+          IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6
+          VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L
+          93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm
+          jgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC
+          AYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA
+          A4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI
+          U5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs
+          N+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv
+          o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU
+          5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy
+          rqXRfboQnoZsG4q5WTP468SQvvG5
+          -----END CERTIFICATE-----
+        residencyCodeExpression: 'NewFwsCNProd'
+      - key: aws_mqtt_client_cert
+        value: |
+          -----BEGIN CERTIFICATE-----
+          MIIDWjCCAkKgAwIBAgIVAIjchWk7/NCJIYRoKEgHqJcACRmoMA0GCSqGSIb3DQEB
+          CwUAME0xSzBJBgNVBAsMQkFtYXpvbiBXZWIgU2VydmljZXMgTz1BbWF6b24uY29t
+          IEluYy4gTD1TZWF0dGxlIFNUPVdhc2hpbmd0b24gQz1VUzAeFw0yNDExMTQwMjQ4
+          MDJaFw00OTEyMzEyMzU5NTlaMB4xHDAaBgNVBAMME0FXUyBJb1QgQ2VydGlmaWNh
+          dGUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCev7+ggGcLfavifpac
+          LQeGnWStqMVRLCiI3oW80dNLGuGzfjibQcKITSHjDo2u8O45gJTcVsnRsLTk9bYn
+          HhNIFA0S5+VPKneSvmvR8K2XmJUyBNy6Sv/LYqg2T/RqSDGxyXzbuNwW/lzq4j9/
+          v86iCdyBOrO3QDAFcKFgQjL4H72vxB8YbnNdfx+vsU/L346mmzdDEeOe5LXPaERX
+          2TIzKEru1Z+E/Tnst0cT2s+SaxQZl+9sCgrwGEj0QCGvhBirmBzNsRkmoTVIvh6z
+          YcgTofW1IjS6ytLj/th3xcErLPWDxut0bEHYggfOel67jT6OevYdeA7lMR09FaNx
+          D6ntAgMBAAGjYDBeMB8GA1UdIwQYMBaAFOQgTfgHToqGBshu4sgT+4rFjGJvMB0G
+          A1UdDgQWBBQ0msrFJdoBae0UbbHnS/1maLUIdDAMBgNVHRMBAf8EAjAAMA4GA1Ud
+          DwEB/wQEAwIHgDANBgkqhkiG9w0BAQsFAAOCAQEAnFwWsB5ar2Na44HTmTgzLbtb
+          2ZOpZ+Yw7mMZW3EfmYXWUMDFYdbQn3RaREcLbtey8/6Y/N4KEDZIVZ0Au1dWb1gN
+          70j5erlfeqA0YYteUmpBgYLWOMYlL5JWnjOcow3bSZFpCdmSY6VM22byrkvLz4Ay
+          ZejI4J3O9pfzZlkbQ27ZE2fJjoqAYp7qf0ljF305p73+SxUZehWcaa8vN53sqIc/
+          ucTkzyfI+P8QAndY5wLdSIg59Y44gfXa5Frqx5gaEmYSOmvRWHFXVh+mJROox301
+          q7u47nhRSGHHvb5uCUprUcok+LdTnaQoNnRDeQ0hUezlSjArp8R5qVLx51xv0A==
+          -----END CERTIFICATE-----
+        residencyCodeExpression: 'NewFwsCNProd'
+      - key: aws_mqtt_client_key
+        value: |
+          -----BEGIN RSA PRIVATE KEY-----
+          MIIEogIBAAKCAQEAnr+/oIBnC32r4n6WnC0Hhp1krajFUSwoiN6FvNHTSxrhs344
+          m0HCiE0h4w6NrvDuOYCU3FbJ0bC05PW2Jx4TSBQNEuflTyp3kr5r0fCtl5iVMgTc
+          ukr/y2KoNk/0akgxscl827jcFv5c6uI/f7/OogncgTqzt0AwBXChYEIy+B+9r8Qf
+          GG5zXX8fr7FPy9+Opps3QxHjnuS1z2hEV9kyMyhK7tWfhP057LdHE9rPkmsUGZfv
+          bAoK8BhI9EAhr4QYq5gczbEZJqE1SL4es2HIE6H1tSI0usrS4/7Yd8XBKyz1g8br
+          dGxB2IIHznpeu40+jnr2HXgO5TEdPRWjcQ+p7QIDAQABAoIBABQ4oJQ1Rurzyx1C
+          urSSF89R5S0pvliko1Ur4yU2JRAAEJfokBVWvwzVpmdhxzJthirU8iFO/M41EBXK
+          JrW84v/fbfrmhxMaebi7gMhxO+t/iCGi9OrV+tdRbdPdQ2j2YT4gSENEvORA6l0R
+          DL2dFRkW4HulmpbRGkzXF/dG928biIv+EYaIje0kQ+iaRbQ18rvUW3grnmMhZ7h9
+          3t8ekCaq8YosYImwfgdDuGvPecwpKbV59nAzhjnTpgsGCZXJu1TsIr8OTeFhhByb
+          6QqzTdzrg+sDOtDtBjGbjDJj1s0NLkyvF8CU7AGri3AOu9ysOGaWkKBdh6FGF1Cf
+          OIcj/hECgYEA0cSzYyv6mV4kxDV0+IM2K0C6wj6cFYoJ3X6iKep1KaZ5GImf2PPf
+          xMrnWju5Gb+Tt4gDLM7HWyxbwCxhjxPZJZz2MGhAyiZIqJ6ND1IOmE5Ork5Acw+x
+          CqxNHDDMIOkgMTUu2c5GiY5CSBtk8ihH9g3SXg6AOmilKLTdbAOID9MCgYEAwbx+
+          1wOSgOQtTrGc7fY994WNT/To6H4bZssFat1WztwTaDXs8+Oi7Lyu8CurSkIhJeb3
+          I7KqoZ3l/67X7h7wdzUqVgjq8ani3mqmpPNI3ZQ3p17P6gUkHOXS7A6Max38t7zy
+          8x2Z/MegIPwAkt1bc9bsVCKmoGQVcZD5QSsnBz8CgYBjDqQ3nLkGW7K5BRVrlWqr
+          GjIXMEG82ia2depWKOWS+Y4NzE+zv9ZXtAl0TuemBRXYgV4edrclktjw8wRO8GyG
+          moyXZ2PREisVlWm/ZlyGB9SX81P0AeD0zVDMky6SDASruBWbvREKPCeIrYcJ44O3
+          6ecBi496BZiYlHBLZY+HCQKBgHF03iM1KFrrRc1MHscM6gVG5RbqKmvdTlbIloea
+          z/ec0pC44+eAbC2P4jMsn8eBKsBznk/9lgfH3KX70uDUpaZqMDzqRAz6nK38b1My
+          Vn3NCzqtP72g/SEfRoKPkpQ4n4NK2EygDUoH7jLi4cMgdypDt2seT86mThiP+ii8
+          CMMpAoGASV+ru2FkVH77yQfAeph0HwF4XXvBMS+a4hFlrqMT9YQDmYA0MEkl+j9c
+          HyMYponL4qD9z5YmlAmBAStR6I7B1POb2ZyYsma1ekwvxnujf8S4WWmQ0w1dkbvD
+          M3lAxfvb2TfFUwJLxEAIefrgGOJx1C8fZKmb+6ZM7af4pQQ1DiM=
+          -----END RSA PRIVATE KEY-----
+        residencyCodeExpression: 'NewFwsCNProd'
+      - key: aws_mqtt_topic_prefix
+        value: 'snapshot/blackbox'
+        residencyCodeExpression: 'NewFwsCNProd'
+      - key: aws_mqtt_uri
+        value: 'ssl://ata3uja94tsje-ats.iot.cn-northwest-1.amazonaws.com.cn:8883'
+        residencyCodeExpression: 'NewFwsCNProd'
+      - key: aws_mqtt_client_id_prefix
+        value: 'blackbox_'
+        residencyCodeExpression: 'NewFwsCNProd'
+      - key: aws_mqtt_ca_cert
+        value: |
+          -----BEGIN CERTIFICATE-----
+          MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF
+          ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6
+          b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL
+          MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv
+          b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj
+          ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM
+          9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw
+          IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6
+          VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L
+          93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm
+          jgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC
+          AYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA
+          A4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI
+          U5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs
+          N+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv
+          o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU
+          5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy
+          rqXRfboQnoZsG4q5WTP468SQvvG5
+          -----END CERTIFICATE-----
+        residencyCodeExpression: 'NewFwsProd'
+      - key: aws_mqtt_client_cert
+        value: |
+          -----BEGIN CERTIFICATE-----
+          MIIDWjCCAkKgAwIBAgIVAM8VQORjXUuQ61kzx+beyDMLKnLOMA0GCSqGSIb3DQEB
+          CwUAME0xSzBJBgNVBAsMQkFtYXpvbiBXZWIgU2VydmljZXMgTz1BbWF6b24uY29t
+          IEluYy4gTD1TZWF0dGxlIFNUPVdhc2hpbmd0b24gQz1VUzAeFw0yNDExMTQwMjM5
+          MjVaFw00OTEyMzEyMzU5NTlaMB4xHDAaBgNVBAMME0FXUyBJb1QgQ2VydGlmaWNh
+          dGUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDPFKguUhVC/v7fDoBB
+          nUDYeMSxcaT6hdRF8NgeUsgYKSZgrwEIZ5BgJhgeNoDVPuuWifZYzEbHgCt1Rqln
+          5WdHUaCwoMLVozJoCeV2q4XGCWFQ3LHbGdMd8gFwaQWZSfqSYLcmohEaR4GceyfF
+          R+FmBTJi70p7oR3qVlHfC24/4hkMqRR3d0mAKSD+EvHN7qept++wJRMPz76III6f
+          jynH/VFlek5cVt4aPEVl9jNxke/a5U4n35eC+7/nnUVelGSpBRuXyuPGXjqvPgMj
+          Q2bUvfJFDO4cySVX9Kp9fyWrh3EuMVnyZPLIDia26AuP9EgykK4HrgSPZIuA7BV4
+          2OddAgMBAAGjYDBeMB8GA1UdIwQYMBaAFJ98ntsy5d3Qcy0vAhyxJkbyVxaPMB0G
+          A1UdDgQWBBSVHOuTrTNCYs3EK8m1CcPfrWipUDAMBgNVHRMBAf8EAjAAMA4GA1Ud
+          DwEB/wQEAwIHgDANBgkqhkiG9w0BAQsFAAOCAQEABpOYDVKkpuVq4P2TZMgWCDqL
+          ao1rU+R0a2Z+El1JR9a/7vJbLHWwdE1KQnDxS/BPRzgldu2lEZMY6/C0/lzzshK2
+          IcuSrhoPO8xRA7ujzKNOwFdmZagP3cbrEkx/zWl/8tBWrqHCQmjDqZ7siPDCCnkj
+          LEeWSDm3o/ui6JK1+AChxmJIx8V68Cmn9vsfpLgCGhb2+BsBmU2fJT8PGwQ6iE8m
+          cJB8kAOK2IVwoByuwr6bEOh/VbBoupKd4TFITJZs5bSgJVKpgx7K37YFIQ/KQG5N
+          FKKf7DRRVB0KBqfKK/qAZSasdyjgHWj9pvLT3PxYF40sRno4+kcV6rfh6z8EZQ==
+          -----END CERTIFICATE-----
+        residencyCodeExpression: 'NewFwsProd'
+      - key: aws_mqtt_client_key
+        value: |
+          -----BEGIN RSA PRIVATE KEY-----
+          MIIEowIBAAKCAQEAzxSoLlIVQv7+3w6AQZ1A2HjEsXGk+oXURfDYHlLIGCkmYK8B
+          CGeQYCYYHjaA1T7rlon2WMxGx4ArdUapZ+VnR1GgsKDC1aMyaAnldquFxglhUNyx
+          2xnTHfIBcGkFmUn6kmC3JqIRGkeBnHsnxUfhZgUyYu9Ke6Ed6lZR3wtuP+IZDKkU
+          d3dJgCkg/hLxze6nqbfvsCUTD8++iCCOn48px/1RZXpOXFbeGjxFZfYzcZHv2uVO
+          J9+Xgvu/551FXpRkqQUbl8rjxl46rz4DI0Nm1L3yRQzuHMklV/SqfX8lq4dxLjFZ
+          8mTyyA4mtugLj/RIMpCuB64Ej2SLgOwVeNjnXQIDAQABAoIBADK61cSbOTgzbc7J
+          J6RrWLJvS4hI1ejFlk4YBWnQT9KTaiJvXOppLJZRXsEwCvmys1YqsB3q1UAUZxEQ
+          4XlhWp6/IYWDrJdXpoaUPhGHTXtJWvzLRArv1adVXQLjx4pY9Did1uBw/Y2ZjOf/
+          x6ttw4sRpNlV08Jbow+AXAgvLbAaS8Q7Y99jLAZSy2BxXLzeZFNZHY2h8FUhCf2O
+          coN2DVT2rAc1loAFjVQjZU+3Wo8d7kEwW0Q7Khiac5GJdFrefzvVyckXvDzzyjY2
+          In4Qm3oEwCnIUOIe/CQ4ZpA9AEwb0rhahczOoveQ2L7lNqfL5XwTr9K3CfuS4hFN
+          a4X4OAECgYEA6YoC7goNO6Rk0uap7O5002xSUJ2Wjtf/cHlAM+tRvegll4kQouSj
+          u3jw8J99PUSiEroV692nGzhT+25BI6tbqeWNWU7z0j91vJ+6VxxM+PSMrVUkCXbl
+          vlajovCpZeG0JKvV515XRQbnSx+2Zh6Miny2P+PR4WyiDwZhsX81rgECgYEA4v81
+          2LK6MCYO7u1BXEfiBxvv2g7JKdbw1MkTytkYn4lbHVAiFJ3KvphKJN/IaX/kWG4u
+          rlrkdxC3veei7hSRv/jqbURFf+N8SSeJyKEy5pIjG2hJzCIejgkjEB5TZ5gCvRA/
+          5E9i8PXSW/gsV/spsZ/UiDhR3YqMkLniD1kKsV0CgYAaOTwQ/KH1w4TqxanpB/Go
+          V+56TOe+DHULbSIPcmoQWAP4mxR6JhBYmcD8U/xdJ9rHHYwemxoLjWyou/2mgrRd
+          RIB1uc7ZGfUfhBQJeg0Om288e2X7hhVQJSxkvH9ZCFoREBaJz2cfQiIwplP17ZI8
+          brqMPAmyNV+RLldD9hPSAQKBgQDLDYAdV8M1TtYM5C6TXbnSoirr5E4OHzdPII+T
+          5J8iFrxqfEQALSYvWAr68TNVLBIXCHi5fpTf7RRvy8TzM3MtRnxtQaTpwZRr2/Jk
+          hc4Ccrb0zVU2RU8PvxyeToJNKK1Kcj60/E6FPV/u5RDFouao/VAgikCw7D7RN3YA
+          RKZMAQKBgCOiOzcwm7Tg+J0byIaKRzt7+QvWHT4fcYk+5LsVUcOFkCO5yQfK+tG+
+          I2PRiwrBdiDR4waac8UZGr5iA3Mjc6eX6nrL4+/s53PqYIt1fF+tYb48/3XWhxbS
+          JmSfWIuX7bMFlbZFN4pJNeK2/MVmfLia/js7JVspfMWnZVSCGEpc
+          -----END RSA PRIVATE KEY-----
+        residencyCodeExpression: 'NewFwsProd'
+      - key: aws_mqtt_topic_prefix
+        value: 'snapshot/blackbox'
+        residencyCodeExpression: 'NewFwsProd'
+      - key: aws_mqtt_uri
+        value: 'ssl://a34hbb7nd9fqwe-ats.iot.ap-northeast-1.amazonaws.com:8883'
+        residencyCodeExpression: 'NewFwsProd'
+      - key: aws_mqtt_client_id_prefix
+        value: 'blackbox_'
+        residencyCodeExpression: 'NewFwsProd'
+    megacosmosMirrorMockCredentials:
+      - key: l4t_repository
+        value: https://mirrors-cn.syriusrobotics.com/repository/l4t-proxy/
+        residencyCodeExpression: '.*'
+      - key: movebase_repository
+        value: https://mirrors-cn.syriusrobotics.com/repository/movebase-proxy/
+        residencyCodeExpression: '.*'
+      - key: username
+        value: robotics
+        residencyCodeExpression: '.*'
+      - key: password
+        value: TZ2tVapNK5d11123
+        residencyCodeExpression: '.*'
+      - key: public_key
+        value: |
+          -----BEGIN PGP PUBLIC KEY BLOCK-----
+
+          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
+          PKskciGY7m75gPfya6yvLdt+BTL8jMo=
+          =cm/3
+          -----END PGP PUBLIC KEY BLOCK-----
+        residencyCodeExpression: '.*'
+    sentryMockCredentials:
+      - key: vrs_dsn
+        value: https://441d01b1706d505e22afce671aa56701@peony-cn-dev.flexgalaxy.com/35
+        residencyCodeExpression: NewCNDev
+      - key: vrs_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNDev
+      - key: vrs_projectName
+        value: vrs
+        residencyCodeExpression: NewCNDev
+      - key: android_dsn
+        value: https://9c2db04c32a146bb815b38d41bfbf693@peony-cn-dev.flexgalaxy.com/23
+        residencyCodeExpression: NewCNDev
+      - key: android_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNDev
+      - key: android_projectName
+        value: android
+        residencyCodeExpression: NewCNDev
+      - key: golang_dsn
+        value: https://f362ebf7c4e5f2f80ac4df8f417c053a@peony-cn-dev.flexgalaxy.com/25
+        residencyCodeExpression: NewCNDev
+      - key: golang_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNDev
+      - key: golang_projectName
+        value: golang
+        residencyCodeExpression: NewCNDev
+      - key: react_dsn
+        value: https://f706dfd270ec95576d3d4f0d9257021a@peony-cn-dev.flexgalaxy.com/29
+        residencyCodeExpression: NewCNDev
+      - key: react_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNDev
+      - key: react_projectName
+        value: react
+        residencyCodeExpression: NewCNDev
+      - key: vue_dsn
+        value: https://41db67c9c087d6ed87d075f681e19c4e@peony-cn-dev.flexgalaxy.com/30
+        residencyCodeExpression: NewCNDev
+      - key: vue_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNDev
+      - key: vue_projectName
+        value: vue
+        residencyCodeExpression: NewCNDev
+      - key: native_dsn
+        value: https://6a2591dc59c2912e5b04b88e12d29760@peony-cn-dev.flexgalaxy.com/27
+        residencyCodeExpression: NewCNDev
+      - key: native_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNDev
+      - key: native_projectName
+        value: native
+        residencyCodeExpression: NewCNDev
+      - key: vrs_dsn
+        value: https://441d01b1706d505e22afce671aa56701@peony-cn-dev.flexgalaxy.com/35
+        residencyCodeExpression: NewCNSqa
+      - key: vrs_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNSqa
+      - key: vrs_projectName
+        value: vrs
+        residencyCodeExpression: NewCNSqa
+      - key: android_dsn
+        value: https://9c2db04c32a146bb815b38d41bfbf693@peony-cn-dev.flexgalaxy.com/23
+        residencyCodeExpression: NewCNSqa
+      - key: android_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNSqa
+      - key: android_projectName
+        value: android
+        residencyCodeExpression: NewCNSqa
+      - key: golang_dsn
+        value: https://f362ebf7c4e5f2f80ac4df8f417c053a@peony-cn-dev.flexgalaxy.com/25
+        residencyCodeExpression: NewCNSqa
+      - key: golang_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNSqa
+      - key: golang_projectName
+        value: golang
+        residencyCodeExpression: NewCNSqa
+      - key: react_dsn
+        value: https://f706dfd270ec95576d3d4f0d9257021a@peony-cn-dev.flexgalaxy.com/29
+        residencyCodeExpression: NewCNSqa
+      - key: react_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNSqa
+      - key: react_projectName
+        value: react
+        residencyCodeExpression: NewCNSqa
+      - key: vue_dsn
+        value: https://41db67c9c087d6ed87d075f681e19c4e@peony-cn-dev.flexgalaxy.com/30
+        residencyCodeExpression: NewCNSqa
+      - key: vue_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNSqa
+      - key: vue_projectName
+        value: vue
+        residencyCodeExpression: NewCNSqa
+      - key: native_dsn
+        value: https://6a2591dc59c2912e5b04b88e12d29760@peony-cn-dev.flexgalaxy.com/27
+        residencyCodeExpression: NewCNSqa
+      - key: native_orgSlug
+        value: sentry
+        residencyCodeExpression: NewCNSqa
+      - key: native_projectName
+        value: native
+        residencyCodeExpression: NewCNSqa
+      - key: vrs_dsn
+        value: https://426d0bd3a2b7e560a2632dbe2f153ebe@peony-ap-northeast-1.flexgalaxy.ai/9
+        residencyCodeExpression: NewFwsProd
+      - key: vrs_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsProd
+      - key: vrs_projectName
+        value: vrs
+        residencyCodeExpression: NewFwsProd
+      - key: android_dsn
+        value: https://0c0340dbaf5dafa798d5c1a596ebcc06@peony-ap-northeast-1.flexgalaxy.ai/2
+        residencyCodeExpression: NewFwsProd
+      - key: android_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsProd
+      - key: android_projectName
+        value: android
+        residencyCodeExpression: NewFwsProd
+      - key: golang_dsn
+        value: https://3c5fa3d0e42f7c8bb560b19d48e70abd@peony-ap-northeast-1.flexgalaxy.ai/3
+        residencyCodeExpression: NewFwsProd
+      - key: golang_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsProd
+      - key: golang_projectName
+        value: golang
+        residencyCodeExpression: NewFwsProd
+      - key: react_dsn
+        value: https://5c6a74dee075a5a867876875e788fa78@peony-ap-northeast-1.flexgalaxy.ai/4
+        residencyCodeExpression: NewFwsProd
+      - key: react_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsProd
+      - key: react_projectName
+        value: react
+        residencyCodeExpression: NewFwsProd
+      - key: vue_dsn
+        value: https://22d2fa8582da9b2dcb67130b43b81520@peony-ap-northeast-1.flexgalaxy.ai/5
+        residencyCodeExpression: NewFwsProd
+      - key: vue_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsProd
+      - key: vue_projectName
+        value: vue
+        residencyCodeExpression: NewFwsProd
+      - key: native_dsn
+        value: https://89f9021d33d1d4db3a1d090eef0607b0@peony-ap-northeast-1.flexgalaxy.ai/6
+        residencyCodeExpression: NewFwsProd
+      - key: native_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsProd
+      - key: native_projectName
+        value: native
+        residencyCodeExpression: NewFwsProd
+      - key: vrs_dsn
+        value: https://426d0bd3a2b7e560a2632dbe2f153ebe@peony-ap-northeast-1.flexgalaxy.ai/9
+        residencyCodeExpression: NewFwsCNProd
+      - key: vrs_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsCNProd
+      - key: vrs_projectName
+        value: vrs
+        residencyCodeExpression: NewFwsCNProd
+      - key: android_dsn
+        value: https://0c0340dbaf5dafa798d5c1a596ebcc06@peony-ap-northeast-1.flexgalaxy.ai/2
+        residencyCodeExpression: NewFwsCNProd
+      - key: android_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsCNProd
+      - key: android_projectName
+        value: android
+        residencyCodeExpression: NewFwsCNProd
+      - key: golang_dsn
+        value: https://3c5fa3d0e42f7c8bb560b19d48e70abd@peony-ap-northeast-1.flexgalaxy.ai/3
+        residencyCodeExpression: NewFwsCNProd
+      - key: golang_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsCNProd
+      - key: golang_projectName
+        value: golang
+        residencyCodeExpression: NewFwsCNProd
+      - key: react_dsn
+        value: https://5c6a74dee075a5a867876875e788fa78@peony-ap-northeast-1.flexgalaxy.ai/4
+        residencyCodeExpression: NewFwsCNProd
+      - key: react_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsCNProd
+      - key: react_projectName
+        value: react
+        residencyCodeExpression: NewFwsCNProd
+      - key: vue_dsn
+        value: https://22d2fa8582da9b2dcb67130b43b81520@peony-ap-northeast-1.flexgalaxy.ai/5
+        residencyCodeExpression: NewFwsCNProd
+      - key: vue_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsCNProd
+      - key: vue_projectName
+        value: vue
+        residencyCodeExpression: NewFwsCNProd
+      - key: native_dsn
+        value: https://89f9021d33d1d4db3a1d090eef0607b0@peony-ap-northeast-1.flexgalaxy.ai/6
+        residencyCodeExpression: NewFwsCNProd
+      - key: native_orgSlug
+        value: sentry
+        residencyCodeExpression: NewFwsCNProd
+      - key: native_projectName
+        value: native
+        residencyCodeExpression: NewFwsCNProd
+sentry:
+  init:
+    getDsnCron: "@every 5m"
+    tag:
+      serviceName: "iot-gateway"
+      generateFullFilePath: "/var/log/cosmos/iot-gateway/sentryUpload.info"
+
+blackbox:
+  baseDir: "/var/log/cosmos/blackbox_task_collection"
+  client:
+    performTaskCron: "@every 20s"
+    otaFileName: "otaTask.json"
+    register:
+      processName: "iot-gateway"
+      method: "dbus"
+      grpcUrl: "grpc://127.0.0.1:9000"
+      dbusDest: "com.syriusrobotics.iot.iotgateway"
+      dbusPath: "/internal/dbus/server/dbus_blackbox_client_service"
+      isSystemBus: "true"
+      registerCron: "@every 20s"
+  server:
+    register:
+      grpcUrl: "grpc://127.0.0.1:10040"
+      dbusDest: "com.syriusrobotics.iot.blackboxserver"
+      dbusPath: "/internal/dbus/server/dbus_blackbox_server_service"
+      isSystemBus: "true"
+
+iotResidency:
+  address: grpc://localhost:11090
+  refreshCron: "@every 10s"
+  dbus:
+    dbusDest: "com.syriusrobotics.iot.iotresidency"
+    dbusPath: "/internal/dbus/server/dbus_residency_service"
+    getResidencyMethodName: "com.syriusrobotics.iot.iotresidency.GetResidencyFromLocalCache"

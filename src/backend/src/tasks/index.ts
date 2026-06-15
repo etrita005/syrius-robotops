@@ -59,3 +59,7 @@ export { WaitSshReconnectTask } from "./real/waitSshReconnectTask.js";
 export { MockWaitSshReconnectTask } from "./mock/mockWaitSshReconnectTask.js";
 export type { SshConnectionProbe, SshConnectionProbeParams, SshConnectionProbeResult, SshConnectionWaitParams, SshConnectionWaitResult } from "./real/sshConnectionWait.js";
 export { setSshConnectionProbeForTest, resetSshConnectionProbeForTest } from "./real/sshConnectionWait.js";
+export { TransferIotGatewayConfigTask } from "./real/transferIotGatewayConfigTask.js";
+export { MockTransferIotGatewayConfigTask } from "./mock/mockTransferIotGatewayConfigTask.js";
+export { UpdateIotGatewayConfigTask } from "./real/updateIotGatewayConfigTask.js";
+export { MockUpdateIotGatewayConfigTask } from "./mock/mockUpdateIotGatewayConfigTask.js";

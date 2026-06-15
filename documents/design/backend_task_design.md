@@ -812,3 +812,66 @@ Same as `SshCommandTask`.
 - Hardcoded command: `rm -rf /home/developer/alpha2_map_package.zip`
 - Used as the cleanup step in the Alpha2 map application flow
 - Implementation mirrors `DeleteMovebaseTask`
+
+---
+
+## 27. TransferIotGatewayConfigTask
+
+### Overview
+
+Transfers the local `iot-gateway-application-prod.yaml` configuration file to `/tmp/iot-gateway-application-prod.yaml` on the remote robot.
+
+### Input Parameters
+
+Inherits all from `SshFileTransferTask`. The `localFilePath` and `remoteFilePath` are hardcoded:
+
+- **localFilePath**: `src/backend/res/iot-gateway-application-prod.yaml` (resolved relative to task module)
+- **remoteFilePath**: `/tmp/iot-gateway-application-prod.yaml`
+- **sudo**: `true`
+- **verifyChecksum**: `false`
+- **retryCount**: `1`
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Transfers a configuration file (not a script/binary), so checksum verification is disabled
+- Single retry is sufficient for configuration file transfers
+- The file is placed in `/tmp/` as a staging location before being moved to its final destination by `UpdateIotGatewayConfigTask`
+
+---
+
+## 28. UpdateIotGatewayConfigTask
+
+### Overview
+
+Executes a compound SSH command on the remote robot to:
+1. Move the configuration file from `/tmp/` to `/mnt/cosmos/boot/etc/iot-gateway/application-prod.yaml` (overwrites existing)
+2. Set file ownership to `iot-gateway:iot-gateway`
+3. Clean up APT cache and trusted GPG keys (optional — failures are ignored via `|| true`)
+4. Restart `syrius-iot-gateway.service` and `cosmos-update-engine.service` (optional — failures are ignored via `|| true`)
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`. Default `commandTimeout`: 120000ms (2 minutes).
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded 8-step command chained with `&&`:
+  1. `mv /tmp/iot-gateway-application-prod.yaml /mnt/cosmos/boot/etc/iot-gateway/application-prod.yaml` — move configuration file
+  2. `chown iot-gateway:iot-gateway /mnt/cosmos/boot/etc/iot-gateway/application-prod.yaml` — set ownership
+  3. `rm /opt/cosmos/var/cosmos_update_engine/apt/trusted.gpg* || true` — clean trusted GPG keys (optional)
+  4. `rm /opt/cosmos/var/cosmos_update_engine/apt/nexus.asc || true` — clean Nexus GPG key (optional)
+  5. `rm -rf /var/lib/apt/lists/* || true` — clean APT lists (optional)
+  6. `apt clean || true` — clean APT cache (optional)
+  7. `systemctl restart syrius-iot-gateway.service || true` — restart iot-gateway service (optional)
+  8. `systemctl restart cosmos-update-engine.service || true` — restart update engine service (optional)
+- Steps 3-8 use `|| true` to prevent entire command chain from failing when individual cleanup/restart operations fail
+- Steps 1-2 are critical (move and chown); if they fail the task fails
+- The service restarts take effect after the reboot step in the DAG flow

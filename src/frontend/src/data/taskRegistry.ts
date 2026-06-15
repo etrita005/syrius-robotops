@@ -347,6 +347,49 @@ const APPLY_ALPHA2_MAP_ERROR_DAG: DagDefinition = {
   },
 };
 
+const UPDATE_IOT_GATEWAY_CONFIG_DAG: DagDefinition = {
+  tasks: {
+    transfer_config: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "TransferIotGatewayConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    update_config: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "UpdateIotGatewayConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "update_done" },
+      },
+      provides: ["update_done"],
+    },
+    reboot: {
+      requires: ["robotIp", "robotPort", "update_done"],
+      resolver: {
+        name: "RebootRobotTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          ignoreFailure: { value: true },
+          retryCount: { value: 1 },
+        },
+        results: { done: "reboot_done" },
+      },
+      provides: ["reboot_done"],
+    },
+  },
+};
+
 export const TASK_REGISTRY: TaskRegistry = {
   version: "1.0.0",
   taskTypes: [
@@ -441,6 +484,19 @@ export const TASK_REGISTRY: TaskRegistry = {
           required: true,
         },
       },
+    },
+    {
+      type: "update-iot-gateway-config",
+      name: "Update IoT Gateway Config",
+      description: "Update iot-gateway configuration and restart related services on selected robots.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to update iot-gateway configuration.",
+      },
+      dag: UPDATE_IOT_GATEWAY_CONFIG_DAG,
+      expectedResults: ["reboot_done"],
+      params: {},
     },
   ],
 };

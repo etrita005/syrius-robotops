@@ -18,7 +18,7 @@ import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
-import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, GetRobotSoftwareInfoTask, MockGetRobotSoftwareInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, UpdateRobotSoftwareInfoTask, MockUpdateRobotSoftwareInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask, RebootRobotTask, MockRebootRobotTask, MatchFileContentTask, MockMatchFileContentTask, MatchMovebaseVersionTask, MockMatchMovebaseVersionTask, TransferBUPTask, MockTransferBUPTask, TransferBUPScriptTask, MockTransferBUPScriptTask, UpgradeBUPTask, MockUpgradeBUPTask, MatchBUPVersionTask, MockMatchBUPVersionTask, DeleteBUPTask, MockDeleteBUPTask, MovebaseDiskCleanupTask, MockMovebaseDiskCleanupTask, TransferAlpha2MapTask, MockTransferAlpha2MapTask, ApplyAlpha2MapTask, MockApplyAlpha2MapTask, DeleteAlpha2MapTask, MockDeleteAlpha2MapTask, SleepTask, MockSleepTask, WaitSshConnectedTask, MockWaitSshConnectedTask, WaitSshDisconnectedTask, MockWaitSshDisconnectedTask, WaitSshReconnectTask, MockWaitSshReconnectTask } from "./tasks/index.js";
+import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, GetRobotSoftwareInfoTask, MockGetRobotSoftwareInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, UpdateRobotSoftwareInfoTask, MockUpdateRobotSoftwareInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask, RebootRobotTask, MockRebootRobotTask, MatchFileContentTask, MockMatchFileContentTask, MatchMovebaseVersionTask, MockMatchMovebaseVersionTask, TransferBUPTask, MockTransferBUPTask, TransferBUPScriptTask, MockTransferBUPScriptTask, UpgradeBUPTask, MockUpgradeBUPTask, MatchBUPVersionTask, MockMatchBUPVersionTask, DeleteBUPTask, MockDeleteBUPTask, MovebaseDiskCleanupTask, MockMovebaseDiskCleanupTask, TransferAlpha2MapTask, MockTransferAlpha2MapTask, ApplyAlpha2MapTask, MockApplyAlpha2MapTask, DeleteAlpha2MapTask, MockDeleteAlpha2MapTask, SleepTask, MockSleepTask, WaitSshConnectedTask, MockWaitSshConnectedTask, WaitSshDisconnectedTask, MockWaitSshDisconnectedTask, WaitSshReconnectTask, MockWaitSshReconnectTask, TransferIotGatewayConfigTask, MockTransferIotGatewayConfigTask, UpdateIotGatewayConfigTask, MockUpdateIotGatewayConfigTask } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
@@ -26,8 +26,26 @@ import { configureLogger, createLogger } from "./logger/index.js";
 import { loadAppConfig, parseCliArgs, resolveRuntimePaths } from "./runtime/appConfig.js";
 import { StaticAssetService } from "./static/staticAssetService.js";
 import { createStaticRoutes } from "./static/staticRoutes.js";
+import { exec } from "node:child_process";
 
 const startupLog = createLogger("App");
+
+function openBrowser(url: string): void {
+  const platform = process.platform;
+  let command: string;
+  if (platform === "win32") {
+    command = `start "" "${url}"`;
+  } else if (platform === "darwin") {
+    command = `open "${url}"`;
+  } else {
+    command = `xdg-open "${url}"`;
+  }
+  exec(command, (err) => {
+    if (err) {
+      startupLog.warn({ err: err.message, url }, "Failed to open browser");
+    }
+  });
+}
 
 async function main(): Promise<void> {
   const cliOverrides = parseCliArgs();
@@ -108,6 +126,8 @@ async function main(): Promise<void> {
     { name: "WaitSshConnectedTask", real: WaitSshConnectedTask, mock: MockWaitSshConnectedTask },
     { name: "WaitSshDisconnectedTask", real: WaitSshDisconnectedTask, mock: MockWaitSshDisconnectedTask },
     { name: "WaitSshReconnectTask", real: WaitSshReconnectTask, mock: MockWaitSshReconnectTask },
+    { name: "TransferIotGatewayConfigTask", real: TransferIotGatewayConfigTask, mock: MockTransferIotGatewayConfigTask },
+    { name: "UpdateIotGatewayConfigTask", real: UpdateIotGatewayConfigTask, mock: MockUpdateIotGatewayConfigTask },
   ]);
 
   const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
@@ -189,7 +209,10 @@ async function main(): Promise<void> {
   try {
     const server = serve({ fetch: app.fetch, hostname: config.server.host, port: config.server.port });
     server.on("listening", () => {
-      log.info({ host: config.server.host, port: config.server.port, url: `http://${config.server.host}:${config.server.port}` }, "RobotOps Studio started");
+      const displayHost = config.server.host === "0.0.0.0" ? "127.0.0.1" : config.server.host;
+      const url = `http://${displayHost}:${config.server.port}`;
+      log.info({ host: config.server.host, port: config.server.port, url }, "RobotOps Studio started");
+      openBrowser(url);
     });
     server.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {

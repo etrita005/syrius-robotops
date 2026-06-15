@@ -224,4 +224,86 @@ test.describe("Task Management", () => {
     await modal.getByLabel("Select 192.168.1.11").check();
     await expect(modal.getByText("2 robots selected")).toBeVisible();
   });
+
+  test("TC-E2E-TASK-011: Update IoT Gateway Config task type appears in task creation modal", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Update IoT Gateway Config")).toBeVisible();
+  });
+
+  test("TC-E2E-TASK-012: Update IoT Gateway Config shows multi-robot selection in task type step", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    // All 5 task types should show "Multiple robots"
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(5);
+  });
+
+  test("TC-E2E-TASK-013: Update IoT Gateway Config leads to multi-robot step 2", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Update IoT Gateway Config")).toBeVisible();
+
+    await modal.locator("div").filter({ hasText: "Update IoT Gateway Config" }).first().click();
+    await appPage.waitForTimeout(300);
+
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await expect(modal.getByLabel("Select all robots")).toBeVisible();
+    await expect(modal.getByLabel("Select 192.168.1.10")).toBeVisible();
+    await expect(modal.getByLabel("Select 192.168.1.11")).toBeVisible();
+  });
+
+  test("TC-E2E-TASK-014: Update IoT Gateway Config task has no extra params step", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await modal.locator("div").filter({ hasText: "Update IoT Gateway Config" }).first().click();
+    await appPage.waitForTimeout(300);
+
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await modal.getByLabel("Select 192.168.1.10").check();
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    // Should go directly to confirmation step (no params needed)
+    await expect(modal.getByText(/Confirm/i).first()).toBeVisible({ timeout: 5000 });
+  });
 });

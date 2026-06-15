@@ -27,6 +27,8 @@ import { WaitSshDisconnectedTask } from "./tasks/real/waitSshDisconnectedTask.js
 import { WaitSshReconnectTask } from "./tasks/real/waitSshReconnectTask.js";
 import { MatchBUPVersionTask } from "./tasks/real/matchBUPVersionTask.js";
 import { MovebaseDiskCleanupTask } from "./tasks/real/movebaseDiskCleanupTask.js";
+import { TransferIotGatewayConfigTask } from "./tasks/real/transferIotGatewayConfigTask.js";
+import { UpdateIotGatewayConfigTask } from "./tasks/real/updateIotGatewayConfigTask.js";
 import { resetSshConnectionProbeForTest, setSshConnectionProbeForTest } from "./tasks/real/sshConnectionWait.js";
 import type { SshConnectionProbeParams } from "./tasks/real/sshConnectionWait.js";
 
@@ -3931,5 +3933,58 @@ describe("Robot Routes - API", () => {
       body: JSON.stringify({ address: "10.0.0.1" }),
     });
     assert.equal(createRes.status, 404);
+  });
+});
+
+class TestableTransferIotGatewayConfigTask extends TransferIotGatewayConfigTask {
+  public params(params: ValueMap = {}): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("TransferIotGatewayConfigTask", () => {
+  it("TC-TFE-061: should build correct transfer params", () => {
+    const task = new TestableTransferIotGatewayConfigTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+
+    assert.match(params.localFilePath as string, /iot-gateway-application-prod\.yaml$/);
+    assert.equal(params.remoteFilePath, "/tmp/iot-gateway-application-prod.yaml");
+    assert.equal(params.sudo, true);
+    assert.equal(params.verifyChecksum, false);
+    assert.equal(params.retryCount, 1);
+  });
+});
+
+class TestableUpdateIotGatewayConfigTask extends UpdateIotGatewayConfigTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap = {}): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("UpdateIotGatewayConfigTask", () => {
+  it("TC-TFE-062: should generate correct command with all required steps", () => {
+    const task = new TestableUpdateIotGatewayConfigTask();
+    const command = task.command();
+
+    assert.match(command, / && /);
+    assert.match(command, /mv.*iot-gateway-application-prod\.yaml/);
+    assert.match(command, /chown iot-gateway:iot-gateway/);
+    assert.match(command, /trusted\.gpg\* \|\| true/);
+    assert.match(command, /nexus\.asc \|\| true/);
+    assert.match(command, /apt clean \|\| true/);
+    assert.match(command, /systemctl restart syrius-iot-gateway/);
+    assert.match(command, /systemctl restart cosmos-update-engine/);
+  });
+
+  it("TC-TFE-063: should build correct params", () => {
+    const task = new TestableUpdateIotGatewayConfigTask();
+    const params = task.params({ robotIp: "192.168.1.10", sshUsername: "u", sshPassword: "p" });
+
+    assert.equal(params.sudo, true);
+    assert.equal(params.commandTimeout, 120000);
   });
 });

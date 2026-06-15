@@ -1137,3 +1137,53 @@ const dependentDag: FlowSpec = {
 | **输入** | `type: "internal"`，主 DAG 失败触发 errorDag |
 | **预期结果** | SSE 事件列表中 started 事件索引 < completed 事件索引 |
 | **验证点** | `startedIdx < completedIdx` |
+
+---
+
+## TransferIotGatewayConfigTask Test Cases
+
+### TC-TFE-061：transferIotGatewayConfigTask 构建参数验证
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 TransferIotGatewayConfigTask 构建的参数正确 |
+| **前置条件** | Task 类可实例化 |
+| **输入** | `robotIp: "192.168.1.10"` |
+| **预期结果** | `localFilePath` 指向 `iot-gateway-application-prod.yaml`，`remoteFilePath` 为 `/tmp/iot-gateway-application-prod.yaml`，`sudo` 为 `true`，`verifyChecksum` 为 `false`，`retryCount` 为 `1` |
+| **验证点** | `assert.match(params.localFilePath, /iot-gateway-application-prod\.yaml$/)`, `assert.equal(params.remoteFilePath, "/tmp/iot-gateway-application-prod.yaml")`, `assert.equal(params.sudo, true)`, `assert.equal(params.verifyChecksum, false)`, `assert.equal(params.retryCount, 1)` |
+
+## UpdateIotGatewayConfigTask Test Cases
+
+### TC-TFE-062：updateIotGatewayConfigTask 命令生成验证
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 UpdateIotGatewayConfigTask 生成的命令包含所有必要步骤 |
+| **前置条件** | Task 类可实例化 |
+| **输入** | 无额外参数 |
+| **预期结果** | 命令包含 mv、chown、rm、apt clean、systemctl restart 步骤。清理/重启步骤使用 `|| true` 防止失败传播。 |
+| **验证点** | `assert.match(command, /mv.*iot-gateway-application-prod\.yaml/)`, `assert.match(command, /chown iot-gateway:iot-gateway/)`, `assert.match(command, /trusted\.gpg\* \|\| true/)`, `assert.match(command, /nexus\.asc \|\| true/)`, `assert.match(command, /apt clean \|\| true/)`, `assert.match(command, /systemctl restart syrius-iot-gateway/)`, `assert.match(command, /systemctl restart cosmos-update-engine/)` |
+
+### TC-TFE-063：updateIotGatewayConfigTask 参数构建验证
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 UpdateIotGatewayConfigTask 构建的参数正确 |
+| **前置条件** | Task 类可实例化 |
+| **输入** | `robotIp: "192.168.1.10", sshUsername: "u", sshPassword: "p"` |
+| **预期结果** | `sudo` 为 `true`，`commandTimeout` 为 `120000`，`retryCount` 为默认值 |
+| **验证点** | `assert.equal(params.sudo, true)`, `assert.equal(params.commandTimeout, 120000)` |
+
+---
+
+## Update IoT Gateway Config DAG Test Cases
+
+### TC-TFE-064：update-iot-gateway-config DAG 节点依赖关系验证
+
+| 项 | 值 |
+|----|-----|
+| **测试目标** | 验证 DAG 定义的节点和依赖关系正确 |
+| **前置条件** | Task Registry 可加载 |
+| **输入** | type="update-iot-gateway-config" |
+| **预期结果** | DAG 包含 `transfer_config`、`update_config`、`reboot` 三个节点。`transfer_config` 使用 `TransferIotGatewayConfigTask`，`update_config` 使用 `UpdateIotGatewayConfigTask`，`reboot` 使用 `RebootRobotTask`。依赖链为 `transfer_config -> update_config -> reboot`。 |
+| **验证点** | DAG 结构完整，节点间依赖链正确 |

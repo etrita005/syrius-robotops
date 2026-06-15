@@ -89,3 +89,23 @@
 | Input | `robotIds: ["r1", "r2-gone"]` where r2-gone is not in robotData |
 | Expected Result | Only 1 taskFlow is created (for r1). Robots not found in robotData are silently skipped. |
 | Verification | `listFlows` returns 1 flow for r1 only. |
+
+## TC-CROSS-010: Update IoT Gateway Config task creates taskFlows per robot
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A solution with 2 robots. |
+| Input | Frontend creates an "update-iot-gateway-config" task with `robotIds: ["r1", "r2"]` |
+| Expected Result | 2 user taskFlows are created. Each flow has `input.robotIds` as a single-element array. |
+| Verification | `listFlows("user", { solutionId })` returns 2 flows. Each flow's `input.robotIds.length === 1`. |
+
+## TC-CROSS-011: Update IoT Gateway Config task has reboot step with ignoreFailure
+
+| Item | Value |
+|------|-------|
+| Priority | Medium |
+| Precondition | A solution with 1 robot. |
+| Input | Frontend creates an "update-iot-gateway-config" task for 1 robot |
+| Expected Result | The DAG includes a `reboot` node with `ignoreFailure: true` and `retryCount: 1` |
+| Verification | The DAG tasks.reboot.resolver.params has `ignoreFailure: { value: true }` and `retryCount: { value: 1 }` |
