@@ -86,6 +86,11 @@ class InMemoryObjectStore {
     };
   }
 
+  async getStoragePath(path: string): Promise<string | null> {
+    if (this.deleted.has(path)) return null;
+    return this.store.has(path) ? path : null;
+  }
+
   async deletePath(path: string): Promise<boolean> {
     this.deleted.add(path);
     return this.store.delete(path);
@@ -156,6 +161,10 @@ class EnhancedObjectStore {
       text: async () => str,
       arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer,
     };
+  }
+
+  async getStoragePath(path: string): Promise<string | null> {
+    return this.store.has(path) ? path : null;
   }
 
   async deletePath(path: string): Promise<boolean> {
