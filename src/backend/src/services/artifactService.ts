@@ -1,3 +1,5 @@
+import { stat, readFile, writeFile, mkdir } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { ObjectStore } from "./objectStore.js";
 import { ChecksumService } from "./checksumService.js";
 import { createHash } from "node:crypto";
@@ -115,9 +117,6 @@ export class ArtifactService {
       abortSignal?: AbortSignal;
     }
   ): Promise<UploadResult> {
-    const { stat, readFile } = await import("node:fs/promises");
-    const path = await import("node:path");
-
     const s = await stat(filePath);
     if (s.size > MAX_FILE_SIZE) {
       return { status: "failed", error: "FILE_TOO_LARGE" };
@@ -132,7 +131,7 @@ export class ArtifactService {
       return { status: "deduplicated", artifact: existing };
     }
 
-    const fileName = path.basename(filePath);
+    const fileName = basename(filePath);
     const artifactId = options?.customId ?? generateId(fileName);
 
     if (options?.customId) {
@@ -295,9 +294,6 @@ export class ArtifactService {
   async download(artifactId: string, destinationPath: string): Promise<string> {
     validateArtifactId(artifactId);
     const meta = await this.readMeta(artifactId);
-
-    const { writeFile, mkdir } = await import("node:fs/promises");
-    const { dirname, join } = await import("node:path");
 
     const response = await this.obs.get(`v1/artifacts/${artifactId}`);
     if (!response.ok) {

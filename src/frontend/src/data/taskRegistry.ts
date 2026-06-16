@@ -390,8 +390,6 @@ const UPDATE_IOT_GATEWAY_CONFIG_DAG: DagDefinition = {
   },
 };
 
-const DOWNLOAD_ALPHA2_SKETCH_DAG: DagDefinition = {
-
 const INSTALL_APP_DAG: DagDefinition = {
   tasks: {
     transfer: {
@@ -474,6 +472,8 @@ const INSTALL_APP_ERROR_DAG: DagDefinition = {
     },
   },
 };
+
+const DOWNLOAD_ALPHA2_SKETCH_DAG: DagDefinition = {
   tasks: {
     download: {
       requires: ["robotIp", "robotPort", "localTargetDir"],
