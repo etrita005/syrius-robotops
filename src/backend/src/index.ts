@@ -18,12 +18,12 @@ import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
-import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, GetRobotSoftwareInfoTask, MockGetRobotSoftwareInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, UpdateRobotSoftwareInfoTask, MockUpdateRobotSoftwareInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask, RebootRobotTask, MockRebootRobotTask, MatchFileContentTask, MockMatchFileContentTask, MatchMovebaseVersionTask, MockMatchMovebaseVersionTask, TransferBUPTask, MockTransferBUPTask, TransferBUPScriptTask, MockTransferBUPScriptTask, UpgradeBUPTask, MockUpgradeBUPTask, MatchBUPVersionTask, MockMatchBUPVersionTask, DeleteBUPTask, MockDeleteBUPTask, MovebaseDiskCleanupTask, MockMovebaseDiskCleanupTask, TransferAlpha2MapTask, MockTransferAlpha2MapTask, ApplyAlpha2MapTask, MockApplyAlpha2MapTask, DeleteAlpha2MapTask, MockDeleteAlpha2MapTask, SleepTask, MockSleepTask, WaitSshConnectedTask, MockWaitSshConnectedTask, WaitSshDisconnectedTask, MockWaitSshDisconnectedTask, WaitSshReconnectTask, MockWaitSshReconnectTask, TransferIotGatewayConfigTask, MockTransferIotGatewayConfigTask, UpdateIotGatewayConfigTask, MockUpdateIotGatewayConfigTask } from "./tasks/index.js";
+import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, GetRobotSoftwareInfoTask, MockGetRobotSoftwareInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, UpdateRobotSoftwareInfoTask, MockUpdateRobotSoftwareInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask, RebootRobotTask, MockRebootRobotTask, MatchFileContentTask, MockMatchFileContentTask, MatchMovebaseVersionTask, MockMatchMovebaseVersionTask, TransferBUPTask, MockTransferBUPTask, TransferBUPScriptTask, MockTransferBUPScriptTask, UpgradeBUPTask, MockUpgradeBUPTask, MatchBUPVersionTask, MockMatchBUPVersionTask, DeleteBUPTask, MockDeleteBUPTask, MovebaseDiskCleanupTask, MockMovebaseDiskCleanupTask, TransferAlpha2MapTask, MockTransferAlpha2MapTask, ApplyAlpha2MapTask, MockApplyAlpha2MapTask, DeleteAlpha2MapTask, MockDeleteAlpha2MapTask, SleepTask, MockSleepTask, WaitSshConnectedTask, MockWaitSshConnectedTask, WaitSshDisconnectedTask, MockWaitSshDisconnectedTask, WaitSshReconnectTask, MockWaitSshReconnectTask, TransferIotGatewayConfigTask, MockTransferIotGatewayConfigTask, UpdateIotGatewayConfigTask, MockUpdateIotGatewayConfigTask, SshFileDownloadTask, MockSshFileDownloadTask } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
 import { configureLogger, createLogger } from "./logger/index.js";
-import { loadAppConfig, parseCliArgs, resolveRuntimePaths } from "./runtime/appConfig.js";
+import { loadAppConfig, parseCliArgs, resolveRuntimePaths, isPkgRuntime } from "./runtime/appConfig.js";
 import { StaticAssetService } from "./static/staticAssetService.js";
 import { createStaticRoutes } from "./static/staticRoutes.js";
 import { exec } from "node:child_process";
@@ -128,6 +128,7 @@ async function main(): Promise<void> {
     { name: "WaitSshReconnectTask", real: WaitSshReconnectTask, mock: MockWaitSshReconnectTask },
     { name: "TransferIotGatewayConfigTask", real: TransferIotGatewayConfigTask, mock: MockTransferIotGatewayConfigTask },
     { name: "UpdateIotGatewayConfigTask", real: UpdateIotGatewayConfigTask, mock: MockUpdateIotGatewayConfigTask },
+    { name: "SshFileDownloadTask", real: SshFileDownloadTask, mock: MockSshFileDownloadTask },
   ]);
 
   const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
@@ -221,7 +222,9 @@ async function main(): Promise<void> {
       log.info({ host: config.server.host, port: config.server.port, url }, "RobotOps Studio started");
       process.stdout.write(`\n  RobotOps Studio is running at ${url}\n`);
       process.stdout.write(`  Press Ctrl+C or send POST ${url}/api/shutdown to stop\n\n`);
-      openBrowser(url);
+      if (isPkgRuntime()) {
+        openBrowser(url);
+      }
     });
     server.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {

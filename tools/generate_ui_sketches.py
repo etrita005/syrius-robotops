@@ -21,6 +21,8 @@ os.makedirs(ROBOTS_DIR, exist_ok=True)
 os.makedirs(TASKS_DIR, exist_ok=True)
 os.makedirs(ARTIFACT_DIR, exist_ok=True)
 os.makedirs(SYSTEM_LOGS_DIR, exist_ok=True)
+DOWNLOAD_ALPHA2_DIR = os.path.join(BASE_DIR, "download-alpha2-sketch")
+os.makedirs(DOWNLOAD_ALPHA2_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1306,6 +1308,169 @@ def page_import_progress():
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
+# Download Alpha2 Sketch: 01 — Step 1: Select Task Type
+# ---------------------------------------------------------------------------
+def page_download_alpha2_sketch_step1():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 1)
+
+    draw.text((mx + 24, my + 110), "Step 1: Select Task Type", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "The task type determines robot selection mode and parameters.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 158, mx + mw - 24, my + 192), placeholder="Search task types...")
+
+    types = [
+        ("Upgrade BUP", "Upgrade the BUP firmware on selected robots.", "Multiple robots"),
+        ("Upgrade Movebase", "Upgrade the Movebase software on selected robots.", "Multiple robots"),
+        ("Apply Alpha2 Map", "Apply an Alpha2 format map package.", "Multiple robots"),
+        ("Update IoT Gateway Config", "Update iot-gateway configuration.", "Multiple robots"),
+        ("Download Alpha2 Sketch", "Download the Alpha2 mapping sketch package from the selected robot to a local directory.", "Single robot", True),
+    ]
+    for i, type_info in enumerate(types):
+        name, desc, mode_label = type_info[0], type_info[1], type_info[2]
+        selected = len(type_info) > 3 and type_info[3]
+        y = my + 208 + i * 84
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 68], fill="white", outline="#0f62fe" if selected else "#c6c6c6", width=2 if selected else 1)
+        if selected:
+            draw.ellipse([mx + 40, y + 22, mx + 56, y + 38], fill="#0f62fe")
+        else:
+            draw.ellipse([mx + 40, y + 22, mx + 56, y + 38], outline="#8d8d8d", width=1)
+        draw.text((mx + 70, y + 10), name, fill="#161616", font=FONT_MD)
+        draw.text((mx + 70, y + 30), desc, fill="#525252", font=FONT_SM)
+        draw.text((mx + 70, y + 48), f"Robot selection: {mode_label}", fill="#8d8d8d", font=FONT_SM)
+
+    draw_button(draw, (mx + mw - 220, my + mh - 60, mx + mw - 120, my + mh - 28), "Cancel")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+
+    path = os.path.join(DOWNLOAD_ALPHA2_DIR, "01_create_task_step1_type.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Download Alpha2 Sketch: 02 — Step 2: Select Robot (Single, radio buttons)
+# ---------------------------------------------------------------------------
+def page_download_alpha2_sketch_step2():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 2)
+
+    draw.text((mx + 24, my + 110), "Step 2: Select Robots", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "Task type: Download Alpha2 Sketch (Single robot)", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 148), "Select exactly one target robot to download the mapping sketch package from.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 174, mx + mw - 24, my + 208), placeholder="Search robots...")
+
+    y = my + 228
+    draw.rectangle([mx + 24, y, mx + mw - 24, y + 36], fill="#e0e0e0")
+    draw.text((mx + 60, y + 9), "Alias", fill="#161616", font=FONT_MD)
+    draw.text((mx + 220, y + 9), "Address", fill="#161616", font=FONT_MD)
+    draw.text((mx + 380, y + 9), "Model", fill="#161616", font=FONT_MD)
+
+    robots = [
+        (True, "AGV-01", "192.168.1.101:22", "X100"),
+        (False, "AGV-02", "192.168.1.102:22", "X100"),
+        (False, "AGV-03", "robot-03.local:22", "X200"),
+    ]
+    for i, (checked, alias, address, model) in enumerate(robots):
+        y = my + 268 + i * 44
+        fill = "white" if i % 2 == 0 else "#fafafa"
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 40], fill=fill, outline="#e0e0e0", width=1)
+        rb_x, rb_y = mx + 44, y + 10
+        draw.ellipse([rb_x, rb_y, rb_x + 16, rb_y + 16], outline="#555", width=1)
+        if checked:
+            draw.ellipse([rb_x + 4, rb_y + 4, rb_x + 12, rb_y + 12], fill="#0f62fe")
+        draw.text((mx + 100, y + 10), alias, fill="#161616", font=FONT_SM)
+        draw.text((mx + 220, y + 10), address, fill="#525252", font=FONT_SM)
+        draw.text((mx + 380, y + 10), model, fill="#525252", font=FONT_SM)
+
+    draw.text((mx + 24, my + mh - 80), "1 robot selected", fill="#525252", font=FONT_SM)
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+
+    path = os.path.join(DOWNLOAD_ALPHA2_DIR, "02_create_task_step2_robots.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Download Alpha2 Sketch: 03 — Step 3: Configure Parameter (localTargetDir)
+# ---------------------------------------------------------------------------
+def page_download_alpha2_sketch_step3():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 3)
+
+    draw.text((mx + 24, my + 110), "Step 3: Configure Parameters", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 132), "Task: Download Alpha2 Sketch", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 148), "Parameters are rendered dynamically based on task type.", fill="#8d8d8d", font=FONT_SM)
+
+    y = my + 190
+    draw.text((mx + 44, y), "Local target directory *", fill="#161616", font=FONT_MD)
+    draw.text((mx + 44, y + 22), "Directory on this machine where sketch.zip will be saved.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 44, y + 46, mx + mw - 44, y + 78), placeholder="/tmp")
+    draw.text((mx + 44, y + 90), "The file sketch.zip from /opt/cosmos/map/preview/sketch.zip will be saved to:", fill="#a8a8a8", font=FONT_SM)
+    draw.text((mx + 44, y + 108), "/tmp/sketch.zip", fill="#0f62fe", font=FONT_SM)
+
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+
+    path = os.path.join(DOWNLOAD_ALPHA2_DIR, "03_create_task_step3_params.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Download Alpha2 Sketch: 04 — Step 4: Confirm and Create
+# ---------------------------------------------------------------------------
+def page_download_alpha2_sketch_step4():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 4)
+
+    draw.text((mx + 24, my + 110), "Step 4: Confirm", fill="#161616", font=FONT_MD)
+
+    fields = [
+        ("Task Type", "Download Alpha2 Sketch"),
+        ("Target Robots", "AGV-01 (192.168.1.101:22)"),
+        ("Local target directory", "/tmp"),
+    ]
+    fy = my + 160
+    for label, value in fields:
+        draw.text((mx + 24, fy), label + ":", fill="#525252", font=FONT_MD)
+        draw.text((mx + 220, fy), value, fill="#161616", font=FONT_MD)
+        fy += 40
+
+    draw.text((mx + 24, fy + 10), "Are you sure you want to create this task?", fill="#161616", font=FONT_MD)
+
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Create", bg="#0f62fe", fg="white")
+
+    path = os.path.join(DOWNLOAD_ALPHA2_DIR, "04_create_task_step4_confirm.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
@@ -1332,6 +1497,12 @@ if __name__ == "__main__":
     page_create_task_step3()
     page_create_task_step4()
     page_delete_task_confirm()
+
+    # Download Alpha2 Sketch (sub-module, special task)
+    page_download_alpha2_sketch_step1()
+    page_download_alpha2_sketch_step2()
+    page_download_alpha2_sketch_step3()
+    page_download_alpha2_sketch_step4()
 
     # Artifact Management
     page_artifact_manager()

@@ -63,3 +63,6 @@ export { TransferIotGatewayConfigTask } from "./real/transferIotGatewayConfigTas
 export { MockTransferIotGatewayConfigTask } from "./mock/mockTransferIotGatewayConfigTask.js";
 export { UpdateIotGatewayConfigTask } from "./real/updateIotGatewayConfigTask.js";
 export { MockUpdateIotGatewayConfigTask } from "./mock/mockUpdateIotGatewayConfigTask.js";
+export { SshFileDownloadTask } from "./real/sshFileDownloadTask.js";
+export type { SshFileDownloadParams, SshFileDownloadResult } from "./real/sshFileDownloadTask.js";
+export { MockSshFileDownloadTask } from "./mock/mockSshFileDownloadTask.js";

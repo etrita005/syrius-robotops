@@ -6,6 +6,7 @@ import {
   openSolutionInWorkspace,
   clickSidebarTab,
 } from "../fixtures/test-fixture.js";
+import assert from "node:assert/strict";
 
 test.describe("Task Management", () => {
   test.describe.configure({ mode: "serial" });
@@ -117,8 +118,11 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 4 task types should show "Multiple robots"
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(4);
+    // All 5 multi-robot task types should show "Multiple robots"
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(5);
+
+    // Verify the single-robot task type is present
+    await expect(modal.getByText("Robot selection: Single robot")).toBeVisible();
 
     // Verify each task type is present
     await expect(modal.getByText("Upgrade BUP")).toBeVisible();
@@ -238,6 +242,7 @@ test.describe("Task Management", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Update IoT Gateway Config")).toBeVisible();
+    await expect(modal.getByText("Download Alpha2 Sketch")).toBeVisible();
   });
 
   test("TC-E2E-TASK-012: Update IoT Gateway Config shows multi-robot selection in task type step", async ({
@@ -305,5 +310,101 @@ test.describe("Task Management", () => {
 
     // Should go directly to confirmation step (no params needed)
     await expect(modal.getByText(/Confirm/i).first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test("TC-E2E-TASK-015: Download Alpha2 Sketch task type shows in list", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    // Verify the new task type is present
+    await expect(modal.getByText("Download Alpha2 Sketch")).toBeVisible();
+
+    // Verify it shows single robot selection
+    await expect(modal.getByText("Robot selection: Single robot")).toBeVisible();
+
+    // Close modal to avoid stale state in next test
+    await appPage.keyboard.press("Escape");
+    await appPage.waitForTimeout(500);
+  });
+
+  test("TC-E2E-TASK-016: Download Alpha2 Sketch task type can be created via API", async ({
+    appPage,
+    apiURL,
+  }) => {
+    // Verify the task type exists in the registry by creating a flow via API
+    const response = await appPage.evaluate(async (url) => {
+      const res = await fetch(`${url}/api/flows`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "user",
+          dag: {
+            tasks: {
+              download: {
+                requires: ["robotIp", "robotPort", "localTargetDir"],
+                provides: ["download_result"],
+                resolver: {
+                  name: "SshFileDownloadTask",
+                  params: {
+                    robotIp: "robotIp",
+                    robotPort: "robotPort",
+                    localTargetDir: "localTargetDir",
+                    remoteFilePath: { value: "/opt/cosmos/map/preview/sketch.zip" },
+                  },
+                  results: { done: "download_result" },
+                },
+              },
+            },
+          },
+          input: {
+            solutionId: "test-sol",
+            robotIds: [],
+            taskName: "Download Alpha2 Sketch",
+            robotIp: "192.168.1.10",
+            robotPort: 22,
+            localTargetDir: "/tmp",
+          },
+          expectedResults: ["download_result"],
+        }),
+      });
+      return { status: res.status, body: await res.json() };
+    }, apiURL);
+
+    assert.equal(response.status, 201);
+    assert.ok(response.body.id);
+    assert.equal(response.body.state, "RUNNING");
+  });
+
+  test("TC-E2E-TASK-017: Download Alpha2 Sketch params config visible in create modal", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    // Dismiss any lingering modals
+    await appPage.keyboard.press("Escape");
+    await appPage.waitForTimeout(300);
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    // Select Download Alpha2 Sketch
+    await modal.locator("div").filter({ hasText: "Download Alpha2 Sketch" }).first().click();
+    await appPage.waitForTimeout(300);
+
+    // Verify the Next button is enabled (selection confirmed)
+    const nextButton = modal.getByRole("button", { name: "Next" });
+    await expect(nextButton).toBeEnabled();
   });
 });

@@ -60,7 +60,7 @@ const defaultAppConfig: AppConfig = {
 
 const logLevels = new Set<LogLevel>(["trace", "debug", "info", "warn", "error", "fatal"]);
 
-function isPkgRuntime(): boolean {
+export function isPkgRuntime(): boolean {
   return Boolean((process as NodeJS.Process & { pkg?: unknown }).pkg);
 }
 
