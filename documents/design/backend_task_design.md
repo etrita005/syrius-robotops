@@ -875,3 +875,161 @@ Same as `SshCommandTask`.
 - Steps 3-8 use `|| true` to prevent entire command chain from failing when individual cleanup/restart operations fail
 - Steps 1-2 are critical (move and chown); if they fail the task fails
 - The service restarts take effect after the reboot step in the DAG flow
+
+---
+
+## 29. TransferGGRTask
+
+### Overview
+
+Downloads a GGR APK artifact from the artifact service to a temp directory, then uploads it to the robot via SFTP.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID to download |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ download(id, dest): Promise<string> }` | Service for artifact download |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/home/developer/ggr_package.apk`
+- Creates temp directory at `/tmp/ggr-transfer-<timestamp>`
+- Cleans up temp directory in both success and failure paths
+- If `artifactId` or `artifactService` is absent, falls through to `super.exec()` directly
+- Implementation mirrors `TransferBUPTask`
+
+---
+
+## 30. StopKuayeServiceTask
+
+### Overview
+
+Stops the `syriusrobotics.kuaye.service` on the remote robot before GGR APK installation.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. No additional parameters. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `systemctl stop syriusrobotics.kuaye.service`
+- This service manages the connection to the lower machine; stopping it is required before `adb install` can proceed
+- Implementation mirrors `DeleteMovebaseTask` pattern
+
+---
+
+## 31. InstallGGRTask
+
+### Overview
+
+Executes `adb install -d` on the remote robot to install or upgrade the GGR launcher APK.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `300000` (5 min) | Override for long-running install |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `false`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `adb install -d /home/developer/ggr_package.apk`
+- Uses `-d` flag to allow downgrade installation
+- Does not require sudo; adb runs as the SSH user (`developer`)
+- Default 5-minute timeout accommodates large APK installations
+- The APK file is expected at `/home/developer/ggr_package.apk` (transferred by `TransferGGRTask`)
+
+---
+
+## 32. StartKuayeServiceTask
+
+### Overview
+
+Starts the `syriusrobotics.kuaye.service` on the remote robot after GGR APK installation.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. No additional parameters. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `systemctl start syriusrobotics.kuaye.service`
+- Restarts the lower machine connection service after GGR installation
+- Implementation mirrors `StopKuayeServiceTask`
+
+---
+
+## 33. DeleteGGRTask
+
+### Overview
+
+Deletes the transferred GGR APK package (`/home/developer/ggr_package.apk`) on the remote robot after successful installation.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. No additional parameters. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -f /home/developer/ggr_package.apk`
+- Uses `-f` (force) to silently ignore missing files
+- Used as the cleanup step in the GGR installation flow
+- Implementation mirrors `DeleteBUPTask`
+
+---
+
+## 34. VerifyGGRTask
+
+### Overview
+
+Verifies that the GGR launcher APK was installed correctly by querying the Android package manager for the installed version name. Runs after `adb install` to confirm successful installation.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `30000` (30s) | Override for version query timeout |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `false`.
+
+### Output Parameters
+
+Same as `SshCommandTask`. The `stdout` field contains the installed version string (e.g. `2.4.9690`).
+
+### Notes
+
+- Hardcoded command: `adb shell dumpsys package com.syriusrobotics.platform.launcher | grep versionName | sed 's/ *versionName=//'`
+- Does not require sudo; adb runs as the SSH user (`developer`)
+- Default 30-second timeout is sufficient for a simple adb shell query
+- If the package is not installed or adb is unavailable, the command exits with non-zero code and the task throws an error
+- Placed between `InstallGGRTask` and `StartKuayeServiceTask` in the DAG to validate installation before restarting the service
+- Mock variant returns a sample version string `2.4.9690`

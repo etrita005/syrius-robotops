@@ -390,6 +390,101 @@ const UPDATE_IOT_GATEWAY_CONFIG_DAG: DagDefinition = {
   },
 };
 
+const INSTALL_GGR_DAG: DagDefinition = {
+  tasks: {
+    transfer: {
+      requires: ["robotIp", "robotPort", "artifactId"],
+      resolver: {
+        name: "TransferGGRTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    stop_service: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "StopKuayeServiceTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "stop_service_done" },
+      },
+      provides: ["stop_service_done"],
+    },
+    install: {
+      requires: ["robotIp", "robotPort", "stop_service_done"],
+      resolver: {
+        name: "InstallGGRTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "install_done" },
+      },
+      provides: ["install_done"],
+    },
+    verify_version: {
+      requires: ["robotIp", "robotPort", "install_done"],
+      resolver: {
+        name: "VerifyGGRTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "verify_done" },
+      },
+      provides: ["verify_done"],
+    },
+    start_service: {
+      requires: ["robotIp", "robotPort", "verify_done"],
+      resolver: {
+        name: "StartKuayeServiceTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "start_service_done" },
+      },
+      provides: ["start_service_done"],
+    },
+    cleanup: {
+      requires: ["robotIp", "robotPort", "start_service_done"],
+      resolver: {
+        name: "DeleteGGRTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "cleanup_done" },
+      },
+      provides: ["cleanup_done"],
+    },
+  },
+};
+
+const INSTALL_GGR_ERROR_DAG: DagDefinition = {
+  tasks: {
+    error_cleanup: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "DeleteGGRTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "error_cleanup_done" },
+      },
+      provides: ["error_cleanup_done"],
+    },
+  },
+};
+
 export const TASK_REGISTRY: TaskRegistry = {
   version: "1.0.0",
   taskTypes: [
@@ -497,6 +592,26 @@ export const TASK_REGISTRY: TaskRegistry = {
       dag: UPDATE_IOT_GATEWAY_CONFIG_DAG,
       expectedResults: ["reboot_done"],
       params: {},
+    },
+    {
+      type: "install-ggr",
+      name: "Install GGR",
+      description: "Install or upgrade the GGR launcher app on selected robots.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to install GGR launcher.",
+      },
+      dag: INSTALL_GGR_DAG,
+      expectedResults: ["cleanup_done"],
+      errorDag: INSTALL_GGR_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "Artifact file",
+          required: true,
+        },
+      },
     },
   ],
 };

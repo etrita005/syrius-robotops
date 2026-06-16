@@ -170,6 +170,29 @@ input variables ──→ [transfer] ──→ [script_transfer] ──→ [upgr
 - `script_transfer` 节点将 `res/upgrade_bup.sh` 传输到机器人的 `/tmp/upgrade_bup.sh`，供后续 UpgradeBUPTask 使用
 - `wait_reconnect` 参数：`timeout: 180000`（等待 SSH 先断开再重连成功，单位 ms）
 
+#### install-ggr（GGR 启动器安装）
+
+六步流程，含异常处理（先传输 APK 到机器人，再停止下位机服务，通过 adb 安装 APK，验证安装版本，最后重启服务并清理 APK 文件）：
+
+```
+input variables ──→ [transfer] ──→ [stop_service] ──→ [install] ──→ [verify_version] ──→ [start_service] ──→ [cleanup] ──→ cleanup_done
+                        │                  │                  │                  │                  │                    │
+                        └── transfer_done ─┘                  │                  │                  │                    │
+                                            └── stop_service_done ──────────┘                  │                    │
+                                                                   └── install_done ─────────┘                    │
+                                                                                          └── verify_done ────────┘
+                                                                                                            └── start_service_done ──┘
+如果主流程任一任务失败：
+[error_cleanup] ──→ error_cleanup_done
+```
+- 解析器：`TransferGGRTask`, `StopKuayeServiceTask`, `InstallGGRTask`, `VerifyGGRTask`, `StartKuayeServiceTask`, `DeleteGGRTask`
+- 输入依赖：`robotIp`, `robotPort`, `artifactId`
+- 预期结果：`cleanup_done`
+- 异常 DAG：清理 APK 残留文件
+- `install` 节点通过 `adb install -d` 安装 APK，超时时间为 5 分钟（300000ms）
+- `verify_version` 节点通过 `adb shell dumpsys package com.syriusrobotics.platform.launcher | grep versionName` 查询已安装的版本号，超时时间为 30 秒（30000ms）
+- `stop_service` 和 `start_service` 节点使用 sudo 执行 systemctl 命令管理 `syriusrobotics.kuaye.service`
+
 ---
 
 ## 5. 调用方式

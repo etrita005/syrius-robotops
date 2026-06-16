@@ -3,6 +3,8 @@ import { ObjectStore } from "../services/objectStore.js";
 import { AppError } from "../errors/appErrors.js";
 import { createWriteStream } from "node:fs";
 import { join } from "node:path";
+import archiver from "archiver";
+import AdmZip from "adm-zip";
 
 export function createObjectStoreRoutes(obs: ObjectStore, dataDir: string): Hono {
   const router = new Hono();
@@ -76,7 +78,6 @@ export function createObjectStoreRoutes(obs: ObjectStore, dataDir: string): Hono
       return c.json({ error: "INVALID_INPUT", message: "sourcePath is required." }, 400);
     }
 
-    const archiver = (await import("archiver")).default;
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const sourceName = sourcePath.split("/").filter(Boolean).pop() ?? "export";
     const fileName = `${sourceName}-${timestamp}.zip`;
@@ -107,7 +108,6 @@ export function createObjectStoreRoutes(obs: ObjectStore, dataDir: string): Hono
       return c.json({ error: "INVALID_INPUT", message: "zipPath and targetPath are required." }, 400);
     }
 
-    const { default: AdmZip } = await import("adm-zip");
     const zip = new AdmZip(zipPath);
     const entries = zip.getEntries();
 

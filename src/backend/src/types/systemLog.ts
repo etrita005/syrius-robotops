@@ -110,4 +110,10 @@ export const KNOWN_MODULES = [
   "SystemLog",
   "SystemLogRoute",
   "SystemLogService",
+  "TransferGGRTask",
+  "StopKuayeServiceTask",
+  "InstallGGRTask",
+  "VerifyGGRTask",
+  "StartKuayeServiceTask",
+  "DeleteGGRTask",
 ];

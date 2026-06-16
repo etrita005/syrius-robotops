@@ -63,3 +63,15 @@ export { TransferIotGatewayConfigTask } from "./real/transferIotGatewayConfigTas
 export { MockTransferIotGatewayConfigTask } from "./mock/mockTransferIotGatewayConfigTask.js";
 export { UpdateIotGatewayConfigTask } from "./real/updateIotGatewayConfigTask.js";
 export { MockUpdateIotGatewayConfigTask } from "./mock/mockUpdateIotGatewayConfigTask.js";
+export { TransferGGRTask } from "./real/transferGGRTask.js";
+export { MockTransferGGRTask } from "./mock/mockTransferGGRTask.js";
+export { StopKuayeServiceTask } from "./real/stopKuayeServiceTask.js";
+export { MockStopKuayeServiceTask } from "./mock/mockStopKuayeServiceTask.js";
+export { InstallGGRTask } from "./real/installGGRTask.js";
+export { MockInstallGGRTask } from "./mock/mockInstallGGRTask.js";
+export { VerifyGGRTask } from "./real/verifyGGRTask.js";
+export { MockVerifyGGRTask } from "./mock/mockVerifyGGRTask.js";
+export { StartKuayeServiceTask } from "./real/startKuayeServiceTask.js";
+export { MockStartKuayeServiceTask } from "./mock/mockStartKuayeServiceTask.js";
+export { DeleteGGRTask } from "./real/deleteGGRTask.js";
+export { MockDeleteGGRTask } from "./mock/mockDeleteGGRTask.js";

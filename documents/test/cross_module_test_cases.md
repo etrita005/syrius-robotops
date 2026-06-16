@@ -109,3 +109,33 @@
 | Input | Frontend creates an "update-iot-gateway-config" task for 1 robot |
 | Expected Result | The DAG includes a `reboot` node with `ignoreFailure: true` and `retryCount: 1` |
 | Verification | The DAG tasks.reboot.resolver.params has `ignoreFailure: { value: true }` and `retryCount: { value: 1 }` |
+
+## TC-CROSS-012: Single-robot GGR install creates 1 taskFlow
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A solution with 1 robot. |
+| Input | Frontend creates an "install-ggr" task with `robotIds: ["r1"]` |
+| Expected Result | 1 user taskFlow is created with `input.robotIds: ["r1"]`. |
+| Verification | `listFlows("user", { solutionId })` returns 1 flow. |
+
+## TC-CROSS-013: Multi-robot GGR install creates N taskFlows
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | A solution with 3 robots (each with unique IP/port). |
+| Input | Frontend creates an "install-ggr" task with `robotIds: ["r1", "r2", "r3"]` |
+| Expected Result | 3 separate user taskFlows are created. Each flow has `input.robotIds` as a single-element array. |
+| Verification | `listFlows("user", { solutionId })` returns 3 flows. Each flow's `input.robotIds.length === 1`. |
+
+## TC-CROSS-014: Install GGR task appears in task type selection
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | Task creation modal is open. |
+| Input | View the task type selection step. |
+| Expected Result | "Install GGR" appears as a selectable task type with "Robot selection: Multiple robots". |
+| Verification | Modal shows "Install GGR" text and 6 task type entries with "Multiple robots". |

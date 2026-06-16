@@ -1,5 +1,9 @@
 import { ObjectStore } from "./objectStore.js";
 import { ArtifactService } from "./artifactService.js";
+import { createWriteStream } from "node:fs";
+import { join } from "node:path";
+import archiver from "archiver";
+import AdmZip from "adm-zip";
 import {
   SolutionMeta,
   CreateSolutionInput,
@@ -222,10 +226,6 @@ export class SolutionService {
       throw new SolutionNotFoundError(id);
     }
 
-    const { createWriteStream } = await import("node:fs");
-    const { join } = await import("node:path");
-    const archiver = (await import("archiver")).default;
-
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const fileName = `${id}-${timestamp}.zip`;
     const outputPath = destinationPath
@@ -250,7 +250,6 @@ export class SolutionService {
   }
 
   async importSolution(zipPath: string, targetPath: string): Promise<{ ok: boolean }> {
-    const { default: AdmZip } = await import("adm-zip");
     const zip = new AdmZip(zipPath);
     const entries = zip.getEntries();
 
@@ -283,7 +282,6 @@ export class SolutionService {
     zipBuffer: Buffer,
     conflictResolution: "overwrite" | "rename" | "cancel"
   ): Promise<{ ok: boolean; solution: SolutionMeta; warnings: string[] }> {
-    const { default: AdmZip } = await import("adm-zip");
     const zip = new AdmZip(zipBuffer);
     const entries = zip.getEntries();
 

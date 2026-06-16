@@ -3,6 +3,7 @@ import { SolutionService } from "../services/solutionService.js";
 import { AppError } from "../errors/appErrors.js";
 import { withRetry } from "../utils/retry.js";
 import { createLogger } from "../logger/index.js";
+import archiver from "archiver";
 
 const log = createLogger("SolutionRoutes");
 
@@ -125,7 +126,6 @@ export function createSolutionRoutes(solutionService: SolutionService): Hono {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const fileName = `${slug}-v${meta.version}-${timestamp}.zip`;
 
-      const archiver = (await import("archiver")).default;
       const archive = archiver("zip", { zlib: { level: 9 } });
 
       const chunks: Buffer[] = [];

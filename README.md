@@ -12,7 +12,8 @@ RobotOps Studio provides a unified interface for managing multiple robots in the
 |--------|-------------|
 | **Solution Management** | Top-level organizational unit. All sub-resources (robots, upgrades, maps, configs, diagnostics, logs) belong to a solution. CRUD, clone, export/import (ZIP), active solution context, recent solutions. |
 | **Artifact Management** | Global shared resource store for immutable large files (firmware, maps, etc.). Upload with SHA-256 deduplication, reference counting, artifact selector for cross-module use. |
-| **Task Flow Engine** | DAG-based task execution engine (powered by `flowed`). Create, pause, resume, stop task flows. Built-in resolvers: SshCommandTask, GetRobotBasicInfoTask. SSE real-time status updates. Persistence and crash recovery for user flows. |
+| **Task Flow Engine** | DAG-based task execution engine (powered by `flowed`). Create, pause, resume, stop task flows. Built-in resolvers: SshCommandTask, SshFileTransferTask, GetRobotBasicInfoTask. SSE real-time status updates. Persistence and crash recovery for user flows. |
+| **GGR Installation** | Sequence of tasks to install GGR APK on a robot: transfer APK via SFTP, stop `syriusrobotics.kuaye.service`, run `adb install -d`, start the service, and clean up the APK. Uses the Task Flow Engine with rollback support. |
 
 ### Architecture
 
@@ -251,7 +252,7 @@ The test runner starts a temporary embedded Object Store instance and API server
 
 ### End-to-End (E2E) Tests
 
-E2E tests use **Playwright** for browser automation against the React frontend, with the backend running in **mock mode** (`--mock` flag). All 25 backend task resolvers use mock variants that return canned responses instead of connecting to real robots via SSH.
+E2E tests use **Playwright** for browser automation against the React frontend, with the backend running in **mock mode** (`--mock` flag). All 30 backend task resolvers use mock variants that return canned responses instead of connecting to real robots via SSH.
 
 #### First-Time Setup
 
@@ -303,7 +304,7 @@ Tests are organized by business module, mapping to `documents/test/` test cases:
 |-----------|------|-------|--------------|
 | Solution Management | `tests/solution-management.spec.ts` | 7 | TC-E2E-SOL-001 ~ 007 |
 | Robot Management | `tests/robot-management.spec.ts` | 9 | TC-E2E-ROB-001 ~ 009 |
-| Task Management | `tests/task-management.spec.ts` | 6 | TC-E2E-TASK-001 ~ 006 |
+| Task Management | `tests/task-management.spec.ts` | 9 | TC-E2E-TASK-001 ~ 006, 015 ~ 017 |
 | Artifact Management | `tests/artifact-management.spec.ts` | 5 | TC-E2E-ART-001 ~ 005 |
 | System Logs | `tests/system-logs.spec.ts` | 7 | TC-E2E-SL-001 ~ 007 |
 | Cross-Module | `tests/cross-module.spec.ts` | 6 | TC-E2E-CROSS-001 ~ 006 |
@@ -316,9 +317,10 @@ Shared fixtures and API utility helpers are in `fixtures/test-fixture.ts`.
 |--------|-----------|-------------|
 | Solution Management | TC-SOL-001 ~ TC-SOL-015 | CRUD, validation, clone, version auto-increment, filter/sort |
 | Artifact Management | TC-ART-001 ~ TC-ART-015 | Upload, deduplication, refCount, delete protection, audit |
-| Task Flow Engine | TC-TFE-001 ~ TC-TFE-035 | Flow lifecycle, SSE, persistence, recovery, resolver registry |
-| Cross-Module | TC-CROSS-001 ~ TC-CROSS-005 | Solution delete → refCount decrement, clone → refCount increment |
-| E2E (Playwright) | TC-E2E-SOL/ROB/TASK/ART/SL/CROSS | 40 browser-based tests against mock backend |
+| Task Flow Engine | TC-TFE-001 ~ TC-TFE-063 | Flow lifecycle, SSE, persistence, recovery, resolver registry, IoT Gateway config, GGR installation tasks |
+| Cross-Module | TC-CROSS-001 ~ TC-CROSS-014 | Solution delete → refCount decrement, clone → refCount increment, GGR installation flow integration |
+| GGR Installation | TC-GGR-001 ~ TC-GGR-009 | StopKuayeService, InstallGGR, StartKuayeService, DeleteGGR, TransferGGR task unit tests |
+| E2E (Playwright) | TC-E2E-SOL/ROB/TASK/ART/SL/CROSS | 43 browser-based tests against mock backend |
 
 Test case documents: `documents/test/solution_management_test_cases.md`, `documents/test/artifact_management_test_cases.md`, `documents/test/task_flow_engine_test_cases.md`, `documents/test/cross_module_test_cases.md`
 

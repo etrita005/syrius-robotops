@@ -418,6 +418,7 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
   - **Upgrade Movebase**：可多选机器人，需选择 Artifact 资源文件（`artifactId`）。
   - **Apply Alpha2 Map**：可多选机器人，需选择 Artifact 资源文件（`artifactId`）。
   - **Update IoT Gateway Config**：可多选机器人，无需额外参数。用于更新 iot-gateway 配置文件并重启相关服务。
+   - **Install GGR**：可多选机器人，需选择 Artifact 资源文件（`artifactId`，GGR APK 文件）。上传 APK 到机器人、停止下位机服务、通过 adb 安装 APK、验证安装版本（通过 `adb shell dumpsys package` 查询）、重启下位机服务。
 - 系统通过 `POST /api/flows` 创建每个任务，前端从 Task Registry 中获取对应任务类型的 DAG 并逐个调用 `TaskFlowEngine.createFlow("user", dag, input)`。
 - 每个 taskFlow 的 `input` 中必须包含以下元数据字段：
   - `solutionId`：当前解决方案 ID。
@@ -706,7 +707,7 @@ graph LR
 | UC-ROB-03 | 查看机器人列表 | FAE | 当前存在激活解决方案 | 展示当前解决方案下所有机器人的核心基础信息 | 1. FAE 打开 Robots 子界面；2. 前端从对象存储读取所有机器人存储数据；3. 前端生成动态信息并合并展示 |
 | UC-ROB-04 | 编辑机器人别名和地址 | FAE | 机器人已存在 | 机器人别名和/或地址已更新 | 1. FAE 编辑别名或地址；2. 前端保存并更新对象存储 |
 | UC-ROB-05 | 查看机器人详情 | FAE | 机器人已存在 | 展示完整信息 | 1. FAE 点击某机器人行；2. 系统弹出详情对话框；3. 系统分标签页展示基础信息、其他信息、软件版本、硬件版本 |
-| UC-TASK-01 | 创建任务 | FAE | 当前存在激活解决方案，且已添加机器人 | 新任务出现在 Tasks 列表中并开始执行 | 1. FAE 进入 Tasks 子界面；2. 点击 Create Task；3. 选择目标机器人（单个或多个）；4. 选择任务类型（Upgrade BUP / Upgrade Movebase / Movebase Disk Cleanup / Apply Alpha2 Map / Update IoT Gateway Config）；5. 如有必选参数，选择对应的 Artifact 资源文件或填写参数；6. 系统创建任务并启动执行 |
+| UC-TASK-01 | 创建任务 | FAE | 当前存在激活解决方案，且已添加机器人 | 新任务出现在 Tasks 列表中并开始执行 | 1. FAE 进入 Tasks 子界面；2. 点击 Create Task；3. 选择目标机器人（单个或多个）；4. 选择任务类型（Upgrade BUP / Upgrade Movebase / Movebase Disk Cleanup / Apply Alpha2 Map / Update IoT Gateway Config / Install GGR）；5. 如有必选参数，选择对应的 Artifact 资源文件或填写参数；6. 系统创建任务并启动执行 |
 | UC-TASK-02 | 暂停/继续/停止任务 | FAE | 任务正在执行或已暂停 | 任务状态变更 | 1. FAE 在 Tasks 列表中找到目标任务；2. 点击 Pause / Resume / Stop 按钮；3. 系统调用 TaskFlowEngine 对应接口；4. 列表状态实时更新 |
 | UC-TASK-03 | 删除任务 | FAE | 任务已存在 | 任务从列表和存储中移除 | 1. FAE 选择要删除的任务；2. 系统展示确认对话框；3. FAE 确认删除；4. 系统调用 TaskFlowEngine.deleteFlow；5. 列表刷新 |
 | UC-TASK-04 | 查看任务列表 | FAE | 当前存在激活解决方案 | 展示当前解决方案下所有 user 类型任务 | 1. FAE 打开 Tasks 子界面；2. 系统加载任务列表（按 solutionId 过滤）；3. 前端展示任务关键信息并支持搜索、排序、分页 |
@@ -735,7 +736,7 @@ graph LR
 | 机器人地址 | 非空字符串，格式为 `<host>:<port>` 或 `<host>`（port 可选，默认 22），host 部分最大 256 个字符 | 拒绝并返回 `INVALID_ROBOT_ADDRESS` |
 | 机器人端口 | 从 address 中解析，1–65535 整数，默认 22 | 拒绝并返回 `INVALID_ROBOT_PORT` |
 | 机器人别名 | 最大 128 个字符 | 截断或拒绝 |
-| 任务类型 | 必须为当前系统支持的任务类型（Upgrade BUP / Upgrade Movebase / Movebase Disk Cleanup / Apply Alpha2 Map / Update IoT Gateway Config） | 拒绝并返回 `INVALID_TASK_TYPE` |
+| 任务类型 | 必须为当前系统支持的任务类型（Upgrade BUP / Upgrade Movebase / Movebase Disk Cleanup / Apply Alpha2 Map / Update IoT Gateway Config / Install GGR） | 拒绝并返回 `INVALID_TASK_TYPE` |
 | 任务目标机器人 | 必须全部属于当前解决方案已添加的机器人 | 拒绝并返回 `ROBOT_NOT_IN_SOLUTION` |
 | 任务 Artifact | 引用的 `artifactId` 必须在 Artifacts Manage 模块中存在 | 拒绝并返回 `ARTIFACT_NOT_FOUND` |
 | 每页任务数 | 可选 10 / 25 / 50，默认 10 | 非法值时回退到默认值 |

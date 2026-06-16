@@ -117,14 +117,15 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 4 task types should show "Multiple robots"
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(4);
+    // All 6 task types should show "Multiple robots"
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(6);
 
     // Verify each task type is present
     await expect(modal.getByText("Upgrade BUP")).toBeVisible();
     await expect(modal.getByText("Movebase Disk Cleanup")).toBeVisible();
     await expect(modal.getByText("Upgrade Movebase")).toBeVisible();
     await expect(modal.getByText("Apply Alpha2 Map")).toBeVisible();
+    await expect(modal.getByText("Install GGR")).toBeVisible();
   });
 
   test("TC-E2E-TASK-008: Upgrade Movebase step 2 shows checkboxes and Select All", async ({
@@ -252,8 +253,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 5 task types should show "Multiple robots"
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(5);
+    // All 6 task types should show "Multiple robots"
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(6);
   });
 
   test("TC-E2E-TASK-013: Update IoT Gateway Config leads to multi-robot step 2", async ({
@@ -305,5 +306,75 @@ test.describe("Task Management", () => {
 
     // Should go directly to confirmation step (no params needed)
     await expect(modal.getByText(/Confirm/i).first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test("TC-E2E-TASK-015: Install GGR task type appears in task creation modal", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Install GGR")).toBeVisible();
+  });
+
+  test("TC-E2E-TASK-016: Install GGR shows multi-robot selection in task type step", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    // Install GGR should be shown alongside other task types with "Multiple robots"
+    await expect(modal.getByText("Install GGR")).toBeVisible();
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(6);
+  });
+
+  test("TC-E2E-TASK-017: Install GGR leads to multi-robot step 2 then params step", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Install GGR")).toBeVisible();
+
+    // Select Install GGR task type by clicking its name text
+    await modal.getByText("Install GGR", { exact: true }).first().click();
+    await appPage.waitForTimeout(300);
+
+    // Click Next to go to robot selection step (step 2)
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    // Verify multi-robot selection is active
+    await expect(modal.getByLabel("Select all robots")).toBeVisible();
+    await expect(modal.getByLabel("Select 192.168.1.10")).toBeVisible();
+    await expect(modal.getByLabel("Select 192.168.1.11")).toBeVisible();
+
+    // Select a robot
+    await modal.getByLabel("Select 192.168.1.10").check();
+
+    // Click Next to go to params step (step 3)
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    // Should show artifact params step with artifact file label
+    await expect(modal.getByText("Artifact file")).toBeVisible();
   });
 });

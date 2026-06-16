@@ -29,6 +29,11 @@ import { MatchBUPVersionTask } from "./tasks/real/matchBUPVersionTask.js";
 import { MovebaseDiskCleanupTask } from "./tasks/real/movebaseDiskCleanupTask.js";
 import { TransferIotGatewayConfigTask } from "./tasks/real/transferIotGatewayConfigTask.js";
 import { UpdateIotGatewayConfigTask } from "./tasks/real/updateIotGatewayConfigTask.js";
+import { StopKuayeServiceTask } from "./tasks/real/stopKuayeServiceTask.js";
+import { InstallGGRTask } from "./tasks/real/installGGRTask.js";
+import { VerifyGGRTask } from "./tasks/real/verifyGGRTask.js";
+import { StartKuayeServiceTask } from "./tasks/real/startKuayeServiceTask.js";
+import { DeleteGGRTask } from "./tasks/real/deleteGGRTask.js";
 import { resetSshConnectionProbeForTest, setSshConnectionProbeForTest } from "./tasks/real/sshConnectionWait.js";
 import type { SshConnectionProbeParams } from "./tasks/real/sshConnectionWait.js";
 
@@ -3986,5 +3991,140 @@ describe("UpdateIotGatewayConfigTask", () => {
 
     assert.equal(params.sudo, true);
     assert.equal(params.commandTimeout, 120000);
+  });
+});
+
+class TestableStopKuayeServiceTask extends StopKuayeServiceTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("StopKuayeService task", () => {
+  it("TC-GGR-001: should generate correct stop service command", () => {
+    const task = new TestableStopKuayeServiceTask();
+    const command = task.command();
+    assert.equal(command, "systemctl stop syriusrobotics.kuaye.service");
+  });
+
+  it("TC-GGR-002: should force sudo to true", () => {
+    const task = new TestableStopKuayeServiceTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+  });
+});
+
+class TestableInstallGGRTask extends InstallGGRTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("InstallGGR task", () => {
+  it("TC-GGR-003: should generate correct adb install command", () => {
+    const task = new TestableInstallGGRTask();
+    const command = task.command();
+    assert.equal(command, "adb install -d /home/developer/ggr_package.apk");
+  });
+
+  it("TC-GGR-004: should not use sudo for adb install", () => {
+    const task = new TestableInstallGGRTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, false);
+  });
+
+  it("TC-GGR-005: should default commandTimeout to 300000ms", () => {
+    const task = new TestableInstallGGRTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.commandTimeout, 300000);
+  });
+});
+
+class TestableVerifyGGRTask extends VerifyGGRTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("VerifyGGR task", () => {
+  it("TC-GGR-010: should generate correct adb verify command", () => {
+    const task = new TestableVerifyGGRTask();
+    const command = task.command();
+    assert.equal(
+      command,
+      "adb shell dumpsys package com.syriusrobotics.platform.launcher | grep versionName | sed 's/ *versionName=//'"
+    );
+  });
+
+  it("TC-GGR-011: should not use sudo for verify", () => {
+    const task = new TestableVerifyGGRTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, false);
+  });
+
+  it("TC-GGR-012: should default commandTimeout to 30000ms", () => {
+    const task = new TestableVerifyGGRTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.commandTimeout, 30000);
+  });
+});
+
+class TestableStartKuayeServiceTask extends StartKuayeServiceTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("StartKuayeService task", () => {
+  it("TC-GGR-006: should generate correct start service command", () => {
+    const task = new TestableStartKuayeServiceTask();
+    const command = task.command();
+    assert.equal(command, "systemctl start syriusrobotics.kuaye.service");
+  });
+
+  it("TC-GGR-007: should force sudo to true", () => {
+    const task = new TestableStartKuayeServiceTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+  });
+});
+
+class TestableDeleteGGRTask extends DeleteGGRTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("DeleteGGR task", () => {
+  it("TC-GGR-008: should generate correct delete command", () => {
+    const task = new TestableDeleteGGRTask();
+    const command = task.command();
+    assert.equal(command, "rm -f /home/developer/ggr_package.apk");
+  });
+
+  it("TC-GGR-009: should force sudo to true", () => {
+    const task = new TestableDeleteGGRTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
   });
 });
