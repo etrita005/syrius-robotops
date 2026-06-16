@@ -31,3 +31,5 @@ yarn-error.log*
 pnpm-debug.log*
 
 .kilo/
+.npm-cache/
+npminstall-debug.log*

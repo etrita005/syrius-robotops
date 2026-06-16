@@ -110,4 +110,10 @@ export const KNOWN_MODULES = [
   "SystemLog",
   "SystemLogRoute",
   "SystemLogService",
+  "SshFileDownloadTask",
+  "TransferAppTask",
+  "StopAppServiceTask",
+  "InstallAppTask",
+  "StartAppServiceTask",
+  "DeleteAppTask",
 ];

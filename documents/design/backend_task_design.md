@@ -922,3 +922,129 @@ Downloads a remote file from a robot to the local machine via SFTP (ssh2 library
 - Downloads via SFTP `fastGet` with progress logging every 2 seconds
 - File saved as `{localTargetDir}/{basename(remoteFilePath)}`
 - Used by the `download-alpha2-sketch` DAG with `remoteFilePath` hardcoded to `/opt/cosmos/map/preview/sketch.zip`
+
+---
+
+## 30. TransferAppTask
+
+### Overview
+
+Downloads an APK artifact from the artifact service to a temp directory, then uploads it to the robot via SFTP.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID to download |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ download(id, dest): Promise<string> }` | Service for artifact download |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/home/developer/app_package.apk`
+- Creates temp directory at `/tmp/app-transfer-<timestamp>`
+- Cleans up temp directory in both success and failure paths
+- Implementation mirrors `TransferMovebaseTask`
+
+---
+
+## 31. StopAppServiceTask
+
+### Overview
+
+Stops the `syriusrobotics.kuaye.service` on the remote robot before APK installation.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. No additional parameters. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `systemctl stop syriusrobotics.kuaye.service`
+- This service manages the connection to the lower machine; stopping it is required before `adb install` can proceed
+
+---
+
+## 32. InstallAppTask
+
+### Overview
+
+Executes `adb install -d` on the remote robot to install or upgrade an APK.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `300000` (5 min) | Override for long-running install |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `false`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `adb install -d /home/developer/app_package.apk`
+- Uses `-d` flag to allow downgrade installation
+- Does not require sudo; adb runs as the SSH user (`developer`)
+- Default 5-minute timeout accommodates large APK installations
+- The APK file is expected at `/home/developer/app_package.apk` (transferred by `TransferAppTask`)
+
+---
+
+## 33. StartAppServiceTask
+
+### Overview
+
+Starts the `syriusrobotics.kuaye.service` on the remote robot after APK installation.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. No additional parameters. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `systemctl start syriusrobotics.kuaye.service`
+- Restarts the lower machine connection service after APK installation
+- Implementation mirrors `StopAppServiceTask`
+
+---
+
+## 34. DeleteAppTask
+
+### Overview
+
+Deletes the transferred APK package (`/home/developer/app_package.apk`) on the remote robot after successful installation.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. No additional parameters. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -f /home/developer/app_package.apk`
+- Uses `-f` (force) to silently ignore missing files
+- Used as the cleanup step in the App installation flow

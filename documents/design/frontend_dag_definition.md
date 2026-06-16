@@ -89,6 +89,7 @@ const TASK_DAG_MAP: Record<string, DagConfig> = {
   "upgrade-bup":             { /* 六步 DAG: transfer → script_transfer → upgrade → wait_reconnect → verify_version → cleanup */ },
   "movebase-disk-cleanup":   { /* 单步 DAG: cleanup */ },
   "apply-alpha2-map":        { /* 四步 DAG: transfer → apply → delete_package → wait */ },
+  "install-app":             { /* 五步 DAG: transfer → stop_service → install → start_service → cleanup */ },
 };
 ```
 
@@ -169,6 +170,27 @@ input variables ──→ [transfer] ──→ [script_transfer] ──→ [upgr
 - 异常 DAG：清理残留安装包
 - `script_transfer` 节点将 `res/upgrade_bup.sh` 传输到机器人的 `/tmp/upgrade_bup.sh`，供后续 UpgradeBUPTask 使用
 - `wait_reconnect` 参数：`timeout: 180000`（等待 SSH 先断开再重连成功，单位 ms）
+
+#### install-app（App 安装）
+
+五步流程，含异常处理（先传输 APK 到机器人，再停止下位机服务，通过 adb 安装 APK，最后重启服务并清理 APK 文件）：
+
+```
+input variables ──→ [transfer] ──→ [stop_service] ──→ [install] ──→ [start_service] ──→ [cleanup] ──→ cleanup_done
+                        │                  │                  │                  │                    │
+                        └── transfer_done ─┘                  │                  │                    │
+                                            └── stop_service_done ──────────┘                    │
+                                                                   └── install_done ─────────────┘
+                                                                                     └── start_service_done ──┘
+如果主流程任一任务失败：
+[error_cleanup] ──→ error_cleanup_done
+```
+- 解析器：`TransferAppTask`, `StopAppServiceTask`, `InstallAppTask`, `StartAppServiceTask`, `DeleteAppTask`
+- 输入依赖：`robotIp`, `robotPort`, `artifactId`
+- 预期结果：`cleanup_done`
+- 异常 DAG：清理 APK 残留文件
+- `install` 节点通过 `adb install -d` 安装 APK，超时时间为 5 分钟（300000ms）
+- `stop_service` 和 `start_service` 节点使用 sudo 执行 systemctl 命令管理 `syriusrobotics.kuaye.service`
 
 ---
 

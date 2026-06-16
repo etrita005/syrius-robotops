@@ -391,6 +391,89 @@ const UPDATE_IOT_GATEWAY_CONFIG_DAG: DagDefinition = {
 };
 
 const DOWNLOAD_ALPHA2_SKETCH_DAG: DagDefinition = {
+
+const INSTALL_APP_DAG: DagDefinition = {
+  tasks: {
+    transfer: {
+      requires: ["robotIp", "robotPort", "artifactId"],
+      resolver: {
+        name: "TransferAppTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    stop_service: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "StopAppServiceTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "stop_service_done" },
+      },
+      provides: ["stop_service_done"],
+    },
+    install: {
+      requires: ["robotIp", "robotPort", "stop_service_done"],
+      resolver: {
+        name: "InstallAppTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "install_done" },
+      },
+      provides: ["install_done"],
+    },
+    start_service: {
+      requires: ["robotIp", "robotPort", "install_done"],
+      resolver: {
+        name: "StartAppServiceTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "start_service_done" },
+      },
+      provides: ["start_service_done"],
+    },
+    cleanup: {
+      requires: ["robotIp", "robotPort", "start_service_done"],
+      resolver: {
+        name: "DeleteAppTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "cleanup_done" },
+      },
+      provides: ["cleanup_done"],
+    },
+  },
+};
+
+const INSTALL_APP_ERROR_DAG: DagDefinition = {
+  tasks: {
+    error_cleanup: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "DeleteAppTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "error_cleanup_done" },
+      },
+      provides: ["error_cleanup_done"],
+    },
+  },
+};
   tasks: {
     download: {
       requires: ["robotIp", "robotPort", "localTargetDir"],
@@ -516,6 +599,26 @@ export const TASK_REGISTRY: TaskRegistry = {
       dag: UPDATE_IOT_GATEWAY_CONFIG_DAG,
       expectedResults: ["reboot_done"],
       params: {},
+    },
+    {
+      type: "install-app",
+      name: "Install App",
+      description: "Install or upgrade an app on selected robots.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to install the app.",
+      },
+      dag: INSTALL_APP_DAG,
+      expectedResults: ["cleanup_done"],
+      errorDag: INSTALL_APP_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "Artifact file",
+          required: true,
+        },
+      },
     },
     {
       type: "download-alpha2-sketch",

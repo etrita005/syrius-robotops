@@ -3991,6 +3991,10 @@ describe("UpdateIotGatewayConfigTask", () => {
 
 import { SshFileDownloadTask } from "./tasks/real/sshFileDownloadTask.js";
 import { MockSshFileDownloadTask } from "./tasks/mock/mockSshFileDownloadTask.js";
+import { StopAppServiceTask } from "./tasks/real/stopAppServiceTask.js";
+import { InstallAppTask } from "./tasks/real/installAppTask.js";
+import { StartAppServiceTask } from "./tasks/real/startAppServiceTask.js";
+import { DeleteAppTask } from "./tasks/real/deleteAppTask.js";
 
 class TestableSshFileDownloadTask extends SshFileDownloadTask {
   public params(params: ValueMap = {}): ValueMap {
@@ -4148,5 +4152,107 @@ describe("SshFileDownloadTask - Flow Integration", () => {
     assert.ok(flow.taskResults!["download"]);
     assert.equal((flow.taskResults!["download"] as Record<string, unknown>).done, true);
     testEngine.destroy();
+  });
+});
+
+class TestableStopAppServiceTask extends StopAppServiceTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("StopAppService task", () => {
+  it("TC-APP-001: should generate correct stop service command", () => {
+    const task = new TestableStopAppServiceTask();
+    const command = task.command();
+    assert.equal(command, "systemctl stop syriusrobotics.kuaye.service");
+  });
+
+  it("TC-APP-002: should force sudo to true", () => {
+    const task = new TestableStopAppServiceTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+  });
+});
+
+class TestableInstallAppTask extends InstallAppTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("InstallApp task", () => {
+  it("TC-APP-003: should generate correct adb install command", () => {
+    const task = new TestableInstallAppTask();
+    const command = task.command();
+    assert.equal(command, "adb install -d /home/developer/app_package.apk");
+  });
+
+  it("TC-APP-004: should not use sudo for adb install", () => {
+    const task = new TestableInstallAppTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, false);
+  });
+
+  it("TC-APP-005: should default commandTimeout to 300000ms", () => {
+    const task = new TestableInstallAppTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.commandTimeout, 300000);
+  });
+});
+
+class TestableStartAppServiceTask extends StartAppServiceTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("StartAppService task", () => {
+  it("TC-APP-006: should generate correct start service command", () => {
+    const task = new TestableStartAppServiceTask();
+    const command = task.command();
+    assert.equal(command, "systemctl start syriusrobotics.kuaye.service");
+  });
+
+  it("TC-APP-007: should force sudo to true", () => {
+    const task = new TestableStartAppServiceTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+  });
+});
+
+class TestableDeleteAppTask extends DeleteAppTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("DeleteApp task", () => {
+  it("TC-APP-008: should generate correct delete command", () => {
+    const task = new TestableDeleteAppTask();
+    const command = task.command();
+    assert.equal(command, "rm -f /home/developer/app_package.apk");
+  });
+
+  it("TC-APP-009: should force sudo to true", () => {
+    const task = new TestableDeleteAppTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
   });
 });
