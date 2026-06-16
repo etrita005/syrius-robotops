@@ -875,3 +875,50 @@ Same as `SshCommandTask`.
 - Steps 3-8 use `|| true` to prevent entire command chain from failing when individual cleanup/restart operations fail
 - Steps 1-2 are critical (move and chown); if they fail the task fails
 - The service restarts take effect after the reboot step in the DAG flow
+
+---
+
+## 29. SshFileDownloadTask
+
+Base class for all SFTP file download tasks.
+
+### Overview
+
+Downloads a remote file from a robot to the local machine via SFTP (ssh2 library). Validates remote file existence via SFTP stat, optionally verifies integrity via checksum comparison (remote before download, local after download), and supports progress logging.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `robotIp` | `string` | (required) | Target robot IP address |
+| `robotPort` | `number` | `22` | SSH port |
+| `robotMdnsDomain` | `string \| undefined` | `undefined` | mDNS domain |
+| `timeout` | `number` | `30000` | General timeout (ms) |
+| `retryCount` | `number` | `3` | Max retry attempts |
+| `sshUsername` | `string` | `SSH_USERNAME` | SSH login username |
+| `sshPassword` | `string` | `SSH_PASSWORD` | SSH login password |
+| `remoteFilePath` | `string` | (required) | Remote file path to download |
+| `localTargetDir` | `string` | (required) | Local destination directory |
+| `verifyChecksum` | `boolean` | `true` | Whether to verify transfer integrity |
+| `checksumAlgorithm` | `"sha256" \| "md5"` | `"sha256"` | Checksum algorithm |
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `done` | `true` | Flow completion marker |
+| `success` | `true` | Task success marker |
+| `bytesTransferred` | `number` | Total bytes transferred |
+| `localFilePath` | `string` | Actual saved path (`targetDir/basename`) |
+| `localChecksum` | `string` | Local file checksum |
+| `remoteChecksum` | `string` | Remote file checksum |
+| `integrityVerified` | `boolean` | Whether checksums matched |
+
+### Notes
+
+- Ensures local target directory exists via `mkdir -p` before download
+- Verifies remote file exists via SFTP `stat()` before downloading
+- Computes remote checksum first (via SSH `exec sha256sum`), then downloads via SFTP `fastGet`, then computes local checksum
+- Downloads via SFTP `fastGet` with progress logging every 2 seconds
+- File saved as `{localTargetDir}/{basename(remoteFilePath)}`
+- Used by the `download-alpha2-sketch` DAG with `remoteFilePath` hardcoded to `/opt/cosmos/map/preview/sketch.zip`

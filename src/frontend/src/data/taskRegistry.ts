@@ -390,6 +390,25 @@ const UPDATE_IOT_GATEWAY_CONFIG_DAG: DagDefinition = {
   },
 };
 
+const DOWNLOAD_ALPHA2_SKETCH_DAG: DagDefinition = {
+  tasks: {
+    download: {
+      requires: ["robotIp", "robotPort", "localTargetDir"],
+      resolver: {
+        name: "SshFileDownloadTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          localTargetDir: "localTargetDir",
+          remoteFilePath: { value: "/opt/cosmos/map/preview/sketch.zip" },
+        },
+        results: { done: "download_result" },
+      },
+      provides: ["download_result"],
+    },
+  },
+};
+
 export const TASK_REGISTRY: TaskRegistry = {
   version: "1.0.0",
   taskTypes: [
@@ -497,6 +516,28 @@ export const TASK_REGISTRY: TaskRegistry = {
       dag: UPDATE_IOT_GATEWAY_CONFIG_DAG,
       expectedResults: ["reboot_done"],
       params: {},
+    },
+    {
+      type: "download-alpha2-sketch",
+      name: "Download Alpha2 Sketch",
+      description: "Download the Alpha2 mapping sketch package from the selected robot to a local directory.",
+      robotSelection: {
+        mode: "single",
+        description:
+          "Select one target robot to download the mapping sketch package from.",
+      },
+      dag: DOWNLOAD_ALPHA2_SKETCH_DAG,
+      expectedResults: ["download_result"],
+      params: {
+        localTargetDir: {
+          type: "text",
+          label: "Local target directory",
+          required: true,
+          defaultValue: "/tmp",
+          description:
+            "Directory on this machine where sketch.zip will be saved.",
+        },
+      },
     },
   ],
 };

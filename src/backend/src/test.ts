@@ -3988,3 +3988,165 @@ describe("UpdateIotGatewayConfigTask", () => {
     assert.equal(params.commandTimeout, 120000);
   });
 });
+
+import { SshFileDownloadTask } from "./tasks/real/sshFileDownloadTask.js";
+import { MockSshFileDownloadTask } from "./tasks/mock/mockSshFileDownloadTask.js";
+
+class TestableSshFileDownloadTask extends SshFileDownloadTask {
+  public params(params: ValueMap = {}): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("SshFileDownloadTask", () => {
+  it("TC-DOWNLOAD-001: should build params with defaults", () => {
+    const task = new TestableSshFileDownloadTask();
+    const params = task.params({
+      robotIp: "192.168.1.10",
+      remoteFilePath: "/opt/cosmos/map/preview/sketch.zip",
+      localTargetDir: "/tmp",
+    });
+
+    assert.equal(params.robotIp, "192.168.1.10");
+    assert.equal(params.robotPort, 22);
+    assert.equal(params.timeout, 30000);
+    assert.equal(params.retryCount, 3);
+    assert.equal(params.sshUsername, "developer");
+    assert.equal(params.sshPassword, "developer");
+    assert.equal(params.remoteFilePath, "/opt/cosmos/map/preview/sketch.zip");
+    assert.equal(params.localTargetDir, "/tmp");
+    assert.equal(params.verifyChecksum, true);
+    assert.equal(params.checksumAlgorithm, "sha256");
+  });
+
+  it("TC-DOWNLOAD-002: should override defaults with custom params", () => {
+    const task = new TestableSshFileDownloadTask();
+    const params = task.params({
+      robotIp: "10.0.0.1",
+      robotPort: 2222,
+      timeout: 60000,
+      retryCount: 5,
+      sshUsername: "customuser",
+      sshPassword: "custompass",
+      remoteFilePath: "/home/user/data.zip",
+      localTargetDir: "/home/downloads",
+      verifyChecksum: false,
+      checksumAlgorithm: "md5",
+    });
+
+    assert.equal(params.robotPort, 2222);
+    assert.equal(params.timeout, 60000);
+    assert.equal(params.retryCount, 5);
+    assert.equal(params.sshUsername, "customuser");
+    assert.equal(params.sshPassword, "custompass");
+    assert.equal(params.remoteFilePath, "/home/user/data.zip");
+    assert.equal(params.localTargetDir, "/home/downloads");
+    assert.equal(params.verifyChecksum, false);
+    assert.equal(params.checksumAlgorithm, "md5");
+  });
+
+  it("TC-DOWNLOAD-003: should resolve host from mDNS domain when provided", () => {
+    const task = new TestableSshFileDownloadTask();
+    const params = task.params({
+      robotIp: "192.168.1.10",
+      robotMdnsDomain: "robot-alpha2.local",
+      remoteFilePath: "/test.zip",
+      localTargetDir: "/tmp",
+    });
+
+    assert.equal(params.robotMdnsDomain, "robot-alpha2.local");
+    assert.equal(params.robotIp, "192.168.1.10");
+  });
+
+  it("TC-DOWNLOAD-004: mock task should return simulated result", async () => {
+    const task = new MockSshFileDownloadTask();
+    const result = await task.exec({
+      robotIp: "192.168.1.10",
+      remoteFilePath: "/opt/cosmos/map/preview/sketch.zip",
+      localTargetDir: "/tmp",
+    }) as Record<string, unknown>;
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.bytesTransferred, 0);
+    assert.equal(result.localFilePath, "/tmp/sketch.zip");
+    assert.equal(result.localChecksum, "");
+    assert.equal(result.remoteChecksum, "");
+    assert.equal(result.integrityVerified, true);
+  });
+
+  it("TC-DOWNLOAD-005: mock task should construct correct local file path", async () => {
+    const task = new MockSshFileDownloadTask();
+    const result = await task.exec({
+      robotIp: "10.0.0.1",
+      remoteFilePath: "/var/log/robot.log",
+      localTargetDir: "/home/user/logs",
+    }) as Record<string, unknown>;
+
+    assert.equal(result.localFilePath, "/home/user/logs/robot.log");
+  });
+
+  it("TC-DOWNLOAD-006: mock task execution should take approximately 5 seconds", async () => {
+    const task = new MockSshFileDownloadTask();
+    const start = Date.now();
+    await task.exec({
+      robotIp: "192.168.1.10",
+      remoteFilePath: "/test.zip",
+      localTargetDir: "/tmp",
+    });
+    const elapsed = Date.now() - start;
+
+    assert.ok(elapsed >= 4500, `Expected >= 4500ms but got ${elapsed}ms`);
+    assert.ok(elapsed <= 7000, `Expected <= 7000ms but got ${elapsed}ms`);
+  });
+});
+
+describe("SshFileDownloadTask - Flow Integration", () => {
+  it("TC-DOWNLOAD-FLOW-001: should create flow with SshFileDownloadTask DAG and complete", async () => {
+    const { engine } = createEngine();
+    const registry = new ResolverRegistry();
+    registry.register("MockTask1", MockTask1);
+    registry.register("MockTask2", MockTask2);
+    registry.register("SshFileDownloadTask", MockSshFileDownloadTask as unknown as TaskResolverClass);
+
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const downloadDag: FlowSpec = {
+      tasks: {
+        download: {
+          requires: ["robotIp", "robotPort", "localTargetDir"],
+          provides: ["download_result"],
+          resolver: {
+            name: "SshFileDownloadTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+              localTargetDir: "localTargetDir",
+              remoteFilePath: { value: "/opt/cosmos/map/preview/sketch.zip" },
+            },
+            results: { done: "download_result" },
+          },
+        },
+      },
+    };
+
+    const summary = await testEngine.createFlow("internal", downloadDag, {
+      robotIp: "192.168.1.10",
+      robotPort: 22,
+      localTargetDir: "/tmp",
+    });
+
+    await waitForFlowComplete(testEngine, summary.id);
+
+    const flow = testEngine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "COMPLETED");
+    assert.equal(flow.taskStates["download"], "COMPLETED");
+    assert.ok(flow.taskResults);
+    assert.ok(flow.taskResults!["download"]);
+    assert.equal((flow.taskResults!["download"] as Record<string, unknown>).done, true);
+    testEngine.destroy();
+  });
+});
