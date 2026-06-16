@@ -295,13 +295,13 @@ Same as `SshCommandTask`.
 
 ### Overview
 
-Downloads a movebase artifact from the artifact service to a temp directory, then uploads it to the robot via SFTP.
+Resolves the artifact storage path from the artifact service and uploads the artifact file to the robot via SFTP. No intermediate temp directory is used.
 
 ### Input Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `artifactId` | `string` | (optional) | Artifact ID to download |
+| `artifactId` | `string` | (optional) | Artifact ID to resolve and transfer |
 
 Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
 
@@ -309,7 +309,7 @@ Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePat
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `artifactService` | `{ download(id, dest): Promise<string> }` | Service for artifact download |
+| `artifactService` | `{ getArtifactPath(id): Promise<string> }` | Service to resolve artifact storage path |
 
 ### Output Parameters
 
@@ -318,9 +318,8 @@ Same as `SshFileTransferTask`.
 ### Notes
 
 - Hardcoded remote path: `/mnt/sdcard/offlineota/alpha2_movebase_offline_package.zip`
-- Creates temp directory at `/tmp/movebase-transfer-<timestamp>`
-- Cleans up temp directory in both success and failure paths
-- If `artifactId` or `artifactService` is absent, falls through to `super.exec()` directly
+- Uses `artifactService.getArtifactPath(artifactId)` to resolve the local file path directly
+- If `artifactId` or `artifactService` is absent, falls through to `super.onExec()` directly
 
 ---
 
@@ -441,13 +440,13 @@ Same as `MatchFileContentTask`.
 
 ### Overview
 
-Downloads a BUP artifact from the artifact service to a temp directory, then uploads it to the robot via SFTP.
+Resolves the BUP artifact storage path from the artifact service and uploads the artifact file to the robot via SFTP. No intermediate temp directory is used.
 
 ### Input Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `artifactId` | `string` | (optional) | Artifact ID to download |
+| `artifactId` | `string` | (optional) | Artifact ID to resolve and transfer |
 
 Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
 
@@ -462,7 +461,7 @@ Same as `SshFileTransferTask`.
 ### Notes
 
 - Hardcoded remote path: `/mnt/sdcard/bup_offlineota/bup_offline_package.zip`
-- Creates temp directory at `/tmp/bup-transfer-<timestamp>`
+- Uses `artifactService.getArtifactPath(artifactId)` to resolve the local file path directly
 - Implementation mirrors `TransferMovebaseTask`
 
 ---
@@ -732,13 +731,13 @@ Same as `WaitSshConnectedTask`.
 
 ### Overview
 
-Downloads an Alpha2 map artifact from the artifact service to a temp directory, then uploads it to the robot via SFTP.
+Resolves the Alpha2 map artifact storage path from the artifact service and uploads the artifact file to the robot via SFTP. No intermediate temp directory is used.
 
 ### Input Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `artifactId` | `string` | (optional) | Artifact ID to download |
+| `artifactId` | `string` | (optional) | Artifact ID to resolve and transfer |
 
 Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
 
@@ -746,7 +745,7 @@ Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePat
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `artifactService` | `{ download(id, dest): Promise<string> }` | Service for artifact download |
+| `artifactService` | `{ getArtifactPath(id): Promise<string> }` | Service to resolve artifact storage path |
 
 ### Output Parameters
 
@@ -755,9 +754,8 @@ Same as `SshFileTransferTask`.
 ### Notes
 
 - Hardcoded remote path: `/home/developer/alpha2_map_package.zip`
-- Creates temp directory at `/tmp/alpha2map-transfer-<timestamp>`
-- Cleans up temp directory in both success and failure paths
-- If `artifactId` or `artifactService` is absent, falls through to `super.exec()` directly
+- Uses `artifactService.getArtifactPath(artifactId)` to resolve the local file path directly
+- If `artifactId` or `artifactService` is absent, falls through to `super.onExec()` directly
 - Implementation mirrors `TransferMovebaseTask`
 
 ---
