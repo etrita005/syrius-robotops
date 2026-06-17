@@ -1228,6 +1228,237 @@ describe("Movebase disk cleanup task", () => {
   });
 });
 
+import {
+  TransferAEConfigTask,
+  DeployAEConfigTask,
+  DeleteAEConfigTask,
+  MockTransferAEConfigTask,
+  MockDeployAEConfigTask,
+  MockDeleteAEConfigTask,
+} from "./tasks/index.js";
+import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
+import { tmpdir as osTmpdir } from "node:os";
+import { join as pathJoin } from "node:path";
+
+class TestableDeployAEConfigTask extends DeployAEConfigTask {
+  public command(params: ValueMap = {}): string {
+    return this.getSshCommand(params);
+  }
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableDeleteAEConfigTask extends DeleteAEConfigTask {
+  public command(params: ValueMap = {}): string {
+    return this.getSshCommand(params);
+  }
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableTransferAEConfigTask extends TransferAEConfigTask {
+  public lastSeenLocalFilePath: string | undefined;
+  public superCalled = false;
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+  // Stub the SFTP path by overriding the parent SshFileTransferTask.onExec.
+  // This is invoked via `super.onExec(augmentedParams, context)` from
+  // TransferAEConfigTask.onExec, so we observe the augmented localFilePath.
+  public stubbedSuperOnExec(params: ValueMap): ValueMap {
+    this.superCalled = true;
+    this.lastSeenLocalFilePath = params.localFilePath as string;
+    return {
+      done: true,
+      success: true,
+      bytesTransferred: 0,
+      localChecksum: "",
+      remoteChecksum: "",
+      integrityVerified: true,
+    };
+  }
+}
+
+// Patch SshFileTransferTask.prototype.onExec for instances of
+// TestableTransferAEConfigTask only. We do this by replacing the parent
+// prototype method with a guard that delegates to stubbedSuperOnExec when
+// the call is on a Testable instance, otherwise calls the original.
+function installTransferAEStub(): () => void {
+  const parentProto = Object.getPrototypeOf(TransferAEConfigTask.prototype) as {
+    onExec: (params: ValueMap, context?: ValueMap) => Promise<ValueMap>;
+  };
+  const original = parentProto.onExec;
+  parentProto.onExec = async function (
+    this: TestableTransferAEConfigTask | object,
+    params: ValueMap,
+    context?: ValueMap
+  ) {
+    if (this instanceof TestableTransferAEConfigTask) {
+      return this.stubbedSuperOnExec(params);
+    }
+    return original.call(this, params, context);
+  };
+  return () => {
+    parentProto.onExec = original;
+  };
+}
+
+describe("Deploy AE Config tasks", () => {
+  let restoreTransferStub: (() => void) | undefined;
+
+  beforeEach(() => {
+    restoreTransferStub = installTransferAEStub();
+  });
+
+  afterEach(() => {
+    restoreTransferStub?.();
+    restoreTransferStub = undefined;
+  });
+
+  it("TC-AE-001: DeployAEConfigTask builds the multi-step deploy command with sudo", () => {
+    const task = new TestableDeployAEConfigTask();
+    const cmd = task.command({});
+
+    // Ordered fragment assertions: directly unzip the package into the deploy
+    // directory (no intermediate /tmp/ae_config_extract staging).
+    const fragments = [
+      "[ -d /opt/cosmos/bin/applet-engine ] || { echo \"Deploy target not found: /opt/cosmos/bin/applet-engine\" >&2; exit 1; }",
+      "unzip -o /tmp/ae_config_package.zip -d /opt/cosmos/bin/applet-engine",
+      "chown -R cosmos:cosmos /opt/cosmos/bin/applet-engine",
+      "systemctl restart cosmos-applet-engine.service",
+      "rm -f /tmp/ae_config_package.zip",
+    ];
+    let cursor = 0;
+    for (const f of fragments) {
+      const idx = cmd.indexOf(f, cursor);
+      assert.ok(idx !== -1, `fragment missing or out of order: ${f}`);
+      cursor = idx + f.length;
+    }
+
+    // Negative assertion: must NOT pre-create the deploy directory.
+    assert.equal(
+      cmd.includes("mkdir -p /opt/cosmos/bin/applet-engine"),
+      false,
+      "Deploy target directory must not be auto-created"
+    );
+
+    // Negative assertion: must NOT use any /tmp/ae_config_extract staging dir
+    // (we now unzip directly into the deploy directory).
+    assert.equal(
+      cmd.includes("/tmp/ae_config_extract"),
+      false,
+      "Must not use a /tmp/ae_config_extract staging directory"
+    );
+
+    // Negative assertion: must NOT use /home/developer for the upload/extract
+    // staging area (the package lives under /tmp).
+    assert.equal(
+      cmd.includes("/home/developer"),
+      false,
+      "Staging paths must live under /tmp, not /home/developer"
+    );
+
+    assert.equal(
+      cmd.includes(" reboot"),
+      false,
+      "Deploy AE Config must restart only the AE service, not the robot"
+    );
+
+    const built = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(built.sudo, true);
+    assert.equal(built.commandTimeout, 60000);
+    assert.equal(built.retryCount, 1);
+  });
+
+  it("TC-AE-002: DeleteAEConfigTask returns the cleanup command and forces sudo", () => {
+    const task = new TestableDeleteAEConfigTask();
+    const cmd = task.command({});
+    assert.equal(cmd, "rm -f /tmp/ae_config_package.zip");
+    const built = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(built.sudo, true);
+  });
+
+  it("TC-AE-003: TransferAEConfigTask hardcodes the remote target path", () => {
+    const task = new TestableTransferAEConfigTask();
+    const built = task.params({
+      robotIp: "192.168.1.10",
+      localFilePath: "/tmp/x.zip",
+    });
+    assert.equal(built.remoteFilePath, "/tmp/ae_config_package.zip");
+    assert.equal(built.sudo, true);
+  });
+
+  it("TC-AE-004: TransferAEConfigTask resolves artifact via getArtifactPath and forwards localFilePath", async () => {
+    const task = new TestableTransferAEConfigTask();
+    const tmpDir = mkdtempSync(pathJoin(osTmpdir(), "ae-getpath-"));
+    const stubArtifactPath = pathJoin(tmpDir, "ae_config_package.zip");
+    writeFileSync(stubArtifactPath, "stub-zip-content");
+    let receivedArtifactId: string | undefined;
+    const artifactService = {
+      async getArtifactPath(artifactId: string): Promise<string> {
+        receivedArtifactId = artifactId;
+        return stubArtifactPath;
+      },
+    };
+
+    const result = await task.exec(
+      { robotIp: "192.168.1.10", artifactId: "art-1" },
+      { artifactService }
+    );
+
+    assert.equal(result.success, true);
+    assert.equal(task.superCalled, true, "super.onExec should be invoked");
+    assert.equal(receivedArtifactId, "art-1");
+    assert.equal(
+      task.lastSeenLocalFilePath,
+      stubArtifactPath,
+      "localFilePath should equal the path returned by getArtifactPath"
+    );
+  });
+
+  it("TC-AE-005: TransferAEConfigTask falls through to super when artifactId/service is absent", async () => {
+    const task = new TestableTransferAEConfigTask();
+    const tmpDir = mkdtempSync(pathJoin(osTmpdir(), "ae-fallthrough-"));
+    const localFilePath = pathJoin(tmpDir, "x.zip");
+    writeFileSync(localFilePath, "stub");
+
+    const result = await task.exec({
+      robotIp: "192.168.1.10",
+      localFilePath,
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(task.superCalled, true);
+    assert.equal(task.lastSeenLocalFilePath, localFilePath);
+  });
+
+  it("TC-AE-006: Mock AE Config tasks return success quickly", async () => {
+    const transferMock = new MockTransferAEConfigTask();
+    const deployMock = new MockDeployAEConfigTask();
+    const deleteMock = new MockDeleteAEConfigTask();
+
+    const [t, d, x] = await Promise.all([
+      transferMock.exec({ robotIp: "192.168.1.10", artifactId: "a" }),
+      deployMock.exec({ robotIp: "192.168.1.10" }),
+      deleteMock.exec({ robotIp: "192.168.1.10" }),
+    ]);
+    assert.equal(t.success, true);
+    assert.equal(d.success, true);
+    assert.equal(x.success, true);
+  });
+
+  it("TC-AE-007: tasks/index.ts exports all six AE config task classes", () => {
+    assert.equal(typeof TransferAEConfigTask, "function");
+    assert.equal(typeof DeployAEConfigTask, "function");
+    assert.equal(typeof DeleteAEConfigTask, "function");
+    assert.equal(typeof MockTransferAEConfigTask, "function");
+    assert.equal(typeof MockDeployAEConfigTask, "function");
+    assert.equal(typeof MockDeleteAEConfigTask, "function");
+  });
+});
+
 describe("SSH wait tasks", () => {
   afterEach(() => {
     resetSshConnectionProbeForTest();
