@@ -72,3 +72,7 @@ export { DeployAEConfigTask } from "./real/deployAEConfigTask.js";
 export { MockDeployAEConfigTask } from "./mock/mockDeployAEConfigTask.js";
 export { DeleteAEConfigTask } from "./real/deleteAEConfigTask.js";
 export { MockDeleteAEConfigTask } from "./mock/mockDeleteAEConfigTask.js";
+export { TransferAppTask } from "./real/transferAppTask.js";
+export { MockTransferAppTask } from "./mock/mockTransferAppTask.js";
+export { InstallAppTask, CleanupAppTask } from "./real/installAppTask.js";
+export { MockInstallAppTask, MockCleanupAppTask } from "./mock/mockInstallAppTask.js";
