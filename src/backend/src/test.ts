@@ -31,6 +31,10 @@ import { TransferIotGatewayConfigTask } from "./tasks/real/transferIotGatewayCon
 import { UpdateIotGatewayConfigTask } from "./tasks/real/updateIotGatewayConfigTask.js";
 import { resetSshConnectionProbeForTest, setSshConnectionProbeForTest } from "./tasks/real/sshConnectionWait.js";
 import type { SshConnectionProbeParams } from "./tasks/real/sshConnectionWait.js";
+import { TransferAppTask } from "./tasks/real/transferAppTask.js";
+import { InstallAppTask, CleanupAppTask } from "./tasks/real/installAppTask.js";
+import { MockTransferAppTask } from "./tasks/mock/mockTransferAppTask.js";
+import { MockInstallAppTask, MockCleanupAppTask } from "./tasks/mock/mockInstallAppTask.js";
 
 class InMemoryObjectStore {
   private store = new Map<string, unknown>();
@@ -4582,6 +4586,244 @@ describe("SshFileDownloadTask - Flow Integration", () => {
     assert.ok(flow.taskResults);
     assert.ok(flow.taskResults!["download"]);
     assert.equal((flow.taskResults!["download"] as Record<string, unknown>).done, true);
+    testEngine.destroy();
+  });
+});
+
+class TestableTransferAppTask extends TransferAppTask {
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("TransferApp task", () => {
+  it("TC-APP-001: should upload APK to /tmp/app_package.apk", () => {
+    const task = new TestableTransferAppTask();
+    const params = task.params({
+      robotIp: "192.168.1.10",
+      artifactId: "test-apk-id",
+    });
+    assert.equal(params.remoteFilePath, "/tmp/app_package.apk");
+    assert.equal(params.sudo, true);
+  });
+});
+
+class TestableInstallAppTask extends InstallAppTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("InstallApp task", () => {
+  it("TC-APP-002: should generate correct combined install command with all steps", () => {
+    const task = new TestableInstallAppTask();
+    const command = task.command();
+    assert.match(command, /adb kill-server/);
+    assert.match(command, /adb start-server/);
+    assert.match(command, /systemctl stop syriusrobotics\.kuaye\.service/);
+    assert.match(command, /adb install -d -r \/tmp\/app_package\.apk/);
+    assert.match(command, /systemctl start syriusrobotics\.kuaye\.service/);
+    assert.match(command, /rm -f \/tmp\/app_package\.apk/);
+    assert.match(command, /sh -c/);
+    assert.match(command, / && /);
+  });
+
+  it("TC-APP-003: should use sudo for the overall task", () => {
+    const task = new TestableInstallAppTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+  });
+
+  it("TC-APP-004: should default commandTimeout to 300000ms", () => {
+    const task = new TestableInstallAppTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.commandTimeout, 300000);
+  });
+
+  it("TC-APP-005: ADB fix steps should run before install in correct order", () => {
+    const task = new TestableInstallAppTask();
+    const command = task.command();
+    const adbKillIdx = command.indexOf("adb kill-server");
+    const adbStartIdx = command.indexOf("adb start-server");
+    const stopIdx = command.indexOf("systemctl stop");
+    const installIdx = command.indexOf("adb install");
+    assert.ok(adbKillIdx < adbStartIdx, "adb kill-server before adb start-server");
+    assert.ok(adbStartIdx < stopIdx, "ADB fix before stop service");
+    assert.ok(stopIdx < installIdx, "stop before install");
+  });
+
+  it("TC-APP-005b: non-adb commands should use sh -c wrapper to ignore failures", () => {
+    const task = new TestableInstallAppTask();
+    const command = task.command();
+    assert.match(command, /sh -c "rm -rf/);
+    assert.match(command, /sh -c "adb kill-server ; true"/);
+    assert.match(command, /sh -c "systemctl stop .+ ; true"/);
+    assert.match(command, /sh -c "systemctl start .+ ; true"/);
+    assert.match(command, /sh -c "rm -f .+ ; true"/);
+    assert.doesNotMatch(command, /sh -c "adb install/);
+  });
+});
+
+class TestableCleanupAppTask extends CleanupAppTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("CleanupApp task", () => {
+  it("TC-APP-006: should generate correct cleanup command", () => {
+    const task = new TestableCleanupAppTask();
+    const command = task.command();
+    assert.equal(command, "rm -f /tmp/app_package.apk");
+  });
+
+  it("TC-APP-007: should use sudo for cleanup", () => {
+    const task = new TestableCleanupAppTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+  });
+});
+
+describe("App install - Flow Integration", () => {
+  it("TC-APP-008: should execute 2-step install-app DAG and complete", async () => {
+    const { engine } = createEngine();
+    const registry = new ResolverRegistry();
+    registry.register("TransferAppTask", MockTransferAppTask as unknown as TaskResolverClass);
+    registry.register("InstallAppTask", MockInstallAppTask as unknown as TaskResolverClass);
+    registry.register("CleanupAppTask", MockCleanupAppTask as unknown as TaskResolverClass);
+
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const installDag: FlowSpec = {
+      tasks: {
+        transfer: {
+          requires: ["robotIp", "robotPort", "artifactId"],
+          provides: ["transfer_done"],
+          resolver: {
+            name: "TransferAppTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+              artifactId: "artifactId",
+            },
+            results: { done: "transfer_done" },
+          },
+        },
+        install: {
+          requires: ["robotIp", "robotPort", "transfer_done"],
+          provides: ["install_done"],
+          resolver: {
+            name: "InstallAppTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+            },
+            results: { done: "install_done" },
+          },
+        },
+      },
+    };
+
+    const summary = await testEngine.createFlow("internal", installDag, {
+      robotIp: "192.168.1.10",
+      robotPort: 22,
+      artifactId: "test-apk",
+    });
+    await waitForFlowComplete(testEngine, summary.id);
+
+    const flow = testEngine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "COMPLETED");
+    assert.equal(flow.taskStates["transfer"], "COMPLETED");
+    assert.equal(flow.taskStates["install"], "COMPLETED");
+    testEngine.destroy();
+  });
+
+  it("TC-APP-009: error DAG cleanup should run when install fails", async () => {
+    class FailingMockInstallTask extends MockInstallAppTask {
+      protected override async onExec(_params: ValueMap): Promise<ValueMap> {
+        throw new Error("Simulated adb install failure");
+      }
+    }
+
+    const { engine } = createEngine();
+    const registry = new ResolverRegistry();
+    registry.register("TransferAppTask", MockTransferAppTask as unknown as TaskResolverClass);
+    registry.register("InstallAppTask", FailingMockInstallTask as unknown as TaskResolverClass);
+    registry.register("CleanupAppTask", MockCleanupAppTask as unknown as TaskResolverClass);
+
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const installDag: FlowSpec = {
+      tasks: {
+        transfer: {
+          requires: ["robotIp", "robotPort", "artifactId"],
+          provides: ["transfer_done"],
+          resolver: {
+            name: "TransferAppTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+              artifactId: "artifactId",
+            },
+            results: { done: "transfer_done" },
+          },
+        },
+        install: {
+          requires: ["robotIp", "robotPort", "transfer_done"],
+          provides: ["install_done"],
+          resolver: {
+            name: "InstallAppTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+            },
+            results: { done: "install_done" },
+          },
+        },
+      },
+    };
+
+    const cleanupDag: FlowSpec = {
+      tasks: {
+        error_cleanup: {
+          provides: ["error_cleanup_done"],
+          resolver: {
+            name: "CleanupAppTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+            },
+            results: { done: "error_cleanup_done" },
+          },
+        },
+      },
+    };
+
+    const summary = await testEngine.createFlow("internal", installDag, {
+      robotIp: "192.168.1.10",
+      robotPort: 22,
+      artifactId: "test-apk",
+    }, undefined, cleanupDag);
+    await waitForFlowComplete(testEngine, summary.id, 15000);
+
+    const flow = testEngine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "FAILED");
+    assert.equal(flow.phase, "error");
+    assert.ok(sse.hasEvent("task-flow-engine/error-handling-completed"));
     testEngine.destroy();
   });
 });

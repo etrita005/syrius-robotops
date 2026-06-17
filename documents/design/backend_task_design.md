@@ -1079,3 +1079,89 @@ Same as `SshCommandTask`.
 - Hardcoded command: `rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip`
 - Uses `rm -rf` because it cleans up both a directory tree and the zip file.
 - Mirrors `DeleteAEConfigTask` pattern.
+
+---
+
+## 33. TransferAppTask
+
+### Overview
+
+Resolves the APK artifact storage path from the artifact service and uploads it to the robot via SFTP. Used as the first step of the `Install App` flow.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID to resolve and transfer |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ getArtifactPath(id): Promise<string> }` | Service to resolve artifact storage path |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/tmp/app_package.apk`
+- Uses `artifactService.getArtifactPath(artifactId)` to resolve the local file path directly (no temp directory created)
+- Implementation mirrors `TransferBUPTask`
+
+---
+
+## 34. InstallAppTask
+
+### Overview
+
+Performs the complete APK installation workflow on the remote robot in a single SSH command: ADB auth fix, stop kuaye service, install APK via `adb install -d -r`, restart kuaye service, and cleanup.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `300000` (5 min) | Override for long-running install |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Combined command chain:
+  1. `rm -rf ~/.android/ ; true` — Remove ADB auth directory (failure ignored)
+  2. `adb kill-server ; true` — Kill ADB server (failure ignored)
+  3. `adb start-server ; true` — Restart ADB server (failure ignored)
+  4. `systemctl stop syriusrobotics.kuaye.service ; true` — Stop kuaye service (failure ignored)
+  5. **`adb install -d -r /tmp/app_package.apk`** — Install APK (critical step)
+  6. `systemctl start syriusrobotics.kuaye.service ; true` — Restart kuaye service (failure ignored)
+  7. `rm -f /tmp/app_package.apk ; true` — Cleanup (failure ignored)
+- Uses `-d` (downgrade) and `-r` (replace/overwrite) flags
+- Only step 5 is critical; all other steps are wrapped with `sh -c "... ; true"` to tolerate failures
+
+---
+
+## 35. CleanupAppTask
+
+### Overview
+
+Deletes the transferred APK file (`/tmp/app_package.apk`) on the remote robot. Used as the error DAG cleanup step when installation fails.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -f /tmp/app_package.apk`
+- Uses `-f` (force) to silently ignore missing files
