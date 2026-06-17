@@ -5,7 +5,7 @@
 > - Design: `documents/design/backend_base_task_design.md`
 > - Test cases: `documents/test/backend_base_task_test_cases.md`
 >
-> Per-task sections below describe each task's input / output / notes. The `ignoreFailure` parameter is owned by `BaseTask` for tasks whose failure is expressed by **throwing** (e.g. `SshCommandTask`, `SshFileTransferTask` and their derivatives); on such a thrown failure with `ignoreFailure: true`, BaseTask returns the standardized body `{ done: true, success: false, ignored: true, error }` rather than partial results. Tasks with an explicit internal **soft-failure return path** (e.g. `WaitSshConnectedTask` / `WaitSshReconnectTask`) keep their existing partial-result fields (`state`, `attempts`, `elapsedMs`, etc.) — see the per-task notes and `backend_base_task_design.md` §5.2.
+> Per-task sections below describe each task's input / output / notes. The `ignoreFailure` parameter is owned by `BaseTask` for tasks whose failure is expressed by **throwing** (e.g. `SshCommandTask`, `SshFileTransferTask` and their derivatives); on such a thrown failure with `ignoreFailure: true`, BaseTask returns the standardized body `{ done: true, success: false, ignored: true, error }` rather than partial results. Tasks with an explicit internal **soft-failure return path** (e.g. `WaitSshConnectedTask` / `WaitSshReconnectTask`) keep their existing partial-result fields (`state`, `attempts`, `elapsedMs`, etc.) — see the per-task notes and `backend_base_task_design.md` §2.2.
 
 All task resolver classes derive from `BaseTask`, which implements `ITaskResolver` from `flowed`:
 ```
@@ -60,7 +60,7 @@ Executes a shell command on a remote robot via raw SSH (ssh2 library). Supports 
 - Sudo wrapping: prepends `echo "<password>" | sudo -S -p ''` to each `&&`-separated segment
 - Retry uses exponential backoff: `sleep(1000 * attempt)` between attempts
 - Throws if exit code != 0 after all retries; `ignoreFailure` is no longer handled here.
-- On failure, `BaseTask` performs the `ignoreFailure` translation: when `ignoreFailure: true`, the standardized body `{ done: true, success: false, ignored: true, error }` is returned (no `stdout` / `stderr` / `exitCode`); when `ignoreFailure: false` or omitted, the original error is rethrown. See `backend_base_task_design.md` §5.2 for the migration-time output change.
+- On failure, `BaseTask` performs the `ignoreFailure` translation: when `ignoreFailure: true`, the standardized body `{ done: true, success: false, ignored: true, error }` is returned (no `stdout` / `stderr` / `exitCode`); when `ignoreFailure: false` or omitted, the original error is rethrown. See `backend_base_task_design.md` §2.2 for the migration-time output change.
 - Subclass overrides: `getSshCommand()` defines the command, `buildParams()` customizes defaults
 
 ---
@@ -566,6 +566,81 @@ Same as `SshCommandTask`.
 
 - Hardcoded command: `rm -rf /mnt/sdcard/offlineota`
 - Used as the cleanup step in the BUP upgrade flow
+
+---
+
+## 19. TransferAEConfigTask
+
+### Overview
+
+Resolves the AE config artifact storage path from the artifact service, then uploads it to the robot via SFTP. Used as the first step of the `Deploy AE Config` flow.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID to download |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ getArtifactPath(id): Promise<string> }` | Service to resolve artifact storage path |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/tmp/ae_config_package.zip`
+- Resolves local path via `artifactService.getArtifactPath(artifactId)` (no temp directory created); falls through to parent `SshFileTransferTask.onExec` when no `artifactId`/`artifactService` is provided.
+- If `artifactId` or `artifactService` is absent, falls through to `super.exec()` directly
+
+---
+
+## 20. DeployAEConfigTask
+
+### Overview
+
+Extracts the uploaded AE config zip directly into `/opt/cosmos/bin/applet-engine` on the robot, fixes ownership to `cosmos:cosmos`, removes the original zip on `/tmp`, and restarts `cosmos-applet-engine.service`.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`, `commandTimeout` defaults to `60000`, and `retryCount` is forced to `1` because the deploy command mutates remote state and must not be retried without rerunning transfer.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded multi-step command: verify `/opt/cosmos/bin/applet-engine` exists (fail with non-zero exit when missing), `unzip -o` the package directly into the deploy directory, `chown -R cosmos:cosmos`, remove the zip on `/tmp`, then run `systemctl restart cosmos-applet-engine.service`.
+- Does **not** auto-create the deploy target directory. If `/opt/cosmos/bin/applet-engine` is missing, the first segment exits with code 1 and stderr `Deploy target not found: /opt/cosmos/bin/applet-engine`, causing the whole chain to fail.
+- `unzip -o` overwrites same-named files inside the deploy directory without prompting and does NOT clear pre-existing files outside the zip's content set. No `/tmp/ae_config_extract` staging directory is used.
+- Used as the `deploy` step of the Deploy AE Config DAG.
+
+---
+
+## 21. DeleteAEConfigTask
+
+### Overview
+
+Removes the transferred AE config zip on the robot at `/tmp/ae_config_package.zip`. Idempotent and safe to invoke from the Deploy AE Config errorDag.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -f /tmp/ae_config_package.zip`
 - Implementation mirrors `DeleteMovebaseTask`
 
 ---
@@ -648,7 +723,7 @@ Waits until an SSH session can be established with the robot. The task only veri
 | `sshUsername` | `string` | `SSH_USERNAME` | SSH login username |
 | `sshPassword` | `string` | `SSH_PASSWORD` | SSH login password |
 | `timeout` | `number \| undefined` | `undefined` | Total wait timeout in milliseconds; undefined means wait indefinitely |
-| `ignoreFailure` | `boolean` | `false` | If true, on timeout this task returns a soft-failure result (`done:true, success:false, state, attempts, elapsedMs, error`) instead of throwing. Consumed by this task internally; `BaseTask`'s ignoreFailure translation does not apply to this soft-failure path. See `backend_base_task_design.md` §5.2. |
+| `ignoreFailure` | `boolean` | `false` | If true, on timeout this task returns a soft-failure result (`done:true, success:false, state, attempts, elapsedMs, error`) instead of throwing. Consumed by this task internally; `BaseTask`'s ignoreFailure translation does not apply to this soft-failure path. See `backend_base_task_design.md` 鎼?.2. |
 
 ### Output Parameters
 
@@ -663,7 +738,7 @@ Waits until an SSH session can be established with the robot. The task only veri
 
 ### Notes
 
-- `ignoreFailure` is consumed by this task internally to choose between "throw on timeout" and "return soft-failure with partial fields"; `BaseTask`'s ignoreFailure translation does not apply to the soft-failure path. See `backend_base_task_design.md` §5.2.
+- `ignoreFailure` is consumed by this task internally to choose between "throw on timeout" and "return soft-failure with partial fields"; `BaseTask`'s ignoreFailure translation does not apply to the soft-failure path. See `backend_base_task_design.md` §2.2.
 - Uses `ssh2.Client` connection readiness as the probe signal.
 - Uses `robotMdnsDomain` when present, otherwise `robotIp`.
 - Does not log passwords or other sensitive credentials.
@@ -715,14 +790,14 @@ Same as `WaitSshConnectedTask`.
 | `disconnectResult` | `ValueMap \| undefined` | Result returned by `WaitSshDisconnectedTask` |
 | `connectResult` | `ValueMap \| undefined` | Result returned by `WaitSshConnectedTask` |
 | `elapsedMs` | `number` | Total elapsed time in milliseconds |
-| `error` | `string \| undefined` | Failure message in the soft-failure return path. Populated by this task itself, not by `BaseTask`. See `backend_base_task_design.md` §5.2. |
+| `error` | `string \| undefined` | Failure message in the soft-failure return path. Populated by this task itself, not by `BaseTask`. See `backend_base_task_design.md` 鎼?.2. |
 
 ### Notes
 
 - Must call `WaitSshDisconnectedTask` followed by `WaitSshConnectedTask`; it must not duplicate the SSH probe loop.
 - A single `timeout` value is treated as the total budget for both phases. The reconnect phase receives the remaining timeout after the disconnect phase completes.
 - Undefined `timeout` means both phases wait indefinitely.
-- `ignoreFailure` is consumed by this task internally (delegating to the underlying wait phases). When true, a phase failure becomes a soft-failure return (`done:true, success:false, state, ...`) instead of a thrown error; `BaseTask`'s ignoreFailure translation does not apply to this soft-failure path. See `backend_base_task_design.md` §5.2.
+- `ignoreFailure` is consumed by this task internally (delegating to the underlying wait phases). When true, a phase failure becomes a soft-failure return (`done:true, success:false, state, ...`) instead of a thrown error; `BaseTask`'s ignoreFailure translation does not apply to this soft-failure path. See `backend_base_task_design.md` §2.2.
 - Mock variant composes the mock disconnected and connected tasks.
 
 ---
