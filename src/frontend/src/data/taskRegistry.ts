@@ -409,6 +409,80 @@ const DOWNLOAD_ALPHA2_SKETCH_DAG: DagDefinition = {
   },
 };
 
+const DEPLOY_AE_CONFIG_DAG: DagDefinition = {
+  tasks: {
+    transfer: {
+      requires: ["robotIp", "robotPort", "artifactId"],
+      resolver: {
+        name: "TransferAEConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    deploy: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "DeployAEConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "deploy_done" },
+      },
+      provides: ["deploy_done"],
+    },
+    reboot: {
+      requires: ["robotIp", "robotPort", "deploy_done"],
+      resolver: {
+        name: "RebootRobotTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          ignoreFailure: { value: true },
+          retryCount: { value: 1 },
+        },
+        results: { done: "reboot_done" },
+      },
+      provides: ["reboot_done"],
+    },
+    wait_reconnect: {
+      requires: ["robotIp", "robotPort", "reboot_done"],
+      resolver: {
+        name: "WaitSshReconnectTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          timeout: { value: 360000 },
+        },
+        results: { done: "reconnect_done" },
+      },
+      provides: ["reconnect_done"],
+    },
+  },
+};
+
+const DEPLOY_AE_CONFIG_ERROR_DAG: DagDefinition = {
+  tasks: {
+    error_cleanup: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "DeleteAEConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "error_cleanup_done" },
+      },
+      provides: ["error_cleanup_done"],
+    },
+  },
+};
+
 export const TASK_REGISTRY: TaskRegistry = {
   version: "1.0.0",
   taskTypes: [
@@ -536,6 +610,27 @@ export const TASK_REGISTRY: TaskRegistry = {
           defaultValue: "/tmp",
           description:
             "Directory on this machine where sketch.zip will be saved.",
+        },
+      },
+    },
+    {
+      type: "deploy-ae-config",
+      name: "Deploy AE Config",
+      description:
+        "Deploy an Applet Engine config package to /opt/cosmos/bin/applet-engine and reboot.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to deploy the AE config package.",
+      },
+      dag: DEPLOY_AE_CONFIG_DAG,
+      expectedResults: ["reconnect_done"],
+      errorDag: DEPLOY_AE_CONFIG_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "AE config package",
+          required: true,
         },
       },
     },
