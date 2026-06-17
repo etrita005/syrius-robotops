@@ -456,6 +456,53 @@ const DEPLOY_AE_CONFIG_ERROR_DAG: DagDefinition = {
   },
 };
 
+const INSTALL_APP_DAG: DagDefinition = {
+  tasks: {
+    transfer: {
+      requires: ["robotIp", "robotPort", "artifactId"],
+      resolver: {
+        name: "TransferAppTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    install: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "InstallAppTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "install_done" },
+      },
+      provides: ["install_done"],
+    },
+  },
+};
+
+const INSTALL_APP_ERROR_DAG: DagDefinition = {
+  tasks: {
+    error_cleanup: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "CleanupAppTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "error_cleanup_done" },
+      },
+      provides: ["error_cleanup_done"],
+    },
+  },
+};
+
 const DEPLOY_GGR3_CONFIG_DAG: DagDefinition = {
   tasks: {
     transfer: {
@@ -650,6 +697,26 @@ export const TASK_REGISTRY: TaskRegistry = {
         artifactId: {
           type: "artifact",
           label: "AE config package",
+          required: true,
+        },
+      },
+    },
+    {
+      type: "install-app",
+      name: "Install App",
+      description: "Install or upgrade an app on selected robots.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to install the app.",
+      },
+      dag: INSTALL_APP_DAG,
+      expectedResults: ["install_done"],
+      errorDag: INSTALL_APP_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "Artifact file",
           required: true,
         },
       },
