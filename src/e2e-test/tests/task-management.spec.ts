@@ -118,8 +118,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 6 multi-robot task types should show "Multiple robots" (after Deploy AE Config was added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(6);
+    // All 7 multi-robot task types should show "Multiple robots" (after Deploy GGR3 Config was added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(7);
 
     // Verify the single-robot task type is present
     await expect(modal.getByText("Robot selection: Single robot")).toBeVisible();
@@ -257,8 +257,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 6 task types should show "Multiple robots" (after Deploy AE Config was added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(6);
+    // All 7 task types should show "Multiple robots" (after Deploy GGR3 Config was added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(7);
   });
 
   test("TC-E2E-TASK-013: Update IoT Gateway Config leads to multi-robot step 2", async ({
@@ -489,5 +489,105 @@ test.describe("Task Management", () => {
     await expect(modal.getByText("Update IoT Gateway Config")).toBeVisible();
     await expect(modal.getByText("Download Alpha2 Sketch")).toBeVisible();
     await expect(modal.getByText("Deploy AE Config")).toBeVisible();
+    await expect(modal.getByText("Deploy GGR3 Config")).toBeVisible();
+  });
+});
+
+test.describe("Deploy GGR3 Config", () => {
+  test.describe.configure({ mode: "serial" });
+
+  let solutionId: string;
+
+  test.beforeAll(async ({ apiURL }) => {
+    const meta = await createSolutionViaAPI(apiURL, "GGR3 Test Solution", "E2E GGR3 test");
+    solutionId = meta.id;
+    await addRobotViaAPI(apiURL, solutionId, "192.168.1.10");
+  });
+
+  test.afterAll(async ({ apiURL }) => {
+    await deleteSolutionViaAPI(apiURL, solutionId).catch(() => {});
+  });
+
+  test("TC-E2E-GGR3-001: Deploy GGR3 Config task type is visible in the create modal", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Deploy GGR3 Config")).toBeVisible();
+  });
+
+  test("TC-E2E-GGR3-002: Deploy GGR3 Config selection leads to multi-robot step 2", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await modal.getByText("Deploy GGR3 Config", { exact: true }).click();
+    await appPage.waitForTimeout(300);
+
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await expect(modal.getByLabel("Select all robots")).toBeVisible();
+    await expect(modal.getByLabel("Select 192.168.1.10")).toBeVisible();
+  });
+
+  test("TC-E2E-GGR3-003: Deploy GGR3 Config params step shows GGR3 config package field", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await modal.getByText("Deploy GGR3 Config", { exact: true }).click();
+    await appPage.waitForTimeout(300);
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(300);
+
+    await modal.getByLabel("Select 192.168.1.10").check();
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await expect(modal.getByText("GGR3 Config Package")).toBeVisible();
+  });
+
+  test("TC-E2E-GGR3-004: Existing task types remain visible alongside Deploy GGR3 Config", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Upgrade BUP")).toBeVisible();
+    await expect(modal.getByText("Movebase Disk Cleanup")).toBeVisible();
+    await expect(modal.getByText("Upgrade Movebase")).toBeVisible();
+    await expect(modal.getByText("Apply Alpha2 Map")).toBeVisible();
+    await expect(modal.getByText("Update IoT Gateway Config")).toBeVisible();
+    await expect(modal.getByText("Download Alpha2 Sketch")).toBeVisible();
+    await expect(modal.getByText("Deploy AE Config")).toBeVisible();
+    await expect(modal.getByText("Deploy GGR3 Config")).toBeVisible();
   });
 });
