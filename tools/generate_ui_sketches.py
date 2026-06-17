@@ -831,6 +831,48 @@ def page_create_task_step4():
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
+# Tasks: 07 — Deploy AE Config Step 3 (Params)
+# ---------------------------------------------------------------------------
+def page_deploy_ae_config_step3():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 3)
+
+    draw.text((mx + 24, my + 110), "Step 3: Configure Parameters", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 132), "Task: Deploy AE Config", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 148), "Select the AE config zip artifact to deploy to /opt/cosmos/bin/applet-engine.", fill="#8d8d8d", font=FONT_SM)
+
+    y = my + 190
+    draw.rectangle([mx + 24, y, mx + mw - 24, y + 200], fill="white", outline="#e0e0e0", width=1)
+    draw.text((mx + 44, y + 22), "AE config package", fill="#161616", font=FONT_MD)
+    draw_input(draw, (mx + 44, y + 50, mx + mw - 44, y + 78), placeholder="Search artifacts...")
+    list_y = y + 92
+    rows = [
+        ("ae_config_v1.0.zip", "12.4 MB", True),
+        ("ae_config_v1.1.zip", "13.1 MB", False),
+        ("ae_config_test.zip", "  9.8 MB", False),
+    ]
+    for name, size, selected in rows:
+        bg = "#e5f0ff" if selected else "white"
+        draw.rectangle([mx + 44, list_y, mx + mw - 44, list_y + 28], fill=bg, outline="#e0e0e0", width=1)
+        draw.text((mx + 56, list_y + 6), name, fill="#161616", font=FONT_SM)
+        draw.text((mx + mw - 110, list_y + 6), size, fill="#525252", font=FONT_SM)
+        list_y += 30
+
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+
+    path = os.path.join(TASKS_DIR, "07_deploy_ae_config_step3_params.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
 # Tasks: 06 — Delete Task Confirm Modal
 # ---------------------------------------------------------------------------
 def page_delete_task_confirm():
@@ -1497,6 +1539,7 @@ if __name__ == "__main__":
     page_create_task_step3()
     page_create_task_step4()
     page_delete_task_confirm()
+    page_deploy_ae_config_step3()
 
     # Download Alpha2 Sketch (sub-module, special task)
     page_download_alpha2_sketch_step1()
