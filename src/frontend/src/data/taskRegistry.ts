@@ -456,6 +456,53 @@ const DEPLOY_AE_CONFIG_ERROR_DAG: DagDefinition = {
   },
 };
 
+const DEPLOY_GGR3_CONFIG_DAG: DagDefinition = {
+  tasks: {
+    transfer: {
+      requires: ["robotIp", "robotPort", "artifactId"],
+      resolver: {
+        name: "TransferGGR3ConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    deploy: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "DeployGGR3ConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "deploy_done" },
+      },
+      provides: ["deploy_done"],
+    },
+  },
+};
+
+const DEPLOY_GGR3_CONFIG_ERROR_DAG: DagDefinition = {
+  tasks: {
+    error_cleanup: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "DeleteGGR3ConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "error_cleanup_done" },
+      },
+      provides: ["error_cleanup_done"],
+    },
+  },
+};
+
 export const TASK_REGISTRY: TaskRegistry = {
   version: "1.0.0",
   taskTypes: [
@@ -603,6 +650,27 @@ export const TASK_REGISTRY: TaskRegistry = {
         artifactId: {
           type: "artifact",
           label: "AE config package",
+          required: true,
+        },
+      },
+    },
+    {
+      type: "deploy-ggr3-config",
+      name: "Deploy GGR3 Config",
+      description:
+        "Upload a GGR3 config package to the robot, extract it, and push it to the Android target directory via ADB.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to deploy the GGR3 config package.",
+      },
+      dag: DEPLOY_GGR3_CONFIG_DAG,
+      expectedResults: ["deploy_done"],
+      errorDag: DEPLOY_GGR3_CONFIG_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "GGR3 Config Package",
           required: true,
         },
       },

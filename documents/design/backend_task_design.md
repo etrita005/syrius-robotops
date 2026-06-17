@@ -995,3 +995,87 @@ Downloads a remote file from a robot to the local machine via SFTP (ssh2 library
 - Downloads via SFTP `fastGet` with progress logging every 2 seconds
 - File saved as `{localTargetDir}/{basename(remoteFilePath)}`
 - Used by the `download-alpha2-sketch` DAG with `remoteFilePath` hardcoded to `/opt/cosmos/map/preview/sketch.zip`
+
+---
+
+## 30. TransferGGR3ConfigTask
+
+### Overview
+
+Resolves the GGR3 config artifact storage path from the artifact service, then uploads it to the robot via SFTP. Used as the first step of the `Deploy GGR3 Config` flow.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID to download |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ getArtifactPath(id): Promise<string> }` | Service to resolve artifact storage path |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/tmp/ggr3_config.zip`
+- Resolves local path via `artifactService.getArtifactPath(artifactId)`; falls through to parent `SshFileTransferTask.onExec` when no `artifactId`/`artifactService` is provided.
+- If `artifactId` or `artifactService` is absent, falls through to `super.exec()` directly.
+- Mirrors `TransferAEConfigTask` pattern.
+
+---
+
+## 31. DeployGGR3ConfigTask
+
+### Overview
+
+Extracts the uploaded GGR3 config zip into `/tmp/ggr3_config` on the robot, uses `adb push` to transfer the extracted files to the Android device target directory, and removes the temporary files.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`, `commandTimeout` defaults to `60000`, and `retryCount` is forced to `1` because the deploy command mutates remote state and must not be retried without rerunning transfer.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded multi-step command:
+  1. Verify `/tmp/ggr3_config.zip` exists (fail with non-zero exit when missing)
+  2. `mkdir -p /tmp/ggr3_config`
+  3. `unzip -o /tmp/ggr3_config.zip -d /tmp/ggr3_config`
+  4. `adb push /tmp/ggr3_config/. /sdcard/Android/data/com.syriusrobotics.platform.launcher/files/ae/`
+  5. `rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip`
+- Uses `rm -rf` (not `rm -f`) because it removes a directory tree.
+- `adb push` with `/.` suffix automatically creates the target directory if missing.
+- Used as the `deploy` step of the Deploy GGR3 Config DAG.
+- Prerequisites: `adb` must be installed on the robot; Android device must be connected via USB and authorized.
+
+---
+
+## 32. DeleteGGR3ConfigTask
+
+### Overview
+
+Removes the extracted GGR3 config directory and the transferred zip on the robot. Idempotent and safe to invoke from the Deploy GGR3 Config errorDag.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip`
+- Uses `rm -rf` because it cleans up both a directory tree and the zip file.
+- Mirrors `DeleteAEConfigTask` pattern.

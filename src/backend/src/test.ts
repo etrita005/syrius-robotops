@@ -1236,6 +1236,14 @@ import {
   MockDeployAEConfigTask,
   MockDeleteAEConfigTask,
 } from "./tasks/index.js";
+import {
+  TransferGGR3ConfigTask,
+  DeployGGR3ConfigTask,
+  DeleteGGR3ConfigTask,
+  MockTransferGGR3ConfigTask,
+  MockDeployGGR3ConfigTask,
+  MockDeleteGGR3ConfigTask,
+} from "./tasks/index.js";
 import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir as osTmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
@@ -1456,6 +1464,193 @@ describe("Deploy AE Config tasks", () => {
     assert.equal(typeof MockTransferAEConfigTask, "function");
     assert.equal(typeof MockDeployAEConfigTask, "function");
     assert.equal(typeof MockDeleteAEConfigTask, "function");
+  });
+});
+
+class TestableDeployGGR3ConfigTask extends DeployGGR3ConfigTask {
+  public command(params: ValueMap = {}): string {
+    return this.getSshCommand(params);
+  }
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableDeleteGGR3ConfigTask extends DeleteGGR3ConfigTask {
+  public command(params: ValueMap = {}): string {
+    return this.getSshCommand(params);
+  }
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableTransferGGR3ConfigTask extends TransferGGR3ConfigTask {
+  public lastSeenLocalFilePath: string | undefined;
+  public superCalled = false;
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+  public stubbedSuperOnExec(params: ValueMap): ValueMap {
+    this.superCalled = true;
+    this.lastSeenLocalFilePath = params.localFilePath as string;
+    return {
+      done: true,
+      success: true,
+      bytesTransferred: 0,
+      localChecksum: "",
+      remoteChecksum: "",
+      integrityVerified: true,
+    };
+  }
+}
+
+function installTransferGGR3Stub(): () => void {
+  const parentProto = Object.getPrototypeOf(TransferGGR3ConfigTask.prototype) as {
+    onExec: (params: ValueMap, context?: ValueMap) => Promise<ValueMap>;
+  };
+  const original = parentProto.onExec;
+  parentProto.onExec = async function (
+    this: TestableTransferGGR3ConfigTask | object,
+    params: ValueMap,
+    context?: ValueMap
+  ) {
+    if (this instanceof TestableTransferGGR3ConfigTask) {
+      return this.stubbedSuperOnExec(params);
+    }
+    return original.call(this, params, context);
+  };
+  return () => {
+    parentProto.onExec = original;
+  };
+}
+
+describe("Deploy GGR3 Config tasks", () => {
+  let restoreTransferStub: (() => void) | undefined;
+
+  beforeEach(() => {
+    restoreTransferStub = installTransferGGR3Stub();
+  });
+
+  afterEach(() => {
+    restoreTransferStub?.();
+    restoreTransferStub = undefined;
+  });
+
+  it("TC-GGR3-001: DeployGGR3ConfigTask builds the multi-step deploy command with sudo", () => {
+    const task = new TestableDeployGGR3ConfigTask();
+    const cmd = task.command({});
+
+    const fragments = [
+      '[ -f /tmp/ggr3_config.zip ] || { echo "GGR3 config zip not found: /tmp/ggr3_config.zip" >&2; exit 1; }',
+      "mkdir -p /tmp/ggr3_config",
+      "unzip -o /tmp/ggr3_config.zip -d /tmp/ggr3_config",
+      "adb push /tmp/ggr3_config/. /sdcard/Android/data/com.syriusrobotics.platform.launcher/files/ae/",
+      "rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip",
+    ];
+    let cursor = 0;
+    for (const f of fragments) {
+      const idx = cmd.indexOf(f, cursor);
+      assert.ok(idx !== -1, `fragment missing or out of order: ${f}`);
+      cursor = idx + f.length;
+    }
+
+    assert.equal(
+      cmd.includes(" reboot"),
+      false,
+      "Deploy GGR3 Config must not reboot the robot"
+    );
+
+    const built = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(built.sudo, true);
+    assert.equal(built.commandTimeout, 60000);
+    assert.equal(built.retryCount, 1);
+  });
+
+  it("TC-GGR3-002: DeleteGGR3ConfigTask returns the cleanup command and forces sudo", () => {
+    const task = new TestableDeleteGGR3ConfigTask();
+    const cmd = task.command({});
+    assert.equal(cmd, "rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip");
+    const built = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(built.sudo, true);
+  });
+
+  it("TC-GGR3-003: TransferGGR3ConfigTask hardcodes the remote target path", () => {
+    const task = new TestableTransferGGR3ConfigTask();
+    const built = task.params({
+      robotIp: "192.168.1.10",
+      localFilePath: "/tmp/x.zip",
+    });
+    assert.equal(built.remoteFilePath, "/tmp/ggr3_config.zip");
+    assert.equal(built.sudo, true);
+  });
+
+  it("TC-GGR3-004: TransferGGR3ConfigTask resolves artifact via getArtifactPath and forwards localFilePath", async () => {
+    const task = new TestableTransferGGR3ConfigTask();
+    const tmpDir = mkdtempSync(pathJoin(osTmpdir(), "ggr3-getpath-"));
+    const stubArtifactPath = pathJoin(tmpDir, "ggr3_config.zip");
+    writeFileSync(stubArtifactPath, "stub-zip-content");
+    let receivedArtifactId: string | undefined;
+    const artifactService = {
+      async getArtifactPath(artifactId: string): Promise<string> {
+        receivedArtifactId = artifactId;
+        return stubArtifactPath;
+      },
+    };
+
+    const result = await task.exec(
+      { robotIp: "192.168.1.10", artifactId: "art-1" },
+      { artifactService }
+    );
+
+    assert.equal(result.success, true);
+    assert.equal(task.superCalled, true, "super.onExec should be invoked");
+    assert.equal(receivedArtifactId, "art-1");
+    assert.equal(
+      task.lastSeenLocalFilePath,
+      stubArtifactPath,
+      "localFilePath should equal the path returned by getArtifactPath"
+    );
+  });
+
+  it("TC-GGR3-005: TransferGGR3ConfigTask falls through to super when artifactId/service is absent", async () => {
+    const task = new TestableTransferGGR3ConfigTask();
+    const tmpDir = mkdtempSync(pathJoin(osTmpdir(), "ggr3-fallthrough-"));
+    const localFilePath = pathJoin(tmpDir, "x.zip");
+    writeFileSync(localFilePath, "stub");
+
+    const result = await task.exec({
+      robotIp: "192.168.1.10",
+      localFilePath,
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(task.superCalled, true);
+    assert.equal(task.lastSeenLocalFilePath, localFilePath);
+  });
+
+  it("TC-GGR3-006: Mock GGR3 Config tasks return success quickly", async () => {
+    const transferMock = new MockTransferGGR3ConfigTask();
+    const deployMock = new MockDeployGGR3ConfigTask();
+    const deleteMock = new MockDeleteGGR3ConfigTask();
+
+    const [t, d, x] = await Promise.all([
+      transferMock.exec({ robotIp: "192.168.1.10", artifactId: "a" }),
+      deployMock.exec({ robotIp: "192.168.1.10" }),
+      deleteMock.exec({ robotIp: "192.168.1.10" }),
+    ]);
+    assert.equal(t.success, true);
+    assert.equal(d.success, true);
+    assert.equal(x.success, true);
+  });
+
+  it("TC-GGR3-007: tasks/index.ts exports all six GGR3 config task classes", () => {
+    assert.equal(typeof TransferGGR3ConfigTask, "function");
+    assert.equal(typeof DeployGGR3ConfigTask, "function");
+    assert.equal(typeof DeleteGGR3ConfigTask, "function");
+    assert.equal(typeof MockTransferGGR3ConfigTask, "function");
+    assert.equal(typeof MockDeployGGR3ConfigTask, "function");
+    assert.equal(typeof MockDeleteGGR3ConfigTask, "function");
   });
 });
 
