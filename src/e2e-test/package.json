@@ -9,7 +9,9 @@
     "test:debug": "npx playwright test --debug",
     "install:browsers": "npx playwright install chromium",
     "mock:start": "npx tsx scripts/start-mock-backend.ts",
-    "mock:stop": "npx tsx scripts/stop-mock-backend.ts"
+    "mock:stop": "npx tsx scripts/stop-mock-backend.ts",
+    "manual:generate": "npx tsx scripts/generate-manual.ts",
+    "manual:one-click": "bash scripts/generate-manual.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.44.0",
