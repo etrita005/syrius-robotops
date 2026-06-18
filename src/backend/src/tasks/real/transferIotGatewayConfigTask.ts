@@ -1,26 +1,25 @@
 import type { ValueMap } from "flowed";
-import { SshFileTransferTask, type SshFileTransferParams } from "./sshFileTransferTask.js";
 import { join } from "node:path";
+import { SshFileTransferTask, type SshFileTransferParams } from "./sshFileTransferTask.js";
 
-const CONFIG_PATH = join(import.meta.dirname!, "..", "..", "..", "res", "iot-gateway-application-prod.yaml");
-const REMOTE_CONFIG_PATH = "/tmp/iot-gateway-application-prod.yaml";
+const SCRIPT_PATH = join(import.meta.dirname!, "..", "..", "..", "res", "update-iot-gateway-config.py");
+const REMOTE_SCRIPT_PATH = "/tmp/update-iot-gateway-config.py";
 
 export class TransferIotGatewayConfigTask extends SshFileTransferTask {
   protected override buildParams(params: ValueMap): SshFileTransferParams {
     return {
       ...super.buildParams({
         ...params,
-        sudo: true,
         verifyChecksum: false,
         retryCount: 1,
       }),
-      localFilePath: CONFIG_PATH,
-      remoteFilePath: REMOTE_CONFIG_PATH,
+      localFilePath: SCRIPT_PATH,
+      remoteFilePath: REMOTE_SCRIPT_PATH,
     };
   }
 
   protected override async onExec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {
-    this.log.info({ localFilePath: CONFIG_PATH, remoteFilePath: REMOTE_CONFIG_PATH }, 'Transferring iot-gateway-application-prod.yaml');
+    this.log.info({ localFilePath: SCRIPT_PATH, remoteFilePath: REMOTE_SCRIPT_PATH }, 'Transferring iot-gateway config update script');
     return super.onExec(params, context);
   }
 }

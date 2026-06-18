@@ -1149,8 +1149,8 @@ const dependentDag: FlowSpec = {
 | **测试目标** | 验证 TransferIotGatewayConfigTask 构建的参数正确 |
 | **前置条件** | Task 类可实例化 |
 | **输入** | `robotIp: "192.168.1.10"` |
-| **预期结果** | `localFilePath` 指向 `iot-gateway-application-prod.yaml`，`remoteFilePath` 为 `/tmp/iot-gateway-application-prod.yaml`，`sudo` 为 `true`，`verifyChecksum` 为 `false`，`retryCount` 为 `1` |
-| **验证点** | `assert.match(params.localFilePath, /iot-gateway-application-prod\.yaml$/)`, `assert.equal(params.remoteFilePath, "/tmp/iot-gateway-application-prod.yaml")`, `assert.equal(params.sudo, true)`, `assert.equal(params.verifyChecksum, false)`, `assert.equal(params.retryCount, 1)` |
+| **预期结果** | `localFilePath` 指向 `update-iot-gateway-config.py`，`remoteFilePath` 为 `/tmp/update-iot-gateway-config.py`，`verifyChecksum` 为 `false`，`retryCount` 为 `1` |
+| **验证点** | `assert.match(params.localFilePath, /update-iot-gateway-config\.py$/)`, `assert.equal(params.remoteFilePath, "/tmp/update-iot-gateway-config.py")`, `assert.equal(params.verifyChecksum, false)`, `assert.equal(params.retryCount, 1)` |
 
 ## UpdateIotGatewayConfigTask Test Cases
 
@@ -1161,8 +1161,8 @@ const dependentDag: FlowSpec = {
 | **测试目标** | 验证 UpdateIotGatewayConfigTask 生成的命令包含所有必要步骤 |
 | **前置条件** | Task 类可实例化 |
 | **输入** | 无额外参数 |
-| **预期结果** | 命令包含 mv、chown、rm、apt clean、systemctl restart 步骤。清理/重启步骤使用 `|| true` 防止失败传播。 |
-| **验证点** | `assert.match(command, /mv.*iot-gateway-application-prod\.yaml/)`, `assert.match(command, /chown iot-gateway:iot-gateway/)`, `assert.match(command, /trusted\.gpg\* \|\| true/)`, `assert.match(command, /nexus\.asc \|\| true/)`, `assert.match(command, /apt clean \|\| true/)`, `assert.match(command, /systemctl restart syrius-iot-gateway/)`, `assert.match(command, /systemctl restart cosmos-update-engine/)` |
+| **预期结果** | 命令包含执行 `/tmp/update-iot-gateway-config.py`、删除临时脚本、rm、apt clean、systemctl restart 步骤。清理/重启步骤使用 `|| true` 防止失败传播。 |
+| **验证点** | `assert.match(command, /update-iot-gateway-config\.py/)`, `assert.match(command, /python3 \/tmp\/update-iot-gateway-config\.py/)`, `assert.match(command, /rm -f \/tmp\/update-iot-gateway-config\.py/)`, `assert.match(command, /trusted\.gpg\* \|\| true/)`, `assert.match(command, /nexus\.asc \|\| true/)`, `assert.match(command, /apt clean \|\| true/)`, `assert.match(command, /systemctl restart syrius-iot-gateway/)`, `assert.match(command, /systemctl restart cosmos-update-engine/)` |
 
 ### TC-TFE-063：updateIotGatewayConfigTask 参数构建验证
 

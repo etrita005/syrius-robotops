@@ -9,11 +9,11 @@ export class MockTransferIotGatewayConfigTask extends TransferIotGatewayConfigTa
   protected override async onExec(params: ValueMap, _context?: ValueMap): Promise<ValueMap> {
     const transferParams = this.buildParams(params);
 
-    this.log.info({ localFilePath: transferParams.localFilePath, remoteFilePath: transferParams.remoteFilePath }, 'Simulating iot-gateway config transfer (mock)');
+    this.log.info({ localFilePath: transferParams.localFilePath, remoteFilePath: transferParams.remoteFilePath }, 'Simulating iot-gateway config script transfer');
 
     await sleep(2000);
 
-    this.log.info('Iot-gateway config transfer completed (mock)');
+    this.log.info('Iot-gateway config script transfer completed');
 
     return {
       done: true,

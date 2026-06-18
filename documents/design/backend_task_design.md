@@ -892,15 +892,14 @@ Same as `SshCommandTask`.
 
 ### Overview
 
-Transfers the local `iot-gateway-application-prod.yaml` configuration file to `/tmp/iot-gateway-application-prod.yaml` on the remote robot.
+Transfers the local `update-iot-gateway-config.py` Python script to `/tmp/update-iot-gateway-config.py` on the remote robot.
 
 ### Input Parameters
 
 Inherits all from `SshFileTransferTask`. The `localFilePath` and `remoteFilePath` are hardcoded:
 
-- **localFilePath**: `src/backend/res/iot-gateway-application-prod.yaml` (resolved relative to task module)
-- **remoteFilePath**: `/tmp/iot-gateway-application-prod.yaml`
-- **sudo**: `true`
+- **localFilePath**: `src/backend/res/update-iot-gateway-config.py` (resolved relative to task module)
+- **remoteFilePath**: `/tmp/update-iot-gateway-config.py`
 - **verifyChecksum**: `false`
 - **retryCount**: `1`
 
@@ -910,9 +909,9 @@ Same as `SshFileTransferTask`.
 
 ### Notes
 
-- Transfers a configuration file (not a script/binary), so checksum verification is disabled
-- Single retry is sufficient for configuration file transfers
-- The file is placed in `/tmp/` as a staging location before being moved to its final destination by `UpdateIotGatewayConfigTask`
+- Transfers a Python 3.6-compatible script, not the full YAML configuration file.
+- The script uses only the Python standard library and hardcodes the replacement `public_key`.
+- The script is placed in `/tmp/` before being executed and deleted by `UpdateIotGatewayConfigTask`.
 
 ---
 
@@ -921,8 +920,8 @@ Same as `SshFileTransferTask`.
 ### Overview
 
 Executes a compound SSH command on the remote robot to:
-1. Move the configuration file from `/tmp/` to `/mnt/cosmos/boot/etc/iot-gateway/application-prod.yaml` (overwrites existing)
-2. Set file ownership to `iot-gateway:iot-gateway`
+1. Run `/tmp/update-iot-gateway-config.py` with `python3` to replace `megacosmosMirrorMockCredentials.public_key` in `/mnt/cosmos/boot/etc/iot-gateway/application-prod.yaml`
+2. Remove the temporary Python script from `/tmp/`
 3. Clean up APT cache and trusted GPG keys (optional — failures are ignored via `|| true`)
 4. Restart `syrius-iot-gateway.service` and `cosmos-update-engine.service` (optional — failures are ignored via `|| true`)
 
@@ -936,18 +935,20 @@ Same as `SshCommandTask`.
 
 ### Notes
 
-- Hardcoded 8-step command chained with `&&`:
-  1. `mv /tmp/iot-gateway-application-prod.yaml /mnt/cosmos/boot/etc/iot-gateway/application-prod.yaml` — move configuration file
-  2. `chown iot-gateway:iot-gateway /mnt/cosmos/boot/etc/iot-gateway/application-prod.yaml` — set ownership
+- The task depends on `TransferIotGatewayConfigTask` to place `/tmp/update-iot-gateway-config.py` before execution.
+- The task no longer replaces the full YAML file.
+- Hardcoded command chain includes:
+  1. `python3 /tmp/update-iot-gateway-config.py` — update the remote YAML content
+  2. `rm -f /tmp/update-iot-gateway-config.py` — remove the temporary script
   3. `rm /opt/cosmos/var/cosmos_update_engine/apt/trusted.gpg* || true` — clean trusted GPG keys (optional)
   4. `rm /opt/cosmos/var/cosmos_update_engine/apt/nexus.asc || true` — clean Nexus GPG key (optional)
   5. `rm -rf /var/lib/apt/lists/* || true` — clean APT lists (optional)
   6. `apt clean || true` — clean APT cache (optional)
   7. `systemctl restart syrius-iot-gateway.service || true` — restart iot-gateway service (optional)
   8. `systemctl restart cosmos-update-engine.service || true` — restart update engine service (optional)
-- Steps 3-8 use `|| true` to prevent entire command chain from failing when individual cleanup/restart operations fail
-- Steps 1-2 are critical (move and chown); if they fail the task fails
-- The service restarts take effect after the reboot step in the DAG flow
+- Cleanup and restart steps use `|| true` to prevent individual cleanup/restart failures from failing the whole task.
+- The Python script execution is critical; if it fails, the task fails.
+- The service restarts take effect after the reboot step in the DAG flow.
 
 ---
 
