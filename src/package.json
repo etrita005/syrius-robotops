@@ -19,7 +19,8 @@
     "test:e2e": "npm --workspace e2e-test run test",
     "test:e2e:headed": "npm --workspace e2e-test run test:headed",
     "test:e2e:debug": "npm --workspace e2e-test run test:debug",
-    "test:e2e:install": "npm --workspace e2e-test run install:browsers"
+    "test:e2e:install": "npm --workspace e2e-test run install:browsers",
+    "manual:generate": "npm --workspace e2e-test run manual:one-click"
   },
   "devDependencies": {
     "@yao-pkg/pkg": "^6.20.0",

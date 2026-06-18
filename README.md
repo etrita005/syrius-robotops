@@ -322,6 +322,59 @@ Shared fixtures and API utility helpers are in `fixtures/test-fixture.ts`.
 
 Test case documents: `documents/test/solution_management_test_cases.md`, `documents/test/artifact_management_test_cases.md`, `documents/test/task_flow_engine_test_cases.md`, `documents/test/cross_module_test_cases.md`
 
+## Generating the User Manual
+
+A Playwright-based script automatically generates a comprehensive user manual with screenshots. It navigates through every feature described in `documents/requirements/`, captures real application screenshots, and embeds them as base64 images directly in the markdown — producing a **single self-contained `.md` file** with no external dependencies.
+
+### One-Click Generation
+
+```bash
+cd src
+npm run manual:generate
+```
+
+This single command:
+1. Starts the mock backend on port 30002
+2. Starts the Vite frontend on port 5174
+3. Navigates the application via headless Chromium, capturing ~30 screenshots
+4. Generates `documents/user-manual/robotops-user-manual.md` with all images embedded
+5. Stops both servers and cleans up
+
+### Manual Content
+
+The generated manual covers 7 chapters organized by module:
+
+| Chapter | Module | Content |
+|---------|--------|---------|
+| 1 | Getting Started | Main interface, header navigation |
+| 2 | Solution Management | Create, search, open, clone, export, import, delete, recent solutions, active banner |
+| 3 | Robot Management | Grid/list views, add robot, detail modal, inline editing, search, batch/delete |
+| 4 | Task Management | Task list, create wizard (4 steps), breadcrumbs, sidebar navigation |
+| 5 | Artifact Management | Artifact table, filtering/sorting, detail modal, unreferenced artifacts, upload, delete |
+| 6 | System Logs | Log viewer, file list, filters (time/level/module/keyword), download |
+| 7 | Application Features | Theme toggle (dark/light mode) |
+
+Each section includes a full-page screenshot with a descriptive caption explaining the interface and workflows.
+
+### Viewing the Manual
+
+The output is a standard markdown file that can be opened with any markdown viewer:
+
+- **VS Code**: `Cmd/Ctrl+Shift+V` (preview mode)
+- **GitHub**: Push and view rendered markdown
+- **Typora / Mark Text**: Native rendering
+- **Any browser**: Convert to HTML via `pandoc documents/user-manual/robotops-user-manual.md -o manual.html`
+
+### Regenerating After UI Changes
+
+After making frontend changes that affect the UI, regenerate the manual:
+
+```bash
+npm run manual:generate
+```
+
+This ensures the manual screenshots always reflect the current application state.
+
 ## API Reference
 
 ### Solution Management
