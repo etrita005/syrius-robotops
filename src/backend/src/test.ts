@@ -27,7 +27,6 @@ import { WaitSshDisconnectedTask } from "./tasks/real/waitSshDisconnectedTask.js
 import { WaitSshReconnectTask } from "./tasks/real/waitSshReconnectTask.js";
 import { MatchBUPVersionTask } from "./tasks/real/matchBUPVersionTask.js";
 import { MovebaseDiskCleanupTask } from "./tasks/real/movebaseDiskCleanupTask.js";
-import { TransferIotGatewayConfigTask } from "./tasks/real/transferIotGatewayConfigTask.js";
 import { UpdateIotGatewayConfigTask } from "./tasks/real/updateIotGatewayConfigTask.js";
 import { resetSshConnectionProbeForTest, setSshConnectionProbeForTest } from "./tasks/real/sshConnectionWait.js";
 import type { SshConnectionProbeParams } from "./tasks/real/sshConnectionWait.js";
@@ -4375,25 +4374,6 @@ describe("Robot Routes - API", () => {
   });
 });
 
-class TestableTransferIotGatewayConfigTask extends TransferIotGatewayConfigTask {
-  public params(params: ValueMap = {}): ValueMap {
-    return this.buildParams(params) as unknown as ValueMap;
-  }
-}
-
-describe("TransferIotGatewayConfigTask", () => {
-  it("TC-TFE-061: should build correct transfer params", () => {
-    const task = new TestableTransferIotGatewayConfigTask();
-    const params = task.params({ robotIp: "192.168.1.10" });
-
-    assert.match(params.localFilePath as string, /iot-gateway-application-prod\.yaml$/);
-    assert.equal(params.remoteFilePath, "/tmp/iot-gateway-application-prod.yaml");
-    assert.equal(params.sudo, true);
-    assert.equal(params.verifyChecksum, false);
-    assert.equal(params.retryCount, 1);
-  });
-});
-
 class TestableUpdateIotGatewayConfigTask extends UpdateIotGatewayConfigTask {
   public command(): string {
     return this.getSshCommand({});
@@ -4410,8 +4390,9 @@ describe("UpdateIotGatewayConfigTask", () => {
     const command = task.command();
 
     assert.match(command, / && /);
-    assert.match(command, /mv.*iot-gateway-application-prod\.yaml/);
-    assert.match(command, /chown iot-gateway:iot-gateway/);
+    assert.match(command, /update-iot-gateway-config\.py/);
+    assert.match(command, /python3 \/tmp\/update-iot-gateway-config\.py/);
+    assert.match(command, /rm -f \/tmp\/update-iot-gateway-config\.py/);
     assert.match(command, /trusted\.gpg\* \|\| true/);
     assert.match(command, /nexus\.asc \|\| true/);
     assert.match(command, /apt clean \|\| true/);
