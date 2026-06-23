@@ -31,9 +31,19 @@ import { UpdateIotGatewayConfigTask } from "./tasks/real/updateIotGatewayConfigT
 import { resetSshConnectionProbeForTest, setSshConnectionProbeForTest } from "./tasks/real/sshConnectionWait.js";
 import type { SshConnectionProbeParams } from "./tasks/real/sshConnectionWait.js";
 import { TransferAppTask } from "./tasks/real/transferAppTask.js";
-import { InstallAppTask, CleanupAppTask } from "./tasks/real/installAppTask.js";
+import { InstallAppTask } from "./tasks/real/installAppTask.js";
+import { CleanupAppTask } from "./tasks/real/cleanupAppTask.js";
 import { MockTransferAppTask } from "./tasks/mock/mockTransferAppTask.js";
-import { MockInstallAppTask, MockCleanupAppTask } from "./tasks/mock/mockInstallAppTask.js";
+import { MockInstallAppTask } from "./tasks/mock/mockInstallAppTask.js";
+import { MockCleanupAppTask } from "./tasks/mock/mockCleanupAppTask.js";
+import { TransferDragonball3Task } from "./tasks/real/transferDragonball3Task.js";
+import { InstallDragonball3Task } from "./tasks/real/installDragonball3Task.js";
+import { MockTransferDragonball3Task } from "./tasks/mock/mockTransferDragonball3Task.js";
+import { MockInstallDragonball3Task } from "./tasks/mock/mockInstallDragonball3Task.js";
+import { DeleteDragonball3Task } from "./tasks/real/deleteDragonball3Task.js";
+import { MockDeleteDragonball3Task } from "./tasks/mock/mockDeleteDragonball3Task.js";
+import { MockWaitSshReconnectTask } from "./tasks/mock/mockWaitSshReconnectTask.js";
+import { MockRebootRobotTask } from "./tasks/mock/mockRebootRobotTask.js";
 
 class InMemoryObjectStore {
   private store = new Map<string, unknown>();
@@ -4799,6 +4809,288 @@ describe("App install - Flow Integration", () => {
       artifactId: "test-apk",
     }, undefined, cleanupDag);
     await waitForFlowComplete(testEngine, summary.id, 15000);
+
+    const flow = testEngine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "FAILED");
+    assert.equal(flow.phase, "error");
+    assert.ok(sse.hasEvent("task-flow-engine/error-handling-completed"));
+    testEngine.destroy();
+  });
+});
+
+class TestableTransferDragonball3Task extends TransferDragonball3Task {
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableInstallDragonball3Task extends InstallDragonball3Task {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("TransferDragonball3 task", () => {
+  it("TC-DB3-001: should upload the deb package to /tmp/dragonball3_package.deb", () => {
+    const task = new TestableTransferDragonball3Task();
+    const params = task.params({
+      robotIp: "192.168.1.10",
+      artifactId: "test-db3-id",
+    });
+    assert.equal(params.remoteFilePath, "/tmp/dragonball3_package.deb");
+    assert.equal(params.sudo, true);
+  });
+
+  it("TC-DB3-002: should resolve artifact path via artifactService on exec", async () => {
+    const task = new TransferDragonball3Task();
+    let receivedArtifactId: string | undefined;
+    const context = {
+      artifactService: {
+        async getArtifactPath(id: string): Promise<string> {
+          receivedArtifactId = id;
+          return "/local/path/to/dragonball3.deb";
+        },
+      },
+    };
+
+    // Override parent onExec to short-circuit the SFTP call.
+    const originalOnExec = (Object.getPrototypeOf(Object.getPrototypeOf(task)) as { onExec: (...args: unknown[]) => unknown }).onExec;
+    let observedLocalFilePath: string | undefined;
+    (Object.getPrototypeOf(Object.getPrototypeOf(task)) as { onExec: (...args: unknown[]) => unknown }).onExec = async function (params: ValueMap) {
+      observedLocalFilePath = params.localFilePath as string;
+      return { done: true, success: true };
+    };
+
+    try {
+      await task.exec(
+        { robotIp: "192.168.1.10", artifactId: "test-db3-id" },
+        context as unknown as ValueMap,
+      );
+    } finally {
+      (Object.getPrototypeOf(Object.getPrototypeOf(task)) as { onExec: (...args: unknown[]) => unknown }).onExec = originalOnExec;
+    }
+
+    assert.equal(receivedArtifactId, "test-db3-id");
+    assert.equal(observedLocalFilePath, "/local/path/to/dragonball3.deb");
+  });
+});
+
+describe("InstallDragonball3 task", () => {
+  it("TC-DB3-003: should generate the correct dpkg -i install command", () => {
+    const task = new TestableInstallDragonball3Task();
+    assert.equal(task.command(), "dpkg -i /tmp/dragonball3_package.deb");
+  });
+
+  it("TC-DB3-004: should use sudo for the install task", () => {
+    const task = new TestableInstallDragonball3Task();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+  });
+
+  it("TC-DB3-005: should default commandTimeout to 300000ms", () => {
+    const task = new TestableInstallDragonball3Task();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.commandTimeout, 300000);
+  });
+});
+
+class TestableDeleteDragonball3Task extends DeleteDragonball3Task {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("DeleteDragonball3 task", () => {
+  it("TC-DB3-010: should generate the correct rm cleanup command", () => {
+    const task = new TestableDeleteDragonball3Task();
+    assert.equal(task.command(), "rm -f /tmp/dragonball3_package.deb");
+  });
+
+  it("TC-DB3-011: should use sudo for the cleanup task", () => {
+    const task = new TestableDeleteDragonball3Task();
+    const params = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+  });
+});
+
+describe("Mock Dragonball3 tasks", () => {
+  it("TC-DB3-006: MockTransferDragonball3Task returns simulated success", async () => {
+    const task = new MockTransferDragonball3Task();
+    const startedAt = Date.now();
+    const result = await task.exec({ robotIp: "192.168.1.10", artifactId: "id" });
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.integrityVerified, true);
+    assert.ok(elapsedMs >= 900, `expected ~1s delay, got ${elapsedMs}ms`);
+  });
+
+  it("TC-DB3-007: MockInstallDragonball3Task returns simulated success", async () => {
+    const task = new MockInstallDragonball3Task();
+    const startedAt = Date.now();
+    const result = await task.exec({ robotIp: "192.168.1.10" });
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.exitCode, 0);
+    assert.ok(elapsedMs >= 4900, `expected ~5s delay, got ${elapsedMs}ms`);
+  });
+});
+
+describe("Install Dragonball3 - Flow Integration", () => {
+  it("TC-DB3-008: should execute the 4-step install-dragonball3 DAG and complete", async () => {
+    const registry = new ResolverRegistry();
+    registry.register("WaitSshReconnectTask", MockWaitSshReconnectTask as unknown as TaskResolverClass);
+    registry.register("TransferDragonball3Task", MockTransferDragonball3Task as unknown as TaskResolverClass);
+    registry.register("InstallDragonball3Task", MockInstallDragonball3Task as unknown as TaskResolverClass);
+    registry.register("RebootRobotTask", MockRebootRobotTask as unknown as TaskResolverClass);
+
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const installDag: FlowSpec = {
+      tasks: {
+        detect_reboot: {
+          requires: ["robotIp", "robotPort"],
+          provides: ["reboot_detected"],
+          resolver: {
+            name: "WaitSshReconnectTask",
+            params: { robotIp: "robotIp", robotPort: "robotPort" },
+            results: { done: "reboot_detected" },
+          },
+        },
+        transfer: {
+          requires: ["robotIp", "robotPort", "reboot_detected", "artifactId"],
+          provides: ["transfer_done"],
+          resolver: {
+            name: "TransferDragonball3Task",
+            params: { robotIp: "robotIp", robotPort: "robotPort", artifactId: "artifactId" },
+            results: { done: "transfer_done" },
+          },
+        },
+        install: {
+          requires: ["robotIp", "robotPort", "transfer_done"],
+          provides: ["install_done"],
+          resolver: {
+            name: "InstallDragonball3Task",
+            params: { robotIp: "robotIp", robotPort: "robotPort" },
+            results: { done: "install_done" },
+          },
+        },
+        reboot: {
+          requires: ["robotIp", "robotPort", "install_done"],
+          provides: ["reboot_done"],
+          resolver: {
+            name: "RebootRobotTask",
+            params: { robotIp: "robotIp", robotPort: "robotPort" },
+            results: { done: "reboot_done" },
+          },
+        },
+      },
+    };
+
+    const summary = await testEngine.createFlow("internal", installDag, {
+      robotIp: "192.168.1.10",
+      robotPort: 22,
+      artifactId: "test-db3",
+    });
+    await waitForFlowComplete(testEngine, summary.id, 20000);
+
+    const flow = testEngine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "COMPLETED");
+    assert.equal(flow.taskStates["detect_reboot"], "COMPLETED");
+    assert.equal(flow.taskStates["transfer"], "COMPLETED");
+    assert.equal(flow.taskStates["install"], "COMPLETED");
+    assert.equal(flow.taskStates["reboot"], "COMPLETED");
+    testEngine.destroy();
+  });
+
+  it("TC-DB3-009: error DAG cleanup should run when install fails", async () => {
+    class FailingMockInstallDragonball3Task extends MockInstallDragonball3Task {
+      protected override async onExec(_params: ValueMap): Promise<ValueMap> {
+        throw new Error("Simulated dpkg failure");
+      }
+    }
+
+    const registry = new ResolverRegistry();
+    registry.register("WaitSshReconnectTask", MockWaitSshReconnectTask as unknown as TaskResolverClass);
+    registry.register("TransferDragonball3Task", MockTransferDragonball3Task as unknown as TaskResolverClass);
+    registry.register("InstallDragonball3Task", FailingMockInstallDragonball3Task as unknown as TaskResolverClass);
+    registry.register("RebootRobotTask", MockRebootRobotTask as unknown as TaskResolverClass);
+    registry.register("DeleteDragonball3Task", MockDeleteDragonball3Task as unknown as TaskResolverClass);
+
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const installDag: FlowSpec = {
+      tasks: {
+        detect_reboot: {
+          requires: ["robotIp", "robotPort"],
+          provides: ["reboot_detected"],
+          resolver: {
+            name: "WaitSshReconnectTask",
+            params: { robotIp: "robotIp", robotPort: "robotPort" },
+            results: { done: "reboot_detected" },
+          },
+        },
+        transfer: {
+          requires: ["robotIp", "robotPort", "reboot_detected", "artifactId"],
+          provides: ["transfer_done"],
+          resolver: {
+            name: "TransferDragonball3Task",
+            params: { robotIp: "robotIp", robotPort: "robotPort", artifactId: "artifactId" },
+            results: { done: "transfer_done" },
+          },
+        },
+        install: {
+          requires: ["robotIp", "robotPort", "transfer_done"],
+          provides: ["install_done"],
+          resolver: {
+            name: "InstallDragonball3Task",
+            params: { robotIp: "robotIp", robotPort: "robotPort" },
+            results: { done: "install_done" },
+          },
+        },
+      },
+    };
+
+    const cleanupDag: FlowSpec = {
+      tasks: {
+        error_cleanup: {
+          requires: ["robotIp", "robotPort"],
+          provides: ["error_cleanup_done"],
+          resolver: {
+            name: "DeleteDragonball3Task",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+            },
+            results: { done: "error_cleanup_done" },
+          },
+        },
+      },
+    };
+
+    const summary = await testEngine.createFlow("internal", installDag, {
+      robotIp: "192.168.1.10",
+      robotPort: 22,
+      artifactId: "test-db3",
+    }, undefined, cleanupDag);
+    await waitForFlowComplete(testEngine, summary.id, 20000);
 
     const flow = testEngine.getFlow(summary.id);
     assert.ok(flow);

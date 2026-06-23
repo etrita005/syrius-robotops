@@ -118,8 +118,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 8 multi-robot task types should show "Multiple robots" (after Install App was added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(8);
+    // All 9 multi-robot task types should show "Multiple robots" (after Install Dragonball3 was added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
 
     // Verify the single-robot task type is present
     await expect(modal.getByText("Robot selection: Single robot")).toBeVisible();
@@ -257,8 +257,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 8 task types should show "Multiple robots" (after Install App was added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(8);
+    // All 9 task types should show "Multiple robots" (after Install Dragonball3 was added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
   });
 
   test("TC-E2E-TASK-013: Update IoT Gateway Config leads to multi-robot step 2", async ({
@@ -620,7 +620,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Install App")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(8);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
   });
 
   test("TC-E2E-TASK-020: Install App leads to multi-robot step 2 then params step", async ({
@@ -638,6 +638,62 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal.getByText("Install App")).toBeVisible();
 
     await modal.getByText("Install App", { exact: true }).first().click();
+    await appPage.waitForTimeout(300);
+
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await expect(modal.getByLabel("Select all robots")).toBeVisible();
+    await expect(modal.getByLabel("Select 192.168.1.10")).toBeVisible();
+    await expect(modal.getByLabel("Select 192.168.1.11")).toBeVisible();
+  });
+
+  test("TC-E2E-DB3-001: Install Dragonball3 task type appears in task creation modal", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Install Dragonball3")).toBeVisible();
+  });
+
+  test("TC-E2E-DB3-002: Install Dragonball3 shows multi-robot selection in task type step", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Install Dragonball3")).toBeVisible();
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
+  });
+
+  test("TC-E2E-DB3-003: Install Dragonball3 leads to multi-robot step 2", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Install Dragonball3")).toBeVisible();
+
+    await modal.getByText("Install Dragonball3", { exact: true }).first().click();
     await appPage.waitForTimeout(300);
 
     await modal.getByRole("button", { name: "Next" }).click();

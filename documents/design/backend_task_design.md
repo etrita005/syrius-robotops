@@ -1166,3 +1166,83 @@ Same as `SshCommandTask`.
 
 - Hardcoded command: `rm -f /tmp/app_package.apk`
 - Uses `-f` (force) to silently ignore missing files
+
+---
+
+## 36. TransferDragonball3Task
+
+### Overview
+
+Resolves the dragonball3 firmware artifact storage path from the artifact service and uploads it to the robot via SFTP. Used as the `transfer` step of the Install Dragonball3 flow.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID of the dragonball3 `.deb` package |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ getArtifactPath(id): Promise<string> }` | Service to resolve artifact storage path |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/tmp/dragonball3_package.deb`
+- Uses `artifactService.getArtifactPath(artifactId)` to resolve the local file path directly
+- If `artifactId` or `artifactService` is absent, falls through to `super.onExec()` directly
+- Implementation mirrors `TransferBUPTask` / `TransferAppTask`
+
+---
+
+## 37. InstallDragonball3Task
+
+### Overview
+
+Installs the dragonball3 firmware package on the remote robot via `dpkg -i`. Used as the `install` step of the Install Dragonball3 flow.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `300000` (5 min) | Override for long-running install |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `FORCE_UPDATE=1 dpkg -i /tmp/dragonball3_package.deb`
+- Default 5-minute timeout accommodates dpkg execution duration
+- Does not clean up the `.deb` file itself; cleanup happens via `DeleteDragonball3Task` in the errorDag when installation fails. On success, the subsequent `RebootRobotTask` discards the file via reboot.
+
+---
+
+## 38. DeleteDragonball3Task
+
+### Overview
+
+Deletes the transferred dragonball3 `.deb` file (`/tmp/dragonball3_package.deb`) on the remote robot. Used as the error DAG cleanup step when dragonball3 installation fails.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -f /tmp/dragonball3_package.deb`
+- Uses `-f` (force) to silently ignore missing files
