@@ -550,6 +550,83 @@ const DEPLOY_GGR3_CONFIG_ERROR_DAG: DagDefinition = {
   },
 };
 
+const INSTALL_DRAGONBALL3_DAG: DagDefinition = {
+  tasks: {
+    detect_reboot: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "WaitSshReconnectTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          timeout: { value: 600000 },
+        },
+        results: { done: "reboot_detected" },
+      },
+      provides: ["reboot_detected"],
+    },
+    transfer: {
+      requires: ["robotIp", "robotPort", "reboot_detected", "artifactId"],
+      resolver: {
+        name: "TransferDragonball3Task",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    install: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "InstallDragonball3Task",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "install_done" },
+      },
+      provides: ["install_done"],
+    },
+    reboot: {
+      requires: ["robotIp", "robotPort", "install_done"],
+      resolver: {
+        name: "RebootRobotTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          ignoreFailure: { value: true },
+          retryCount: { value: 1 },
+        },
+        results: { done: "reboot_done" },
+      },
+      provides: ["reboot_done"],
+    },
+  },
+};
+
+const INSTALL_DRAGONBALL3_ERROR_DAG: DagDefinition = {
+  tasks: {
+    error_cleanup: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "SshCommandTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          sshCommand: { value: "rm -f /tmp/dragonball3_package.deb" },
+          sudo: { value: true },
+          retryCount: { value: 1 },
+        },
+        results: { done: "error_cleanup_done" },
+      },
+      provides: ["error_cleanup_done"],
+    },
+  },
+};
+
 export const TASK_REGISTRY: TaskRegistry = {
   version: "1.0.0",
   taskTypes: [
@@ -738,6 +815,27 @@ export const TASK_REGISTRY: TaskRegistry = {
         artifactId: {
           type: "artifact",
           label: "GGR3 Config Package",
+          required: true,
+        },
+      },
+    },
+    {
+      type: "install-dragonball3",
+      name: "Install Dragonball3",
+      description:
+        "Reinstall the dragonball3 firmware on selected robots. The task waits for a manual robot reboot, then transfers, installs, and triggers another reboot.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to reinstall the dragonball3 firmware.",
+      },
+      dag: INSTALL_DRAGONBALL3_DAG,
+      expectedResults: ["reboot_done"],
+      errorDag: INSTALL_DRAGONBALL3_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "Dragonball3 firmware package (.deb)",
           required: true,
         },
       },

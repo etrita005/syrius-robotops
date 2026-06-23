@@ -84,3 +84,7 @@ export { InstallAppTask } from "./real/installAppTask.js";
 export { MockInstallAppTask } from "./mock/mockInstallAppTask.js";
 export { CleanupAppTask } from "./real/cleanupAppTask.js";
 export { MockCleanupAppTask } from "./mock/mockCleanupAppTask.js";
+export { TransferDragonball3Task } from "./real/transferDragonball3Task.js";
+export { MockTransferDragonball3Task } from "./mock/mockTransferDragonball3Task.js";
+export { InstallDragonball3Task } from "./real/installDragonball3Task.js";
+export { MockInstallDragonball3Task } from "./mock/mockInstallDragonball3Task.js";

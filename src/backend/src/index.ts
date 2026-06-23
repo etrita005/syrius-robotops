@@ -18,7 +18,46 @@ import { AppError } from "./errors/appErrors.js";
 import * as store from "./objectStore/store.js";
 import { TaskFlowEngine, ResolverRegistry, SseManager } from "./services/taskFlowEngine/index.js";
 import type { TaskResolverClass } from "flowed";
-import { SshCommandTask, MockSshCommandTask, GetRobotBasicInfoTask, MockGetRobotBasicInfoTask, GetRobotSoftwareInfoTask, MockGetRobotSoftwareInfoTask, UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask, UpdateRobotSoftwareInfoTask, MockUpdateRobotSoftwareInfoTask, SshFileTransferTask, MockSshFileTransferTask, UpgradeMovebaseTask, MockUpgradeMovebaseTask, TransferMovebaseTask, MockTransferMovebaseTask, DeleteMovebaseTask, MockDeleteMovebaseTask, RebootRobotTask, MockRebootRobotTask, MatchFileContentTask, MockMatchFileContentTask, MatchMovebaseVersionTask, MockMatchMovebaseVersionTask, TransferBUPTask, MockTransferBUPTask, TransferBUPScriptTask, MockTransferBUPScriptTask, UpgradeBUPTask, MockUpgradeBUPTask, MatchBUPVersionTask, MockMatchBUPVersionTask, DeleteBUPTask, MockDeleteBUPTask, MovebaseDiskCleanupTask, MockMovebaseDiskCleanupTask, TransferAlpha2MapTask, MockTransferAlpha2MapTask, ApplyAlpha2MapTask, MockApplyAlpha2MapTask, DeleteAlpha2MapTask, MockDeleteAlpha2MapTask, SleepTask, MockSleepTask, WaitSshConnectedTask, MockWaitSshConnectedTask, WaitSshDisconnectedTask, MockWaitSshDisconnectedTask, WaitSshReconnectTask, MockWaitSshReconnectTask, TransferIotGatewayConfigTask, MockTransferIotGatewayConfigTask, UpdateIotGatewayConfigTask, MockUpdateIotGatewayConfigTask, SshFileDownloadTask, MockSshFileDownloadTask, TransferAEConfigTask, MockTransferAEConfigTask, DeployAEConfigTask, MockDeployAEConfigTask, DeleteAEConfigTask, MockDeleteAEConfigTask, TransferGGR3ConfigTask, MockTransferGGR3ConfigTask, DeployGGR3ConfigTask, MockDeployGGR3ConfigTask, DeleteGGR3ConfigTask, MockDeleteGGR3ConfigTask, TransferAppTask, MockTransferAppTask, InstallAppTask, CleanupAppTask, MockInstallAppTask, MockCleanupAppTask } from "./tasks/index.js";
+import {
+  SshCommandTask, MockSshCommandTask,
+  GetRobotBasicInfoTask, MockGetRobotBasicInfoTask,
+  GetRobotSoftwareInfoTask, MockGetRobotSoftwareInfoTask,
+  UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask,
+  UpdateRobotSoftwareInfoTask, MockUpdateRobotSoftwareInfoTask,
+  SshFileTransferTask, MockSshFileTransferTask,
+  UpgradeMovebaseTask, MockUpgradeMovebaseTask,
+  TransferMovebaseTask, MockTransferMovebaseTask,
+  DeleteMovebaseTask, MockDeleteMovebaseTask,
+  RebootRobotTask, MockRebootRobotTask,
+  MatchFileContentTask, MockMatchFileContentTask,
+  MatchMovebaseVersionTask, MockMatchMovebaseVersionTask,
+  TransferBUPTask, MockTransferBUPTask,
+  TransferBUPScriptTask, MockTransferBUPScriptTask,
+  UpgradeBUPTask, MockUpgradeBUPTask,
+  MatchBUPVersionTask, MockMatchBUPVersionTask,
+  DeleteBUPTask, MockDeleteBUPTask,
+  MovebaseDiskCleanupTask, MockMovebaseDiskCleanupTask,
+  TransferAlpha2MapTask, MockTransferAlpha2MapTask,
+  ApplyAlpha2MapTask, MockApplyAlpha2MapTask,
+  DeleteAlpha2MapTask, MockDeleteAlpha2MapTask,
+  SleepTask, MockSleepTask,
+  WaitSshConnectedTask, MockWaitSshConnectedTask,
+  WaitSshDisconnectedTask, MockWaitSshDisconnectedTask,
+  WaitSshReconnectTask, MockWaitSshReconnectTask,
+  TransferIotGatewayConfigTask, MockTransferIotGatewayConfigTask,
+  UpdateIotGatewayConfigTask, MockUpdateIotGatewayConfigTask,
+  SshFileDownloadTask, MockSshFileDownloadTask,
+  TransferAEConfigTask, MockTransferAEConfigTask,
+  DeployAEConfigTask, MockDeployAEConfigTask,
+  DeleteAEConfigTask, MockDeleteAEConfigTask,
+  TransferGGR3ConfigTask, MockTransferGGR3ConfigTask,
+  DeployGGR3ConfigTask, MockDeployGGR3ConfigTask,
+  DeleteGGR3ConfigTask, MockDeleteGGR3ConfigTask,
+  TransferAppTask, MockTransferAppTask,
+  InstallAppTask, CleanupAppTask, MockInstallAppTask, MockCleanupAppTask,
+  TransferDragonball3Task, MockTransferDragonball3Task,
+  InstallDragonball3Task, MockInstallDragonball3Task,
+} from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
@@ -138,6 +177,8 @@ async function main(): Promise<void> {
     { name: "TransferAppTask", real: TransferAppTask, mock: MockTransferAppTask },
     { name: "InstallAppTask", real: InstallAppTask, mock: MockInstallAppTask },
     { name: "CleanupAppTask", real: CleanupAppTask, mock: MockCleanupAppTask },
+    { name: "TransferDragonball3Task", real: TransferDragonball3Task, mock: MockTransferDragonball3Task },
+    { name: "InstallDragonball3Task", real: InstallDragonball3Task, mock: MockInstallDragonball3Task },
   ]);
 
   const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
