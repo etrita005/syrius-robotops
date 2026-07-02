@@ -502,6 +502,7 @@ test.describe("Deploy GGR3 Config", () => {
     const meta = await createSolutionViaAPI(apiURL, "GGR3 Test Solution", "E2E GGR3 test");
     solutionId = meta.id;
     await addRobotViaAPI(apiURL, solutionId, "192.168.1.10");
+    await addRobotViaAPI(apiURL, solutionId, "192.168.1.11");
   });
 
   test.afterAll(async ({ apiURL }) => {
@@ -595,7 +596,7 @@ test.describe("Deploy GGR3 Config", () => {
   test("TC-E2E-TASK-018: Install App task type appears in task creation modal", async ({
     appPage,
   }) => {
-    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
     await clickSidebarTab(appPage, "Tasks");
 
     await appPage.getByRole("button", { name: "Create your first task" }).click();
@@ -610,7 +611,7 @@ test.describe("Deploy GGR3 Config", () => {
   test("TC-E2E-TASK-019: Install App shows multi-robot selection in task type step", async ({
     appPage,
   }) => {
-    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
     await clickSidebarTab(appPage, "Tasks");
 
     await appPage.getByRole("button", { name: "Create your first task" }).click();
@@ -626,7 +627,7 @@ test.describe("Deploy GGR3 Config", () => {
   test("TC-E2E-TASK-020: Install App leads to multi-robot step 2 then params step", async ({
     appPage,
   }) => {
-    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
     await clickSidebarTab(appPage, "Tasks");
 
     await appPage.getByRole("button", { name: "Create your first task" }).click();
@@ -651,7 +652,7 @@ test.describe("Deploy GGR3 Config", () => {
   test("TC-E2E-DB3-001: Install Dragonball3 task type appears in task creation modal", async ({
     appPage,
   }) => {
-    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
     await clickSidebarTab(appPage, "Tasks");
 
     await appPage.getByRole("button", { name: "Create your first task" }).click();
@@ -666,7 +667,7 @@ test.describe("Deploy GGR3 Config", () => {
   test("TC-E2E-DB3-002: Install Dragonball3 shows multi-robot selection in task type step", async ({
     appPage,
   }) => {
-    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
     await clickSidebarTab(appPage, "Tasks");
 
     await appPage.getByRole("button", { name: "Create your first task" }).click();
@@ -682,7 +683,7 @@ test.describe("Deploy GGR3 Config", () => {
   test("TC-E2E-DB3-003: Install Dragonball3 leads to multi-robot step 2", async ({
     appPage,
   }) => {
-    await openSolutionInWorkspace(appPage, "Task Test Solution");
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
     await clickSidebarTab(appPage, "Tasks");
 
     await appPage.getByRole("button", { name: "Create your first task" }).click();

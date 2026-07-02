@@ -4610,17 +4610,10 @@ class TestableInstallAppTask extends InstallAppTask {
 }
 
 describe("InstallApp task", () => {
-  it("TC-APP-002: should generate correct combined install command with all steps", () => {
+  it("TC-APP-002: should wrap install logic in a single sh -c script", () => {
     const task = new TestableInstallAppTask();
     const command = task.command();
-    assert.match(command, /adb kill-server/);
-    assert.match(command, /adb start-server/);
-    assert.match(command, /systemctl stop syriusrobotics\.kuaye\.service/);
-    assert.match(command, /adb install -d -r \/tmp\/app_package\.apk/);
-    assert.match(command, /systemctl start syriusrobotics\.kuaye\.service/);
-    assert.match(command, /rm -f \/tmp\/app_package\.apk/);
-    assert.match(command, /sh -c/);
-    assert.match(command, / && /);
+    assert.match(command, /^sh -c '/);
   });
 
   it("TC-APP-003: should use sudo for the overall task", () => {
@@ -4635,27 +4628,40 @@ describe("InstallApp task", () => {
     assert.equal(params.commandTimeout, 300000);
   });
 
-  it("TC-APP-005: ADB fix steps should run before install in correct order", () => {
+  it("TC-APP-005: should check ADB authorization before deciding the install path", () => {
     const task = new TestableInstallAppTask();
     const command = task.command();
-    const adbKillIdx = command.indexOf("adb kill-server");
-    const adbStartIdx = command.indexOf("adb start-server");
-    const stopIdx = command.indexOf("systemctl stop");
-    const installIdx = command.indexOf("adb install");
-    assert.ok(adbKillIdx < adbStartIdx, "adb kill-server before adb start-server");
-    assert.ok(adbStartIdx < stopIdx, "ADB fix before stop service");
-    assert.ok(stopIdx < installIdx, "stop before install");
+    assert.match(command, /adb devices \| grep -qE/);
   });
 
-  it("TC-APP-005b: non-adb commands should use sh -c wrapper to ignore failures", () => {
+  it("TC-APP-005b: should skip ADB reset when a device is already authorized", () => {
     const task = new TestableInstallAppTask();
     const command = task.command();
-    assert.match(command, /sh -c "rm -rf/);
-    assert.match(command, /sh -c "adb kill-server ; true"/);
-    assert.match(command, /sh -c "systemctl stop .+ ; true"/);
-    assert.match(command, /sh -c "systemctl start .+ ; true"/);
-    assert.match(command, /sh -c "rm -f .+ ; true"/);
-    assert.doesNotMatch(command, /sh -c "adb install/);
+    const elseIdx = command.indexOf("else");
+    const directStopIdx = command.indexOf("systemctl stop syriusrobotics.kuaye.service");
+    const directInstallIdx = command.indexOf("adb install -d -r /tmp/app_package.apk");
+    assert.ok(directStopIdx < elseIdx, "direct stop service before else branch");
+    assert.ok(directInstallIdx < elseIdx, "direct install before else branch");
+    assert.doesNotMatch(command, /adb devices.*adb kill-server/);
+  });
+
+  it("TC-APP-005c: should reset ADB server and wait 3s when no authorized device", () => {
+    const task = new TestableInstallAppTask();
+    const command = task.command();
+    const elseIdx = command.indexOf("else");
+    assert.ok(elseIdx > 0, "command has else branch");
+    const elseBranch = command.slice(elseIdx);
+    assert.match(elseBranch, /rm -rf ~\/\.android\//);
+    assert.match(elseBranch, /adb kill-server/);
+    assert.match(elseBranch, /adb start-server/);
+    assert.match(elseBranch, /sleep 3/);
+    assert.match(elseBranch, /adb install -d -r \/tmp\/app_package\.apk/);
+  });
+
+  it("TC-APP-005d: cleanup should run in both branches", () => {
+    const task = new TestableInstallAppTask();
+    const command = task.command();
+    assert.match(command, /rm -f \/tmp\/app_package\.apk/);
   });
 });
 
