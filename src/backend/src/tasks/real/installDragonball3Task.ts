@@ -1,7 +1,12 @@
 import type { ValueMap } from "flowed";
 import { SshCommandTask, type SshCommandParams } from "./sshCommandTask.js";
 
-const INSTALL_COMMAND = "FORCE_UPDATE=1 dpkg -i /tmp/dragonball3_package.deb";
+const INSTALL_COMMAND = [
+  "systemctl stop cosmos-update-engine.service || true",
+  "sleep 3",
+  "rm -f /var/lib/dpkg/lock*",
+  "FORCE_UPDATE=1 dpkg -i /tmp/dragonball3_package.deb",
+].join(" && ");
 
 export class InstallDragonball3Task extends SshCommandTask {
   protected override buildParams(params: ValueMap): SshCommandParams {

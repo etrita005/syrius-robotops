@@ -62,7 +62,7 @@ date -s "YYYY-MM-DD HH:MM:SS" && hwclock --systohc && timedatectl set-local-rtc 
 
 ### 2.1 概述
 
-通过 dpkg 彻底卸载 `l4t-downloader` 包：purge 移除包及配置文件，再 autoremove 清理残留依赖。
+通过 dpkg 彻底卸载 `l4t-downloader` 包：先停止 update-engine 服务、清理锁文件，然后 purge 移除包及配置文件。
 
 ### 2.2 类继承
 
@@ -83,11 +83,13 @@ BaseTask → SshCommandTask → UninstallL4TDownloaderTask
 ### 2.4 SSH 命令
 
 ```
-dpkg --purge l4t-downloader
+systemctl stop cosmos-update-engine.service || true && sleep 3 && rm -f /var/lib/dpkg/lock* && dpkg --purge l4t-downloader
 ```
 
-- `dpkg --purge` — 完全移除包及配置文件
-- 不再执行 autoremove，仅做 purge 清理
+- `systemctl stop cosmos-update-engine.service || true` — 停止可能占用 dpkg 的 update-engine 服务
+- `sleep 3` — 等待服务完全停止
+- `rm -f /var/lib/dpkg/lock*` — 清理可能残留的 dpkg 锁文件
+- `dpkg --purge l4t-downloader` — 完全移除包及配置文件
 
 ### 2.5 输出参数
 
@@ -104,7 +106,7 @@ dpkg --purge l4t-downloader
 
 ### 3.1 概述
 
-在机器人上执行 `dpkg --configure -a`、清理锁文件、通过 cosmos update engine apt 配置执行 `--fix-broken install`。
+在机器人上先停止 update-engine 服务、清理锁文件，然后执行 `dpkg --configure -a`、通过 cosmos update engine apt 配置执行 `--fix-broken install`。
 
 ### 3.2 类继承
 
@@ -125,11 +127,13 @@ BaseTask → SshCommandTask → FixBrokenPackagesTask
 ### 3.4 SSH 命令
 
 ```
-dpkg --configure -a && rm -f /var/lib/dpkg/lock* && DEBIAN_FRONTEND=noninteractive apt -o Dpkg::Options::=--force-overwrite -o Dir::Etc=/opt/cosmos/var/cosmos_update_engine/apt --allow-downgrades --fix-broken install -y
+systemctl stop cosmos-update-engine.service || true && sleep 3 && rm -f /var/lib/dpkg/lock* && dpkg --configure -a && DEBIAN_FRONTEND=noninteractive apt -o Dpkg::Options::=--force-overwrite -o Dir::Etc=/opt/cosmos/var/cosmos_update_engine/apt --allow-downgrades --fix-broken install -y
 ```
 
+- `systemctl stop cosmos-update-engine.service || true` — 停止可能占用 dpkg 的 update-engine 服务
+- `sleep 3` — 等待服务完全停止
+- `rm -f /var/lib/dpkg/lock*` — 清理可能残留的 dpkg 锁文件
 - `dpkg --configure -a` — 完成未配置的包
-- `rm -f /var/lib/dpkg/lock*` — 清理锁文件（`-f` 容忍无匹配文件）
 - `apt --fix-broken install -y` — 修复破损依赖
 
 ### 3.5 输出参数
@@ -207,15 +211,15 @@ const FIX_BROKEN_PACKAGES_DAG: DagDefinition = {
 七步组合 DAG，复用现有任务解析器：
 
 ```
-fix → detect_reboot → transfer → install → sync_time → uninstall_l4t → reboot
+detect_reboot → transfer → install → fix → sync_time → uninstall_l4t → reboot
 ```
 
 | 步骤 | 任务解析器 | 说明 |
 |------|-----------|------|
-| `fix` | `FixBrokenPackagesTask` | 修复破损安装包 |
 | `detect_reboot` | `WaitSshReconnectTask` | 等待手动重启并重连（超时 600s） |
 | `transfer` | `TransferDragonball3Task` | 上传 dragonball3 `.deb` |
 | `install` | `InstallDragonball3Task` | 安装固件 |
+| `fix` | `FixBrokenPackagesTask` | 修复破损安装包 |
 | `sync_time` | `SyncTimeTask` | 同步系统时间 |
 | `uninstall_l4t` | `UninstallL4TDownloaderTask` | 卸载 l4t-downloader |
 | `reboot` | `RebootRobotTask` | 重启使变更生效 |

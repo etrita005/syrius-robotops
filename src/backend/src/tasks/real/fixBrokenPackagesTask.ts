@@ -2,8 +2,10 @@ import type { ValueMap } from "flowed";
 import { SshCommandTask, type SshCommandParams } from "./sshCommandTask.js";
 
 const FIX_COMMAND = [
-  "dpkg --configure -a",
+  "systemctl stop cosmos-update-engine.service || true",
+  "sleep 3",
   "rm -f /var/lib/dpkg/lock*",
+  "dpkg --configure -a",
   "DEBIAN_FRONTEND=noninteractive apt -o Dpkg::Options::=--force-overwrite -o Dir::Etc=/opt/cosmos/var/cosmos_update_engine/apt --allow-downgrades --fix-broken install -y",
 ].join(" && ");
 

@@ -677,20 +677,8 @@ const FIX_BROKEN_PACKAGES_DAG: DagDefinition = {
 
 const FIX_ALPHA19_OTA_DAG: DagDefinition = {
   tasks: {
-    fix: {
-      requires: ["robotIp", "robotPort"],
-      resolver: {
-        name: "FixBrokenPackagesTask",
-        params: {
-          robotIp: "robotIp",
-          robotPort: "robotPort",
-        },
-        results: { done: "fix_done" },
-      },
-      provides: ["fix_done"],
-    },
     detect_reboot: {
-      requires: ["robotIp", "robotPort", "fix_done"],
+      requires: ["robotIp", "robotPort"],
       resolver: {
         name: "WaitSshReconnectTask",
         params: {
@@ -727,8 +715,20 @@ const FIX_ALPHA19_OTA_DAG: DagDefinition = {
       },
       provides: ["install_done"],
     },
-    sync_time: {
+    fix: {
       requires: ["robotIp", "robotPort", "install_done"],
+      resolver: {
+        name: "FixBrokenPackagesTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "fix_done" },
+      },
+      provides: ["fix_done"],
+    },
+    sync_time: {
+      requires: ["robotIp", "robotPort", "fix_done"],
       resolver: {
         name: "SyncTimeTask",
         params: {
