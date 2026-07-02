@@ -1,7 +1,12 @@
 import type { ValueMap } from "flowed";
 import { SshCommandTask, type SshCommandParams } from "./sshCommandTask.js";
 
-const UNINSTALL_COMMAND = "dpkg --purge l4t-downloader";
+const UNINSTALL_COMMAND = [
+  "systemctl stop cosmos-update-engine.service || true",
+  "sleep 3",
+  "rm -f /var/lib/dpkg/lock*",
+  "dpkg --purge l4t-downloader",
+].join(" && ");
 
 export class UninstallL4TDownloaderTask extends SshCommandTask {
   protected override buildParams(params: ValueMap): SshCommandParams {

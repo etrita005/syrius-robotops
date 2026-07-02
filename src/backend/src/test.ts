@@ -4887,9 +4887,13 @@ describe("TransferDragonball3 task", () => {
 });
 
 describe("InstallDragonball3 task", () => {
-  it("TC-DB3-003: should generate the correct dpkg -i install command", () => {
+  it("TC-DB3-003: should generate command with systemctl stop and dpkg -i", () => {
     const task = new TestableInstallDragonball3Task();
-    assert.equal(task.command(), "dpkg -i /tmp/dragonball3_package.deb");
+    const cmd = task.command();
+    assert.ok(cmd.includes("systemctl stop cosmos-update-engine.service"));
+    assert.ok(cmd.includes("sleep 3"));
+    assert.ok(cmd.includes("rm -f /var/lib/dpkg/lock*"));
+    assert.ok(cmd.includes("FORCE_UPDATE=1 dpkg -i /tmp/dragonball3_package.deb"));
   });
 
   it("TC-DB3-004: should use sudo for the install task", () => {
@@ -5173,10 +5177,13 @@ describe("System Maintenance - UninstallL4TDownloaderTask", () => {
     assert.ok(cmd.includes("dpkg --purge l4t-downloader"));
   });
 
-  it("TC-UNINST-002: getSshCommand is exactly dpkg --purge l4t-downloader", () => {
+  it("TC-UNINST-002: getSshCommand contains systemctl stop, sleep, rm, and dpkg --purge", () => {
     const task = new TestableUninstallL4TDownloaderTask();
     const cmd = task.testGetSshCommand();
-    assert.equal(cmd.trim(), "dpkg --purge l4t-downloader");
+    assert.ok(cmd.includes("systemctl stop cosmos-update-engine.service"));
+    assert.ok(cmd.includes("sleep 3"));
+    assert.ok(cmd.includes("rm -f /var/lib/dpkg/lock*"));
+    assert.ok(cmd.includes("dpkg --purge l4t-downloader"));
   });
 
   it("TC-UNINST-003: buildParams forces sudo=true and retryCount=1", () => {
@@ -5215,9 +5222,11 @@ describe("System Maintenance - FixBrokenPackagesTask", () => {
     }
   }
 
-  it("TC-FIX-001: getSshCommand contains dpkg --configure -a", () => {
+  it("TC-FIX-001: getSshCommand contains systemctl stop and dpkg --configure -a", () => {
     const task = new TestableFixBrokenPackagesTask();
     const cmd = task.testGetSshCommand();
+    assert.ok(cmd.includes("systemctl stop cosmos-update-engine.service"));
+    assert.ok(cmd.includes("sleep 3"));
     assert.ok(cmd.includes("dpkg --configure -a"));
   });
 

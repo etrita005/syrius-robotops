@@ -61,15 +61,15 @@
 | **输入** | 调用 `getSshCommand()` |
 | **预期结果** | 返回字符串包含 `dpkg --purge l4t-downloader` |
 
-### TC-UNINST-002: getSshCommand 精确为 dpkg --purge l4t-downloader
+### TC-UNINST-002: getSshCommand 包含 systemctl stop, sleep, rm, dpkg --purge
 
-**测试目标**：验证命令精确匹配，无多余步骤。
+**测试目标**：验证命令包含完整的锁清理 + 卸载链。
 
 | 项 | 值 |
 |----|-----|
 | **前置条件** | 无 |
 | **输入** | 调用 `getSshCommand()` |
-| **预期结果** | 返回 `dpkg --purge l4t-downloader`（trim 后精确相等） |
+| **预期结果** | 包含 `systemctl stop cosmos-update-engine.service`、`sleep 3`、`rm -f /var/lib/dpkg/lock*`、`dpkg --purge l4t-downloader` |
 
 ### TC-UNINST-003: buildParams 强制 sudo=true, retryCount=1
 
@@ -103,15 +103,15 @@
 
 ## 4. FixBrokenPackagesTask 测试用例
 
-### TC-FIX-001: getSshCommand 包含 dpkg --configure -a
+### TC-FIX-001: getSshCommand 包含 systemctl stop, sleep 3, dpkg --configure -a
 
-**测试目标**：验证命令包含 `dpkg --configure -a`。
+**测试目标**：验证命令包含 systemctl stop + 锁清理前缀 + dpkg --configure -a。
 
 | 项 | 值 |
 |----|-----|
 | **前置条件** | 无 |
 | **输入** | 调用 `getSshCommand()` |
-| **预期结果** | 包含 `dpkg --configure -a` |
+| **预期结果** | 包含 `systemctl stop cosmos-update-engine.service`、`sleep 3`、`rm -f /var/lib/dpkg/lock*`、`dpkg --configure -a` |
 
 ### TC-FIX-002: getSshCommand 包含 rm -f /var/lib/dpkg/lock*
 

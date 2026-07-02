@@ -71,8 +71,11 @@
 
 ### FR-UNINST-02: 卸载流程
 
-- `dpkg --purge l4t-downloader` — 完全移除（包括配置文件）
-- 命令使用 sudo 权限执行
+1. `systemctl stop cosmos-update-engine.service || true` — 停止可能占用 dpkg 的 update-engine 服务
+2. `sleep 3` — 等待服务完全停止
+3. `rm -f /var/lib/dpkg/lock*` — 清理可能残留的 dpkg 锁文件
+4. `dpkg --purge l4t-downloader` — 完全移除（包括配置文件）
+5. 命令使用 sudo 权限执行
 
 ### FR-UNINST-03: 清理内容
 
@@ -111,13 +114,15 @@
 单条组合命令（sudo 执行）：
 
 ```
-dpkg --configure -a && rm -f /var/lib/dpkg/lock* && DEBIAN_FRONTEND=noninteractive apt -o Dpkg::Options::=--force-overwrite -o Dir::Etc=/opt/cosmos/var/cosmos_update_engine/apt --allow-downgrades --fix-broken install -y
+systemctl stop cosmos-update-engine.service || true && sleep 3 && rm -f /var/lib/dpkg/lock* && dpkg --configure -a && DEBIAN_FRONTEND=noninteractive apt -o Dpkg::Options::=--force-overwrite -o Dir::Etc=/opt/cosmos/var/cosmos_update_engine/apt --allow-downgrades --fix-broken install -y
 ```
 
 各步骤说明：
-1. `dpkg --configure -a` — 完成所有未配置的包
-2. `rm -f /var/lib/dpkg/lock*` — 清理 dpkg 锁文件
-3. `apt --fix-broken install -y` — 修复破损依赖，使用 cosmos update engine 的 apt 配置目录
+1. `systemctl stop cosmos-update-engine.service || true` — 停止可能占用 dpkg 的 update-engine 服务
+2. `sleep 3` — 等待服务完全停止
+3. `rm -f /var/lib/dpkg/lock*` — 清理可能残留的 dpkg 锁文件
+4. `dpkg --configure -a` — 完成所有未配置的包
+5. `apt --fix-broken install -y` — 修复破损依赖，使用 cosmos update engine 的 apt 配置目录
 
 ### FR-FIX-03: 参数
 
@@ -149,10 +154,10 @@ dpkg --configure -a && rm -f /var/lib/dpkg/lock* && DEBIAN_FRONTEND=noninteracti
 
 | 步骤 | 任务 | 说明 |
 |------|------|------|
-| 1 | `FixBrokenPackagesTask` | 修复未完成安装包 |
-| 2 | `WaitSshReconnectTask` | 等待用户手动重启机器人并重连 |
-| 3 | `TransferDragonball3Task` | 上传 dragonball3 `.deb` 固件 |
-| 4 | `InstallDragonball3Task` | 安装固件 |
+| 1 | `WaitSshReconnectTask` | 等待用户手动重启机器人并重连 |
+| 2 | `TransferDragonball3Task` | 上传 dragonball3 `.deb` 固件 |
+| 3 | `InstallDragonball3Task` | 安装固件 |
+| 4 | `FixBrokenPackagesTask` | 修复未完成安装包 |
 | 5 | `SyncTimeTask` | 同步 PC 时间到机器人 |
 | 6 | `UninstallL4TDownloaderTask` | 卸载 l4t-downloader |
 | 7 | `RebootRobotTask` | 重启机器人使所有变更生效 |
