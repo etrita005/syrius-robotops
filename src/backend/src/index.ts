@@ -58,6 +58,9 @@ import {
   TransferDragonball3Task, MockTransferDragonball3Task,
   InstallDragonball3Task, MockInstallDragonball3Task,
   DeleteDragonball3Task, MockDeleteDragonball3Task,
+  SyncTimeTask, MockSyncTimeTask,
+  UninstallL4TDownloaderTask, MockUninstallL4TDownloaderTask,
+  FixBrokenPackagesTask, MockFixBrokenPackagesTask,
 } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
@@ -181,6 +184,9 @@ async function main(): Promise<void> {
     { name: "TransferDragonball3Task", real: TransferDragonball3Task, mock: MockTransferDragonball3Task },
     { name: "InstallDragonball3Task", real: InstallDragonball3Task, mock: MockInstallDragonball3Task },
     { name: "DeleteDragonball3Task", real: DeleteDragonball3Task, mock: MockDeleteDragonball3Task },
+    { name: "SyncTimeTask", real: SyncTimeTask, mock: MockSyncTimeTask },
+    { name: "UninstallL4TDownloaderTask", real: UninstallL4TDownloaderTask, mock: MockUninstallL4TDownloaderTask },
+    { name: "FixBrokenPackagesTask", real: FixBrokenPackagesTask, mock: MockFixBrokenPackagesTask },
   ]);
 
   const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);

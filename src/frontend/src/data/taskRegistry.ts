@@ -624,6 +624,150 @@ const INSTALL_DRAGONBALL3_ERROR_DAG: DagDefinition = {
   },
 };
 
+const SYNC_TIME_DAG: DagDefinition = {
+  tasks: {
+    sync: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "SyncTimeTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "sync_done" },
+      },
+      provides: ["sync_done"],
+    },
+  },
+};
+
+const UNINSTALL_L4T_DOWNLOADER_DAG: DagDefinition = {
+  tasks: {
+    uninstall: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "UninstallL4TDownloaderTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "uninstall_done" },
+      },
+      provides: ["uninstall_done"],
+    },
+  },
+};
+
+const FIX_BROKEN_PACKAGES_DAG: DagDefinition = {
+  tasks: {
+    fix: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "FixBrokenPackagesTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "fix_done" },
+      },
+      provides: ["fix_done"],
+    },
+  },
+};
+
+const FIX_ALPHA19_OTA_DAG: DagDefinition = {
+  tasks: {
+    fix: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "FixBrokenPackagesTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "fix_done" },
+      },
+      provides: ["fix_done"],
+    },
+    detect_reboot: {
+      requires: ["robotIp", "robotPort", "fix_done"],
+      resolver: {
+        name: "WaitSshReconnectTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          timeout: { value: 600000 },
+        },
+        results: { done: "reboot_detected" },
+      },
+      provides: ["reboot_detected"],
+    },
+    transfer: {
+      requires: ["robotIp", "robotPort", "reboot_detected", "artifactId"],
+      resolver: {
+        name: "TransferDragonball3Task",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    install: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "InstallDragonball3Task",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "install_done" },
+      },
+      provides: ["install_done"],
+    },
+    sync_time: {
+      requires: ["robotIp", "robotPort", "install_done"],
+      resolver: {
+        name: "SyncTimeTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "sync_done" },
+      },
+      provides: ["sync_done"],
+    },
+    uninstall_l4t: {
+      requires: ["robotIp", "robotPort", "sync_done"],
+      resolver: {
+        name: "UninstallL4TDownloaderTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "uninstall_done" },
+      },
+      provides: ["uninstall_done"],
+    },
+    reboot: {
+      requires: ["robotIp", "robotPort", "uninstall_done"],
+      resolver: {
+        name: "RebootRobotTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          ignoreFailure: { value: true },
+          retryCount: { value: 1 },
+        },
+        results: { done: "reboot_done" },
+      },
+      provides: ["reboot_done"],
+    },
+  },
+};
+
 export const TASK_REGISTRY: TaskRegistry = {
   version: "1.0.0",
   taskTypes: [
@@ -827,6 +971,68 @@ export const TASK_REGISTRY: TaskRegistry = {
           "Select one or more target robots to reinstall the dragonball3 firmware.",
       },
       dag: INSTALL_DRAGONBALL3_DAG,
+      expectedResults: ["reboot_done"],
+      errorDag: INSTALL_DRAGONBALL3_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "Dragonball3 firmware package (.deb)",
+          required: true,
+        },
+      },
+    },
+    {
+      type: "sync-time",
+      name: "Sync Time",
+      description: "Synchronize robot system time with the current PC time.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to synchronize their system time.",
+      },
+      dag: SYNC_TIME_DAG,
+      expectedResults: ["sync_done"],
+      params: {},
+    },
+    {
+      type: "uninstall-l4t-downloader",
+      name: "Uninstall L4TDownloader",
+      description:
+        "Completely remove the l4t-downloader package and its configuration files from selected robots.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to uninstall l4t-downloader.",
+      },
+      dag: UNINSTALL_L4T_DOWNLOADER_DAG,
+      expectedResults: ["uninstall_done"],
+      params: {},
+    },
+    {
+      type: "fix-broken-packages",
+      name: "Fix Broken Packages",
+      description:
+        "Fix interrupted or broken dpkg/apt package installations on selected robots.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to fix broken packages.",
+      },
+      dag: FIX_BROKEN_PACKAGES_DAG,
+      expectedResults: ["fix_done"],
+      params: {},
+    },
+    {
+      type: "fix-alpha19-ota",
+      name: "Fix Alpha1.9 OTA Environment",
+      description:
+        "Repair the Alpha1.9 OTA environment by fixing broken packages, reinstalling dragonball3 firmware, syncing time, and removing l4t-downloader.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more Alpha1.9 target robots to repair the OTA environment.",
+      },
+      dag: FIX_ALPHA19_OTA_DAG,
       expectedResults: ["reboot_done"],
       errorDag: INSTALL_DRAGONBALL3_ERROR_DAG,
       params: {

@@ -44,6 +44,12 @@ import { DeleteDragonball3Task } from "./tasks/real/deleteDragonball3Task.js";
 import { MockDeleteDragonball3Task } from "./tasks/mock/mockDeleteDragonball3Task.js";
 import { MockWaitSshReconnectTask } from "./tasks/mock/mockWaitSshReconnectTask.js";
 import { MockRebootRobotTask } from "./tasks/mock/mockRebootRobotTask.js";
+import { SyncTimeTask } from "./tasks/real/syncTimeTask.js";
+import { MockSyncTimeTask } from "./tasks/mock/mockSyncTimeTask.js";
+import { UninstallL4TDownloaderTask } from "./tasks/real/uninstallL4TDownloaderTask.js";
+import { MockUninstallL4TDownloaderTask } from "./tasks/mock/mockUninstallL4TDownloaderTask.js";
+import { FixBrokenPackagesTask } from "./tasks/real/fixBrokenPackagesTask.js";
+import { MockFixBrokenPackagesTask } from "./tasks/mock/mockFixBrokenPackagesTask.js";
 
 class InMemoryObjectStore {
   private store = new Map<string, unknown>();
@@ -5098,5 +5104,154 @@ describe("Install Dragonball3 firmware - Flow Integration", () => {
     assert.equal(flow.phase, "error");
     assert.ok(sse.hasEvent("task-flow-engine/error-handling-completed"));
     testEngine.destroy();
+  });
+});
+
+// ============================================================
+// System Maintenance Tasks: SyncTimeTask
+// ============================================================
+
+describe("System Maintenance - SyncTimeTask", () => {
+  class TestableSyncTimeTask extends SyncTimeTask {
+    public testGetSshCommand(): string {
+      return this.getSshCommand({});
+    }
+    public testBuildParams(params: ValueMap) {
+      return this.buildParams(params);
+    }
+  }
+
+  it("TC-SYNC-001: getSshCommand contains date -s, hwclock --systohc, and timedatectl", () => {
+    const task = new TestableSyncTimeTask();
+    const cmd = task.testGetSshCommand();
+    assert.ok(cmd.includes("date -s"));
+    assert.ok(cmd.includes("hwclock --systohc"));
+    assert.ok(cmd.includes("timedatectl set-local-rtc 0"));
+    assert.ok(cmd.includes("timedatectl set-local-rtc 1"));
+  });
+
+  it("TC-SYNC-002: buildParams forces sudo=true and retryCount=1", () => {
+    const task = new TestableSyncTimeTask();
+    const params = task.testBuildParams({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+    assert.equal(params.retryCount, 1);
+  });
+
+  it("TC-SYNC-003: commandTimeout defaults to 10000", () => {
+    const task = new TestableSyncTimeTask();
+    const params = task.testBuildParams({ robotIp: "192.168.1.10" });
+    assert.equal(params.commandTimeout, 10000);
+  });
+
+  it("TC-SYNC-004: MockSyncTimeTask returns success with syncedTime", async () => {
+    const task = new MockSyncTimeTask();
+    const result = await task.exec({}, { flowId: "test-sync" });
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(typeof (result as ValueMap).syncedTime, "string");
+    assert.ok(((result as ValueMap).syncedTime as string).length > 0);
+  });
+});
+
+// ============================================================
+// System Maintenance Tasks: UninstallL4TDownloaderTask
+// ============================================================
+
+describe("System Maintenance - UninstallL4TDownloaderTask", () => {
+  class TestableUninstallL4TDownloaderTask extends UninstallL4TDownloaderTask {
+    public testGetSshCommand(): string {
+      return this.getSshCommand({});
+    }
+    public testBuildParams(params: ValueMap) {
+      return this.buildParams(params);
+    }
+  }
+
+  it("TC-UNINST-001: getSshCommand contains dpkg --purge l4t-downloader", () => {
+    const task = new TestableUninstallL4TDownloaderTask();
+    const cmd = task.testGetSshCommand();
+    assert.ok(cmd.includes("dpkg --purge l4t-downloader"));
+  });
+
+  it("TC-UNINST-002: getSshCommand is exactly dpkg --purge l4t-downloader", () => {
+    const task = new TestableUninstallL4TDownloaderTask();
+    const cmd = task.testGetSshCommand();
+    assert.equal(cmd.trim(), "dpkg --purge l4t-downloader");
+  });
+
+  it("TC-UNINST-003: buildParams forces sudo=true and retryCount=1", () => {
+    const task = new TestableUninstallL4TDownloaderTask();
+    const params = task.testBuildParams({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+    assert.equal(params.retryCount, 1);
+  });
+
+  it("TC-UNINST-004: commandTimeout defaults to 60000", () => {
+    const task = new TestableUninstallL4TDownloaderTask();
+    const params = task.testBuildParams({ robotIp: "192.168.1.10" });
+    assert.equal(params.commandTimeout, 60000);
+  });
+
+  it("TC-UNINST-005: MockUninstallL4TDownloaderTask returns success", async () => {
+    const task = new MockUninstallL4TDownloaderTask();
+    const result = await task.exec({}, { flowId: "test-uninstall" });
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal((result as ValueMap).exitCode, 0);
+  });
+});
+
+// ============================================================
+// System Maintenance Tasks: FixBrokenPackagesTask
+// ============================================================
+
+describe("System Maintenance - FixBrokenPackagesTask", () => {
+  class TestableFixBrokenPackagesTask extends FixBrokenPackagesTask {
+    public testGetSshCommand(): string {
+      return this.getSshCommand({});
+    }
+    public testBuildParams(params: ValueMap) {
+      return this.buildParams(params);
+    }
+  }
+
+  it("TC-FIX-001: getSshCommand contains dpkg --configure -a", () => {
+    const task = new TestableFixBrokenPackagesTask();
+    const cmd = task.testGetSshCommand();
+    assert.ok(cmd.includes("dpkg --configure -a"));
+  });
+
+  it("TC-FIX-002: getSshCommand contains rm -f /var/lib/dpkg/lock*", () => {
+    const task = new TestableFixBrokenPackagesTask();
+    const cmd = task.testGetSshCommand();
+    assert.ok(cmd.includes("rm -f /var/lib/dpkg/lock*"));
+  });
+
+  it("TC-FIX-003: getSshCommand contains --fix-broken and cosmos apt path", () => {
+    const task = new TestableFixBrokenPackagesTask();
+    const cmd = task.testGetSshCommand();
+    assert.ok(cmd.includes("--fix-broken install -y"));
+    assert.ok(cmd.includes("/opt/cosmos/var/cosmos_update_engine/apt"));
+  });
+
+  it("TC-FIX-004: buildParams forces sudo=true and retryCount=1", () => {
+    const task = new TestableFixBrokenPackagesTask();
+    const params = task.testBuildParams({ robotIp: "192.168.1.10" });
+    assert.equal(params.sudo, true);
+    assert.equal(params.retryCount, 1);
+  });
+
+  it("TC-FIX-005: commandTimeout defaults to 120000", () => {
+    const task = new TestableFixBrokenPackagesTask();
+    const params = task.testBuildParams({ robotIp: "192.168.1.10" });
+    assert.equal(params.commandTimeout, 120000);
+  });
+
+  it("TC-FIX-006: MockFixBrokenPackagesTask returns success", async () => {
+    const task = new MockFixBrokenPackagesTask();
+    const result = await task.exec({}, { flowId: "test-fix" });
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal((result as ValueMap).exitCode, 0);
   });
 });
