@@ -1,4 +1,4 @@
-# Download Alpha2 Sketch Task — 软件设计文档
+# Download Alpha2 Map Task — 软件设计文档
 
 ## 1. 概述
 
@@ -104,7 +104,7 @@ export interface SshFileDownloadResult {
 
 ### 4.2 文件命名
 
-下载文件保存为 `{localTargetDir}/{basename(remoteFilePath)}`，即使用远程文件的基础名称。对于 Alpha2 Sketch 任务，固定为 `{localTargetDir}/sketch.zip`。
+下载文件保存为 `{localTargetDir}/{basename(remoteFilePath)}`，即使用远程文件的基础名称。对于 Alpha2 Map 任务，固定为 `{localTargetDir}/sketch.zip`。
 
 ---
 
@@ -119,12 +119,12 @@ export interface SshFileDownloadResult {
 
 ### 5.2 前端 Task Type
 
-注册类型：`download-alpha2-sketch`
+注册类型：`download-alpha2-map`
 
 DAG 定义（单任务）：
 
 ```typescript
-const DOWNLOAD_ALPHA2_SKETCH_DAG: DagDefinition = {
+const DOWNLOAD_ALPHA2_MAP_DAG: DagDefinition = {
   tasks: {
     download: {
       requires: ["robotIp", "robotPort", "localTargetDir"],
@@ -154,10 +154,13 @@ const DOWNLOAD_ALPHA2_SKETCH_DAG: DagDefinition = {
 |------|------|
 | `src/backend/src/tasks/real/sshFileDownloadTask.ts` | 真实下载任务实现 |
 | `src/backend/src/tasks/mock/mockSshFileDownloadTask.ts` | Mock 下载任务实现 |
-| `documents/requirements/download_alpha2_sketch_requirements.md` | 需求规格说明书 |
-| `documents/design/download_alpha2_sketch_design.md` | 本文件 |
-| `documents/ui-ux/download-alpha2-sketch/download_alpha2_sketch_ui.md` | UI/UX 线框图 |
-| `documents/test/download_alpha2_sketch_test_cases.md` | 测试用例设计 |
+| `documents/requirements/download_alpha2_map_requirements.md` | 需求规格说明书 |
+
+| `documents/design/download_alpha2_map_design.md` | 本文件 |
+
+| `documents/ui-ux/download-alpha2-map/download_alpha2_map_ui.md` | UI/UX 线框图 |
+
+| `documents/test/download_alpha2_map_test_cases.md` | 测试用例设计 |
 
 ### 6.2 修改文件
 
@@ -166,7 +169,7 @@ const DOWNLOAD_ALPHA2_SKETCH_DAG: DagDefinition = {
 | `src/backend/src/tasks/index.ts` | 导出新任务类及类型 |
 | `src/backend/src/index.ts` | 注册新 resolver |
 | `documents/design/backend_task_design.md` | 添加新任务章节 |
-| `src/frontend/src/data/taskRegistry.ts` | 添加 `download-alpha2-sketch` 任务类型及 DAG |
+| `src/frontend/src/data/taskRegistry.ts` | 添加 `download-alpha2-map` 任务类型及 DAG |
 | `src/backend/src/test.ts` | 添加新任务单元测试 |
 | `src/e2e-test/tests/task-management.spec.ts` | 添加 E2E 测试用例 |
 
@@ -195,7 +198,7 @@ BaseTask (ITaskResolver)
     ↓ 新增
 SshFileDownloadTask (下载: 机器人 → 本机)
     ↓ DAG 配置
-Download Alpha2 Sketch (specific task: /opt/cosmos/map/preview/sketch.zip)
+Download Alpha2 Map (specific task: /opt/cosmos/map/preview/sketch.zip)
 ```
 
-`SshFileDownloadTask` 是通用的 SFTP 下载任务，通过 DAG 参数中的 `remoteFilePath: { value: "..." }` 配置为特化的 Alpha2 Sketch 下载任务，未来可复用为其他文件的下载任务。
+`SshFileDownloadTask` 是通用的 SFTP 下载任务，通过 DAG 参数中的 `remoteFilePath: { value: "..." }` 配置为特化的 Alpha2 Map 下载任务，未来可复用为其他文件的下载任务。

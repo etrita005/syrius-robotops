@@ -1,7 +1,7 @@
-# 配置下位机 AE 文件 — 测试用例设计文档
+# 配置下位机 AppletEngine 文件 — 测试用例设计文档
 
-> 关联需求：`documents/requirements/deploy_ae_config_requirements.md`
-> 关联设计：`documents/design/deploy_ae_config_design.md`
+> 关联需求：`documents/requirements/deploy_applet_engine_config_requirements.md`
+> 关联设计：`documents/design/deploy_applet_engine_config_design.md`
 
 ---
 
@@ -10,8 +10,8 @@
 ### 1.1 测试范围
 
 - **单元/集成测试**（`src/backend/src/test.ts`，扩展即可）：覆盖三类新增任务的命令拼装、参数继承、artifact 路径解析与传输联动、清理幂等性。
-- **E2E 测试**（`src/e2e-test/tests/task-management.spec.ts`）：覆盖前端 CreateTaskModal 中 `Deploy AE Config` 任务类型的可见性、参数渲染与多机器人选择。
-- **mock 模式 E2E**：使用 `MockTransferAEConfigTask` / `MockDeployAEConfigTask` / `MockDeleteAEConfigTask`，无需真实机器人。
+- **E2E 测试**（`src/e2e-test/tests/task-management.spec.ts`）：覆盖前端 CreateTaskModal 中 `Deploy AppletEngine Config` 任务类型的可见性、参数渲染与多机器人选择。
+- **mock 模式 E2E**：使用 `MockTransferAppletEngineConfigTask` / `MockDeployAppletEngineConfigTask` / `MockDeleteAppletEngineConfigTask`，无需真实机器人。
 
 ### 1.2 测试框架
 
@@ -27,34 +27,34 @@
 
 ## 2. 后端用例
 
-### TC-AE-001：DeployAEConfigTask 命令拼装（启用 sudo）
+### TC-AE-001：DeployAppletEngineConfigTask 命令拼装（启用 sudo）
 
 | 项 | 值 |
 |----|-----|
 | 优先级 | 高 |
-| 前置条件 | 实例化 `DeployAEConfigTask`，参数仅含 `robotIp`、`robotPort` |
+| 前置条件 | 实例化 `DeployAppletEngineConfigTask`，参数仅含 `robotIp`、`robotPort` |
 | 输入 | 调用 `getSshCommand({})` 与 `buildParams({ robotIp, robotPort })` |
 | 预期 | `sshCommand` 包含按顺序出现的关键片段：`[ -d /opt/cosmos/bin/applet-engine ] || { echo "Deploy target not found: /opt/cosmos/bin/applet-engine" >&2; exit 1; }`、`unzip -o /tmp/ae_config_package.zip -d /opt/cosmos/bin/applet-engine`、`chown -R cosmos:cosmos /opt/cosmos/bin/applet-engine`、`systemctl restart cosmos-applet-engine.service`、`rm -f /tmp/ae_config_package.zip`；命令字符串中**不**包含 `mkdir -p /opt/cosmos/bin/applet-engine`（不自动创建部署目录），**也不**包含 `/tmp/ae_config_extract`（不再使用中转解压目录），**也不**包含 `/home/developer`（暂存路径必须位于 `/tmp/`），**也不**包含 `reboot`（不重启整机）；`buildParams` 返回的 `sudo === true`，`commandTimeout === 60000`，`retryCount === 1`。 |
 
-### TC-AE-002：DeleteAEConfigTask 命令拼装
+### TC-AE-002：DeleteAppletEngineConfigTask 命令拼装
 
 | 项 | 值 |
 |----|-----|
 | 优先级 | 高 |
-| 前置条件 | 实例化 `DeleteAEConfigTask` |
+| 前置条件 | 实例化 `DeleteAppletEngineConfigTask` |
 | 输入 | `getSshCommand({})` |
 | 预期 | 返回 `rm -f /tmp/ae_config_package.zip`；`buildParams` 返回的 `sudo === true`。 |
 
-### TC-AE-003：TransferAEConfigTask 远程路径覆盖
+### TC-AE-003：TransferAppletEngineConfigTask 远程路径覆盖
 
 | 项 | 值 |
 |----|-----|
 | 优先级 | 高 |
-| 前置条件 | 实例化 `TransferAEConfigTask` |
+| 前置条件 | 实例化 `TransferAppletEngineConfigTask` |
 | 输入 | `buildParams({ robotIp, robotPort, localFilePath: "/tmp/x.zip" })` |
 | 预期 | 返回的 `remoteFilePath === "/tmp/ae_config_package.zip"`，`sudo === true`。 |
 
-### TC-AE-004：TransferAEConfigTask 通过 artifactService.getArtifactPath 解析本地路径并传输
+### TC-AE-004：TransferAppletEngineConfigTask 通过 artifactService.getArtifactPath 解析本地路径并传输
 
 | 项 | 值 |
 |----|-----|
@@ -63,7 +63,7 @@
 | 输入 | `onExec({ artifactId: "art-1" }, { artifactService })` |
 | 预期 | `artifactService.getArtifactPath` 被调用一次（参数为传入的 `artifactId`）；`super.onExec` 收到的 `params.localFilePath` 等于 `getArtifactPath` 的返回值；不创建/清理任何临时目录。 |
 
-### TC-AE-005：TransferAEConfigTask 缺失 artifactId 时直通父类
+### TC-AE-005：TransferAppletEngineConfigTask 缺失 artifactId 时直通父类
 
 | 项 | 值 |
 |----|-----|
@@ -77,7 +77,7 @@
 | 项 | 值 |
 |----|-----|
 | 优先级 | 中 |
-| 前置条件 | 实例化 `MockTransferAEConfigTask`、`MockDeployAEConfigTask`、`MockDeleteAEConfigTask` |
+| 前置条件 | 实例化 `MockTransferAppletEngineConfigTask`、`MockDeployAppletEngineConfigTask`、`MockDeleteAppletEngineConfigTask` |
 | 输入 | 各自调用 `onExec({})` |
 | 预期 | 三者均在合理时间内（≤6s）resolve，返回 `{ done: true, success: true, ... }`。 |
 
@@ -86,7 +86,7 @@
 | 项 | 值 |
 |----|-----|
 | 优先级 | 中 |
-| 前置条件 | `import { TransferAEConfigTask, DeployAEConfigTask, DeleteAEConfigTask, MockTransferAEConfigTask, MockDeployAEConfigTask, MockDeleteAEConfigTask } from "./tasks/index.js"` |
+| 前置条件 | `import { TransferAppletEngineConfigTask, DeployAppletEngineConfigTask, DeleteAppletEngineConfigTask, MockTransferAppletEngineConfigTask, MockDeployAppletEngineConfigTask, MockDeleteAppletEngineConfigTask } from "./tasks/index.js"` |
 | 输入 | 直接读取 import 后的引用 |
 | 预期 | 全部为构造函数（`typeof === "function"`）。 |
 
@@ -94,32 +94,32 @@
 
 ## 3. 前端 / E2E 用例
 
-### TC-E2E-AE-001：Deploy AE Config 任务类型可见
+### TC-E2E-AE-001：Deploy AppletEngine Config 任务类型可见
 
 | 项 | 值 |
 |----|-----|
 | 优先级 | 高 |
 | 前置条件 | 解决方案中至少有 1 台机器人；进入「Tasks → Create」 |
 | 步骤 | 打开 CreateTaskModal，留在 Type 步骤 |
-| 预期 | 看到任务卡片 `Deploy AE Config`，描述包含 `applet-engine`；卡片显示 `Robot selection: Multiple robots`。 |
+| 预期 | 看到任务卡片 `Deploy AppletEngine Config`，描述包含 `applet-engine`；卡片显示 `Robot selection: Multiple robots`。 |
 
-### TC-E2E-AE-002：Deploy AE Config 走到 Robots 步骤
+### TC-E2E-AE-002：Deploy AppletEngine Config 走到 Robots 步骤
 
 | 项 | 值 |
 |----|-----|
 | 优先级 | 高 |
 | 前置条件 | 同 TC-E2E-AE-001 |
-| 步骤 | 选中 `Deploy AE Config` 卡片 → Next |
+| 步骤 | 选中 `Deploy AppletEngine Config` 卡片 → Next |
 | 预期 | 进入 Robots 步骤，可见 `Select all robots` 复选框与机器人列表。 |
 
-### TC-E2E-AE-003：Deploy AE Config 参数步骤渲染制品选择器
+### TC-E2E-AE-003：Deploy AppletEngine Config 参数步骤渲染制品选择器
 
 | 项 | 值 |
 |----|-----|
 | 优先级 | 高 |
 | 前置条件 | 解决方案中至少 1 台机器人 + 至少 1 个制品 |
-| 步骤 | 选 `Deploy AE Config` → Robots 选 1 台 → Next |
-| 预期 | Params 步骤显示 `AE config package` 字段，且为制品选择器（与 Upgrade Movebase 等 artifact 字段呈现一致）。 |
+| 步骤 | 选 `Deploy AppletEngine Config` → Robots 选 1 台 → Next |
+| 预期 | Params 步骤显示 `AppletEngine config package` 字段，且为制品选择器（与 Upgrade Movebase 等 artifact 字段呈现一致）。 |
 
 ### TC-E2E-AE-004：现有任务类型计数同步更新
 

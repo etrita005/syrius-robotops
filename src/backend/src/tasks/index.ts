@@ -66,12 +66,12 @@ export { MockUpdateIotGatewayConfigTask } from "./mock/mockUpdateIotGatewayConfi
 export { SshFileDownloadTask } from "./real/sshFileDownloadTask.js";
 export type { SshFileDownloadParams, SshFileDownloadResult } from "./real/sshFileDownloadTask.js";
 export { MockSshFileDownloadTask } from "./mock/mockSshFileDownloadTask.js";
-export { TransferAEConfigTask } from "./real/transferAEConfigTask.js";
-export { MockTransferAEConfigTask } from "./mock/mockTransferAEConfigTask.js";
-export { DeployAEConfigTask } from "./real/deployAEConfigTask.js";
-export { MockDeployAEConfigTask } from "./mock/mockDeployAEConfigTask.js";
-export { DeleteAEConfigTask } from "./real/deleteAEConfigTask.js";
-export { MockDeleteAEConfigTask } from "./mock/mockDeleteAEConfigTask.js";
+export { TransferAppletEngineConfigTask } from "./real/transferAppletEngineConfigTask.js";
+export { MockTransferAppletEngineConfigTask } from "./mock/mockTransferAppletEngineConfigTask.js";
+export { DeployAppletEngineConfigTask } from "./real/deployAppletEngineConfigTask.js";
+export { MockDeployAppletEngineConfigTask } from "./mock/mockDeployAppletEngineConfigTask.js";
+export { DeleteAppletEngineConfigTask } from "./real/deleteAppletEngineConfigTask.js";
+export { MockDeleteAppletEngineConfigTask } from "./mock/mockDeleteAppletEngineConfigTask.js";
 export { TransferGGR3ConfigTask } from "./real/transferGGR3ConfigTask.js";
 export { MockTransferGGR3ConfigTask } from "./mock/mockTransferGGR3ConfigTask.js";
 export { DeployGGR3ConfigTask } from "./real/deployGGR3ConfigTask.js";

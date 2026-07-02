@@ -6,7 +6,7 @@ const REMOTE_DEPLOY_DIR = "/opt/cosmos/bin/applet-engine";
 const DEPLOY_OWNER = "cosmos:cosmos";
 const AE_SERVICE_NAME = "cosmos-applet-engine.service";
 
-export class DeployAEConfigTask extends SshCommandTask {
+export class DeployAppletEngineConfigTask extends SshCommandTask {
   protected override buildParams(params: ValueMap): SshCommandParams {
     return super.buildParams({
       ...params,

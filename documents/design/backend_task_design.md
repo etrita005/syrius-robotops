@@ -569,11 +569,11 @@ Same as `SshCommandTask`.
 
 ---
 
-## 19. TransferAEConfigTask
+## 19. TransferAppletEngineConfigTask
 
 ### Overview
 
-Resolves the AE config artifact storage path from the artifact service, then uploads it to the robot via SFTP. Used as the first step of the `Deploy AE Config` flow.
+Resolves the AppletEngine config artifact storage path from the artifact service, then uploads it to the robot via SFTP. Used as the first step of the `Deploy AppletEngine Config` flow.
 
 ### Input Parameters
 
@@ -601,11 +601,11 @@ Same as `SshFileTransferTask`.
 
 ---
 
-## 20. DeployAEConfigTask
+## 20. DeployAppletEngineConfigTask
 
 ### Overview
 
-Extracts the uploaded AE config zip directly into `/opt/cosmos/bin/applet-engine` on the robot, fixes ownership to `cosmos:cosmos`, removes the original zip on `/tmp`, and restarts `cosmos-applet-engine.service`.
+Extracts the uploaded AppletEngine config zip directly into `/opt/cosmos/bin/applet-engine` on the robot, fixes ownership to `cosmos:cosmos`, removes the original zip on `/tmp`, and restarts `cosmos-applet-engine.service`.
 
 ### Input Parameters
 
@@ -620,15 +620,15 @@ Same as `SshCommandTask`.
 - Hardcoded multi-step command: verify `/opt/cosmos/bin/applet-engine` exists (fail with non-zero exit when missing), `unzip -o` the package directly into the deploy directory, `chown -R cosmos:cosmos`, remove the zip on `/tmp`, then run `systemctl restart cosmos-applet-engine.service`.
 - Does **not** auto-create the deploy target directory. If `/opt/cosmos/bin/applet-engine` is missing, the first segment exits with code 1 and stderr `Deploy target not found: /opt/cosmos/bin/applet-engine`, causing the whole chain to fail.
 - `unzip -o` overwrites same-named files inside the deploy directory without prompting and does NOT clear pre-existing files outside the zip's content set. No `/tmp/ae_config_extract` staging directory is used.
-- Used as the `deploy` step of the Deploy AE Config DAG.
+- Used as the `deploy` step of the Deploy AppletEngine Config DAG.
 
 ---
 
-## 21. DeleteAEConfigTask
+## 21. DeleteAppletEngineConfigTask
 
 ### Overview
 
-Removes the transferred AE config zip on the robot at `/tmp/ae_config_package.zip`. Idempotent and safe to invoke from the Deploy AE Config errorDag.
+Removes the transferred AppletEngine config zip on the robot at `/tmp/ae_config_package.zip`. Idempotent and safe to invoke from the Deploy AppletEngine Config errorDag.
 
 ### Input Parameters
 
@@ -995,7 +995,7 @@ Downloads a remote file from a robot to the local machine via SFTP (ssh2 library
 - Computes remote checksum first (via SSH `exec sha256sum`), then downloads via SFTP `fastGet`, then computes local checksum
 - Downloads via SFTP `fastGet` with progress logging every 2 seconds
 - File saved as `{localTargetDir}/{basename(remoteFilePath)}`
-- Used by the `download-alpha2-sketch` DAG with `remoteFilePath` hardcoded to `/opt/cosmos/map/preview/sketch.zip`
+- Used by the `download-alpha2-map` DAG with `remoteFilePath` hardcoded to `/opt/cosmos/map/preview/sketch.zip`
 
 ---
 
@@ -1028,7 +1028,7 @@ Same as `SshFileTransferTask`.
 - Hardcoded remote path: `/tmp/ggr3_config.zip`
 - Resolves local path via `artifactService.getArtifactPath(artifactId)`; falls through to parent `SshFileTransferTask.onExec` when no `artifactId`/`artifactService` is provided.
 - If `artifactId` or `artifactService` is absent, falls through to `super.exec()` directly.
-- Mirrors `TransferAEConfigTask` pattern.
+- Mirrors `TransferAppletEngineConfigTask` pattern.
 
 ---
 
@@ -1079,7 +1079,7 @@ Same as `SshCommandTask`.
 
 - Hardcoded command: `rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip`
 - Uses `rm -rf` because it cleans up both a directory tree and the zip file.
-- Mirrors `DeleteAEConfigTask` pattern.
+- Mirrors `DeleteAppletEngineConfigTask` pattern.
 
 ---
 
@@ -1173,7 +1173,7 @@ Same as `SshCommandTask`.
 
 ### Overview
 
-Resolves the dragonball3 firmware artifact storage path from the artifact service and uploads it to the robot via SFTP. Used as the `transfer` step of the Install Dragonball3 flow.
+Resolves the dragonball3 firmware artifact storage path from the artifact service and uploads it to the robot via SFTP. Used as the `transfer` step of the Install Dragonball3 firmware flow.
 
 ### Input Parameters
 
@@ -1206,7 +1206,7 @@ Same as `SshFileTransferTask`.
 
 ### Overview
 
-Installs the dragonball3 firmware package on the remote robot via `dpkg -i`. Used as the `install` step of the Install Dragonball3 flow.
+Installs the dragonball3 firmware package on the remote robot via `dpkg -i`. Used as the `install` step of the Install Dragonball3 firmware flow.
 
 ### Input Parameters
 

@@ -127,7 +127,7 @@
 | 优先级 | 中 |
 | 前置条件 | 同 TC-E2E-GGR3-001 |
 | 步骤 | 打开 CreateTaskModal，留在 Type 步骤 |
-| 预期 | 弹窗中同时可见 Upgrade BUP、Movebase Disk Cleanup、Upgrade Movebase、Apply Alpha2 Map、Update IoT Gateway Config、Download Alpha2 Sketch、Deploy AE Config、Deploy GGR3 Config（共计 8 个类型）。 |
+| 预期 | 弹窗中同时可见 Upgrade BUP、Movebase Disk Cleanup、Upgrade Movebase、Apply Alpha2 Map、Update IoT Gateway Config、Download Alpha2 Map、Deploy AppletEngine Config、Deploy GGR3 Config（共计 8 个类型）。 |
 
 ---
 

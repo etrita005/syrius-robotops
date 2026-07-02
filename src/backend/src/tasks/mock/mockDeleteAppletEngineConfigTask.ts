@@ -1,13 +1,13 @@
 import type { ValueMap } from "flowed";
-import { DeleteAEConfigTask } from "../real/deleteAEConfigTask.js";
+import { DeleteAppletEngineConfigTask } from "../real/deleteAppletEngineConfigTask.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class MockDeleteAEConfigTask extends DeleteAEConfigTask {
+export class MockDeleteAppletEngineConfigTask extends DeleteAppletEngineConfigTask {
   protected override async onExec(_params: ValueMap): Promise<ValueMap> {
-    this.log.info('Simulating AE config cleanup (mock)');
+    this.log.info('Simulating AppletEngine config cleanup (mock)');
 
     await sleep(1000);
 

@@ -1242,12 +1242,12 @@ describe("Movebase disk cleanup task", () => {
 });
 
 import {
-  TransferAEConfigTask,
-  DeployAEConfigTask,
-  DeleteAEConfigTask,
-  MockTransferAEConfigTask,
-  MockDeployAEConfigTask,
-  MockDeleteAEConfigTask,
+  TransferAppletEngineConfigTask,
+  DeployAppletEngineConfigTask,
+  DeleteAppletEngineConfigTask,
+  MockTransferAppletEngineConfigTask,
+  MockDeployAppletEngineConfigTask,
+  MockDeleteAppletEngineConfigTask,
 } from "./tasks/index.js";
 import {
   TransferGGR3ConfigTask,
@@ -1261,7 +1261,7 @@ import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir as osTmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-class TestableDeployAEConfigTask extends DeployAEConfigTask {
+class TestableDeployAppletEngineConfigTask extends DeployAppletEngineConfigTask {
   public command(params: ValueMap = {}): string {
     return this.getSshCommand(params);
   }
@@ -1270,7 +1270,7 @@ class TestableDeployAEConfigTask extends DeployAEConfigTask {
   }
 }
 
-class TestableDeleteAEConfigTask extends DeleteAEConfigTask {
+class TestableDeleteAppletEngineConfigTask extends DeleteAppletEngineConfigTask {
   public command(params: ValueMap = {}): string {
     return this.getSshCommand(params);
   }
@@ -1279,7 +1279,7 @@ class TestableDeleteAEConfigTask extends DeleteAEConfigTask {
   }
 }
 
-class TestableTransferAEConfigTask extends TransferAEConfigTask {
+class TestableTransferAppletEngineConfigTask extends TransferAppletEngineConfigTask {
   public lastSeenLocalFilePath: string | undefined;
   public superCalled = false;
   public params(params: ValueMap): ValueMap {
@@ -1287,7 +1287,7 @@ class TestableTransferAEConfigTask extends TransferAEConfigTask {
   }
   // Stub the SFTP path by overriding the parent SshFileTransferTask.onExec.
   // This is invoked via `super.onExec(augmentedParams, context)` from
-  // TransferAEConfigTask.onExec, so we observe the augmented localFilePath.
+  // TransferAppletEngineConfigTask.onExec, so we observe the augmented localFilePath.
   public stubbedSuperOnExec(params: ValueMap): ValueMap {
     this.superCalled = true;
     this.lastSeenLocalFilePath = params.localFilePath as string;
@@ -1303,20 +1303,20 @@ class TestableTransferAEConfigTask extends TransferAEConfigTask {
 }
 
 // Patch SshFileTransferTask.prototype.onExec for instances of
-// TestableTransferAEConfigTask only. We do this by replacing the parent
+// TestableTransferAppletEngineConfigTask only. We do this by replacing the parent
 // prototype method with a guard that delegates to stubbedSuperOnExec when
 // the call is on a Testable instance, otherwise calls the original.
-function installTransferAEStub(): () => void {
-  const parentProto = Object.getPrototypeOf(TransferAEConfigTask.prototype) as {
+function installTransferAppletEngineStub(): () => void {
+  const parentProto = Object.getPrototypeOf(TransferAppletEngineConfigTask.prototype) as {
     onExec: (params: ValueMap, context?: ValueMap) => Promise<ValueMap>;
   };
   const original = parentProto.onExec;
   parentProto.onExec = async function (
-    this: TestableTransferAEConfigTask | object,
+    this: TestableTransferAppletEngineConfigTask | object,
     params: ValueMap,
     context?: ValueMap
   ) {
-    if (this instanceof TestableTransferAEConfigTask) {
+    if (this instanceof TestableTransferAppletEngineConfigTask) {
       return this.stubbedSuperOnExec(params);
     }
     return original.call(this, params, context);
@@ -1326,11 +1326,11 @@ function installTransferAEStub(): () => void {
   };
 }
 
-describe("Deploy AE Config tasks", () => {
+describe("Deploy AppletEngine Config tasks", () => {
   let restoreTransferStub: (() => void) | undefined;
 
   beforeEach(() => {
-    restoreTransferStub = installTransferAEStub();
+    restoreTransferStub = installTransferAppletEngineStub();
   });
 
   afterEach(() => {
@@ -1338,8 +1338,8 @@ describe("Deploy AE Config tasks", () => {
     restoreTransferStub = undefined;
   });
 
-  it("TC-AE-001: DeployAEConfigTask builds the multi-step deploy command with sudo", () => {
-    const task = new TestableDeployAEConfigTask();
+  it("TC-AE-001: DeployAppletEngineConfigTask builds the multi-step deploy command with sudo", () => {
+    const task = new TestableDeployAppletEngineConfigTask();
     const cmd = task.command({});
 
     // Ordered fragment assertions: directly unzip the package into the deploy
@@ -1384,7 +1384,7 @@ describe("Deploy AE Config tasks", () => {
     assert.equal(
       cmd.includes(" reboot"),
       false,
-      "Deploy AE Config must restart only the AE service, not the robot"
+      "Deploy AppletEngine Config must restart only the AppletEngine service, not the robot"
     );
 
     const built = task.params({ robotIp: "192.168.1.10" });
@@ -1393,16 +1393,16 @@ describe("Deploy AE Config tasks", () => {
     assert.equal(built.retryCount, 1);
   });
 
-  it("TC-AE-002: DeleteAEConfigTask returns the cleanup command and forces sudo", () => {
-    const task = new TestableDeleteAEConfigTask();
+  it("TC-AE-002: DeleteAppletEngineConfigTask returns the cleanup command and forces sudo", () => {
+    const task = new TestableDeleteAppletEngineConfigTask();
     const cmd = task.command({});
     assert.equal(cmd, "rm -f /tmp/ae_config_package.zip");
     const built = task.params({ robotIp: "192.168.1.10" });
     assert.equal(built.sudo, true);
   });
 
-  it("TC-AE-003: TransferAEConfigTask hardcodes the remote target path", () => {
-    const task = new TestableTransferAEConfigTask();
+  it("TC-AE-003: TransferAppletEngineConfigTask hardcodes the remote target path", () => {
+    const task = new TestableTransferAppletEngineConfigTask();
     const built = task.params({
       robotIp: "192.168.1.10",
       localFilePath: "/tmp/x.zip",
@@ -1411,8 +1411,8 @@ describe("Deploy AE Config tasks", () => {
     assert.equal(built.sudo, true);
   });
 
-  it("TC-AE-004: TransferAEConfigTask resolves artifact via getArtifactPath and forwards localFilePath", async () => {
-    const task = new TestableTransferAEConfigTask();
+  it("TC-AE-004: TransferAppletEngineConfigTask resolves artifact via getArtifactPath and forwards localFilePath", async () => {
+    const task = new TestableTransferAppletEngineConfigTask();
     const tmpDir = mkdtempSync(pathJoin(osTmpdir(), "ae-getpath-"));
     const stubArtifactPath = pathJoin(tmpDir, "ae_config_package.zip");
     writeFileSync(stubArtifactPath, "stub-zip-content");
@@ -1439,8 +1439,8 @@ describe("Deploy AE Config tasks", () => {
     );
   });
 
-  it("TC-AE-005: TransferAEConfigTask falls through to super when artifactId/service is absent", async () => {
-    const task = new TestableTransferAEConfigTask();
+  it("TC-AE-005: TransferAppletEngineConfigTask falls through to super when artifactId/service is absent", async () => {
+    const task = new TestableTransferAppletEngineConfigTask();
     const tmpDir = mkdtempSync(pathJoin(osTmpdir(), "ae-fallthrough-"));
     const localFilePath = pathJoin(tmpDir, "x.zip");
     writeFileSync(localFilePath, "stub");
@@ -1455,10 +1455,10 @@ describe("Deploy AE Config tasks", () => {
     assert.equal(task.lastSeenLocalFilePath, localFilePath);
   });
 
-  it("TC-AE-006: Mock AE Config tasks return success quickly", async () => {
-    const transferMock = new MockTransferAEConfigTask();
-    const deployMock = new MockDeployAEConfigTask();
-    const deleteMock = new MockDeleteAEConfigTask();
+  it("TC-AE-006: Mock AppletEngine Config tasks return success quickly", async () => {
+    const transferMock = new MockTransferAppletEngineConfigTask();
+    const deployMock = new MockDeployAppletEngineConfigTask();
+    const deleteMock = new MockDeleteAppletEngineConfigTask();
 
     const [t, d, x] = await Promise.all([
       transferMock.exec({ robotIp: "192.168.1.10", artifactId: "a" }),
@@ -1470,13 +1470,13 @@ describe("Deploy AE Config tasks", () => {
     assert.equal(x.success, true);
   });
 
-  it("TC-AE-007: tasks/index.ts exports all six AE config task classes", () => {
-    assert.equal(typeof TransferAEConfigTask, "function");
-    assert.equal(typeof DeployAEConfigTask, "function");
-    assert.equal(typeof DeleteAEConfigTask, "function");
-    assert.equal(typeof MockTransferAEConfigTask, "function");
-    assert.equal(typeof MockDeployAEConfigTask, "function");
-    assert.equal(typeof MockDeleteAEConfigTask, "function");
+  it("TC-AE-007: tasks/index.ts exports all six AppletEngine config task classes", () => {
+    assert.equal(typeof TransferAppletEngineConfigTask, "function");
+    assert.equal(typeof DeployAppletEngineConfigTask, "function");
+    assert.equal(typeof DeleteAppletEngineConfigTask, "function");
+    assert.equal(typeof MockTransferAppletEngineConfigTask, "function");
+    assert.equal(typeof MockDeployAppletEngineConfigTask, "function");
+    assert.equal(typeof MockDeleteAppletEngineConfigTask, "function");
   });
 });
 
@@ -4948,7 +4948,7 @@ describe("Mock Dragonball3 tasks", () => {
   });
 });
 
-describe("Install Dragonball3 - Flow Integration", () => {
+describe("Install Dragonball3 firmware - Flow Integration", () => {
   it("TC-DB3-008: should execute the 4-step install-dragonball3 DAG and complete", async () => {
     const registry = new ResolverRegistry();
     registry.register("WaitSshReconnectTask", MockWaitSshReconnectTask as unknown as TaskResolverClass);

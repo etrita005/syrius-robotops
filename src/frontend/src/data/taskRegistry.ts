@@ -390,7 +390,7 @@ const UPDATE_IOT_GATEWAY_CONFIG_DAG: DagDefinition = {
   },
 };
 
-const DOWNLOAD_ALPHA2_SKETCH_DAG: DagDefinition = {
+const DOWNLOAD_ALPHA2_MAP_DAG: DagDefinition = {
   tasks: {
     download: {
       requires: ["robotIp", "robotPort", "localTargetDir"],
@@ -409,12 +409,12 @@ const DOWNLOAD_ALPHA2_SKETCH_DAG: DagDefinition = {
   },
 };
 
-const DEPLOY_AE_CONFIG_DAG: DagDefinition = {
+const DEPLOY_APPLET_ENGINE_CONFIG_DAG: DagDefinition = {
   tasks: {
     transfer: {
       requires: ["robotIp", "robotPort", "artifactId"],
       resolver: {
-        name: "TransferAEConfigTask",
+        name: "TransferAppletEngineConfigTask",
         params: {
           robotIp: "robotIp",
           robotPort: "robotPort",
@@ -427,7 +427,7 @@ const DEPLOY_AE_CONFIG_DAG: DagDefinition = {
     deploy: {
       requires: ["robotIp", "robotPort", "transfer_done"],
       resolver: {
-        name: "DeployAEConfigTask",
+        name: "DeployAppletEngineConfigTask",
         params: {
           robotIp: "robotIp",
           robotPort: "robotPort",
@@ -439,12 +439,12 @@ const DEPLOY_AE_CONFIG_DAG: DagDefinition = {
   },
 };
 
-const DEPLOY_AE_CONFIG_ERROR_DAG: DagDefinition = {
+const DEPLOY_APPLET_ENGINE_CONFIG_ERROR_DAG: DagDefinition = {
   tasks: {
     error_cleanup: {
       requires: ["robotIp", "robotPort"],
       resolver: {
-        name: "DeleteAEConfigTask",
+        name: "DeleteAppletEngineConfigTask",
         params: {
           robotIp: "robotIp",
           robotPort: "robotPort",
@@ -733,15 +733,15 @@ export const TASK_REGISTRY: TaskRegistry = {
       params: {},
     },
     {
-      type: "download-alpha2-sketch",
-      name: "Download Alpha2 Sketch",
-      description: "Download the Alpha2 mapping sketch package from the selected robot to a local directory.",
+      type: "download-alpha2-map",
+      name: "Download Alpha2 Map",
+      description: "Download the Alpha2 map package from the selected robot to a local directory.",
       robotSelection: {
         mode: "single",
         description:
-          "Select one target robot to download the mapping sketch package from.",
+          "Select one target robot to download the map package from.",
       },
-      dag: DOWNLOAD_ALPHA2_SKETCH_DAG,
+      dag: DOWNLOAD_ALPHA2_MAP_DAG,
       expectedResults: ["download_result"],
       params: {
         localTargetDir: {
@@ -750,27 +750,27 @@ export const TASK_REGISTRY: TaskRegistry = {
           required: true,
           defaultValue: "/tmp",
           description:
-            "Directory on this machine where sketch.zip will be saved.",
+            "Directory on this machine where map.zip will be saved.",
         },
       },
     },
     {
-      type: "deploy-ae-config",
-      name: "Deploy AE Config",
+      type: "deploy-applet-engine-config",
+      name: "Deploy AppletEngine Config",
       description:
-        "Deploy an Applet Engine config package to /opt/cosmos/bin/applet-engine and restart the AE service.",
+        "Deploy an AppletEngine config package to /opt/cosmos/bin/applet-engine and restart the AppletEngine service.",
       robotSelection: {
         mode: "multiple",
         description:
-          "Select one or more target robots to deploy the AE config package.",
+          "Select one or more target robots to deploy the AppletEngine config package.",
       },
-      dag: DEPLOY_AE_CONFIG_DAG,
+      dag: DEPLOY_APPLET_ENGINE_CONFIG_DAG,
       expectedResults: ["deploy_done"],
-      errorDag: DEPLOY_AE_CONFIG_ERROR_DAG,
+      errorDag: DEPLOY_APPLET_ENGINE_CONFIG_ERROR_DAG,
       params: {
         artifactId: {
           type: "artifact",
-          label: "AE config package",
+          label: "AppletEngine config package",
           required: true,
         },
       },
@@ -818,7 +818,7 @@ export const TASK_REGISTRY: TaskRegistry = {
     },
     {
       type: "install-dragonball3",
-      name: "Install Dragonball3",
+      name: "Install Dragonball3 firmware",
       description:
         "Reinstall the dragonball3 firmware on selected robots. The task waits for a manual robot reboot, then transfers, installs, and triggers another reboot.",
       robotSelection: {
