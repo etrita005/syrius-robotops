@@ -1,15 +1,15 @@
 import type { ValueMap } from "flowed";
-import { TransferAEConfigTask } from "../real/transferAEConfigTask.js";
+import { TransferAppletEngineConfigTask } from "../real/transferAppletEngineConfigTask.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class MockTransferAEConfigTask extends TransferAEConfigTask {
+export class MockTransferAppletEngineConfigTask extends TransferAppletEngineConfigTask {
   protected override async onExec(params: ValueMap, _context?: ValueMap): Promise<ValueMap> {
     const artifactId = params.artifactId as string | undefined;
 
-    this.log.info({ artifactId }, 'Simulating AE config file transfer (mock)');
+    this.log.info({ artifactId }, 'Simulating AppletEngine config file transfer (mock)');
 
     await sleep(3000);
 

@@ -118,7 +118,7 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 9 multi-robot task types should show "Multiple robots" (after Install Dragonball3 was added)
+    // All 9 multi-robot task types should show "Multiple robots" (after Install Dragonball3 firmware was added)
     await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
 
     // Verify the single-robot task type is present
@@ -242,7 +242,7 @@ test.describe("Task Management", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Update IoT Gateway Config")).toBeVisible();
-    await expect(modal.getByText("Download Alpha2 Sketch")).toBeVisible();
+    await expect(modal.getByText("Download Alpha2 Map")).toBeVisible();
   });
 
   test("TC-E2E-TASK-012: Update IoT Gateway Config shows multi-robot selection in task type step", async ({
@@ -257,7 +257,7 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 9 task types should show "Multiple robots" (after Install Dragonball3 was added)
+    // All 9 task types should show "Multiple robots" (after Install Dragonball3 firmware was added)
     await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
   });
 
@@ -312,7 +312,7 @@ test.describe("Task Management", () => {
     await expect(modal.getByText(/Confirm/i).first()).toBeVisible({ timeout: 5000 });
   });
 
-  test("TC-E2E-TASK-015: Download Alpha2 Sketch task type shows in list", async ({
+  test("TC-E2E-TASK-015: Download Alpha2 Map task type shows in list", async ({
     appPage,
   }) => {
     await openSolutionInWorkspace(appPage, "Task Test Solution");
@@ -325,7 +325,7 @@ test.describe("Task Management", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     // Verify the new task type is present
-    await expect(modal.getByText("Download Alpha2 Sketch")).toBeVisible();
+    await expect(modal.getByText("Download Alpha2 Map")).toBeVisible();
 
     // Verify it shows single robot selection
     await expect(modal.getByText("Robot selection: Single robot")).toBeVisible();
@@ -335,7 +335,7 @@ test.describe("Task Management", () => {
     await appPage.waitForTimeout(500);
   });
 
-  test("TC-E2E-TASK-016: Download Alpha2 Sketch task type can be created via API", async ({
+  test("TC-E2E-TASK-016: Download Alpha2 Map task type can be created via API", async ({
     appPage,
     apiURL,
   }) => {
@@ -367,7 +367,7 @@ test.describe("Task Management", () => {
           input: {
             solutionId: "test-sol",
             robotIds: [],
-            taskName: "Download Alpha2 Sketch",
+            taskName: "Download Alpha2 Map",
             robotIp: "192.168.1.10",
             robotPort: 22,
             localTargetDir: "/tmp",
@@ -383,7 +383,7 @@ test.describe("Task Management", () => {
     assert.equal(response.body.state, "RUNNING");
   });
 
-  test("TC-E2E-TASK-017: Download Alpha2 Sketch params config visible in create modal", async ({
+  test("TC-E2E-TASK-017: Download Alpha2 Map params config visible in create modal", async ({
     appPage,
   }) => {
     await openSolutionInWorkspace(appPage, "Task Test Solution");
@@ -399,8 +399,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // Select Download Alpha2 Sketch
-    await modal.locator("div").filter({ hasText: "Download Alpha2 Sketch" }).first().click();
+    // Select Download Alpha2 Map
+    await modal.locator("div").filter({ hasText: "Download Alpha2 Map" }).first().click();
     await appPage.waitForTimeout(300);
 
     // Verify the Next button is enabled (selection confirmed)
@@ -408,7 +408,7 @@ test.describe("Task Management", () => {
     await expect(nextButton).toBeEnabled();
   });
 
-  test("TC-E2E-AE-001: Deploy AE Config task type is visible in the create modal", async ({
+  test("TC-E2E-AE-001: Deploy AppletEngine Config task type is visible in the create modal", async ({
     appPage,
   }) => {
     await openSolutionInWorkspace(appPage, "Task Test Solution");
@@ -420,10 +420,10 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    await expect(modal.getByText("Deploy AE Config")).toBeVisible();
+    await expect(modal.getByText("Deploy AppletEngine Config")).toBeVisible();
   });
 
-  test("TC-E2E-AE-002: Deploy AE Config selection leads to multi-robot step 2", async ({
+  test("TC-E2E-AE-002: Deploy AppletEngine Config selection leads to multi-robot step 2", async ({
     appPage,
   }) => {
     await openSolutionInWorkspace(appPage, "Task Test Solution");
@@ -435,7 +435,7 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    await modal.getByText("Deploy AE Config", { exact: true }).click();
+    await modal.getByText("Deploy AppletEngine Config", { exact: true }).click();
     await appPage.waitForTimeout(300);
 
     await modal.getByRole("button", { name: "Next" }).click();
@@ -446,7 +446,7 @@ test.describe("Task Management", () => {
     await expect(modal.getByLabel("Select 192.168.1.11")).toBeVisible();
   });
 
-  test("TC-E2E-AE-003: Deploy AE Config params step shows AE config package field", async ({
+  test("TC-E2E-AE-003: Deploy AppletEngine Config params step shows AppletEngine config package field", async ({
     appPage,
   }) => {
     await openSolutionInWorkspace(appPage, "Task Test Solution");
@@ -458,7 +458,7 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    await modal.getByText("Deploy AE Config", { exact: true }).click();
+    await modal.getByText("Deploy AppletEngine Config", { exact: true }).click();
     await appPage.waitForTimeout(300);
     await modal.getByRole("button", { name: "Next" }).click();
     await appPage.waitForTimeout(300);
@@ -467,10 +467,10 @@ test.describe("Task Management", () => {
     await modal.getByRole("button", { name: "Next" }).click();
     await appPage.waitForTimeout(500);
 
-    await expect(modal.getByText("AE config package")).toBeVisible();
+    await expect(modal.getByText("AppletEngine config package")).toBeVisible();
   });
 
-  test("TC-E2E-AE-004: Existing task types remain visible alongside Deploy AE Config", async ({
+  test("TC-E2E-AE-004: Existing task types remain visible alongside Deploy AppletEngine Config", async ({
     appPage,
   }) => {
     await openSolutionInWorkspace(appPage, "Task Test Solution");
@@ -487,8 +487,8 @@ test.describe("Task Management", () => {
     await expect(modal.getByText("Upgrade Movebase")).toBeVisible();
     await expect(modal.getByText("Apply Alpha2 Map")).toBeVisible();
     await expect(modal.getByText("Update IoT Gateway Config")).toBeVisible();
-    await expect(modal.getByText("Download Alpha2 Sketch")).toBeVisible();
-    await expect(modal.getByText("Deploy AE Config")).toBeVisible();
+    await expect(modal.getByText("Download Alpha2 Map")).toBeVisible();
+    await expect(modal.getByText("Deploy AppletEngine Config")).toBeVisible();
     await expect(modal.getByText("Deploy GGR3 Config")).toBeVisible();
   });
 });
@@ -586,8 +586,8 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal.getByText("Upgrade Movebase")).toBeVisible();
     await expect(modal.getByText("Apply Alpha2 Map")).toBeVisible();
     await expect(modal.getByText("Update IoT Gateway Config")).toBeVisible();
-    await expect(modal.getByText("Download Alpha2 Sketch")).toBeVisible();
-    await expect(modal.getByText("Deploy AE Config")).toBeVisible();
+    await expect(modal.getByText("Download Alpha2 Map")).toBeVisible();
+    await expect(modal.getByText("Deploy AppletEngine Config")).toBeVisible();
     await expect(modal.getByText("Install App")).toBeVisible();
     await expect(modal.getByText("Deploy GGR3 Config")).toBeVisible();
   });
@@ -648,7 +648,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal.getByLabel("Select 192.168.1.11")).toBeVisible();
   });
 
-  test("TC-E2E-DB3-001: Install Dragonball3 task type appears in task creation modal", async ({
+  test("TC-E2E-DB3-001: Install Dragonball3 firmware task type appears in task creation modal", async ({
     appPage,
   }) => {
     await openSolutionInWorkspace(appPage, "Task Test Solution");
@@ -660,10 +660,10 @@ test.describe("Deploy GGR3 Config", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    await expect(modal.getByText("Install Dragonball3")).toBeVisible();
+    await expect(modal.getByText("Install Dragonball3 firmware")).toBeVisible();
   });
 
-  test("TC-E2E-DB3-002: Install Dragonball3 shows multi-robot selection in task type step", async ({
+  test("TC-E2E-DB3-002: Install Dragonball3 firmware shows multi-robot selection in task type step", async ({
     appPage,
   }) => {
     await openSolutionInWorkspace(appPage, "Task Test Solution");
@@ -675,11 +675,11 @@ test.describe("Deploy GGR3 Config", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    await expect(modal.getByText("Install Dragonball3")).toBeVisible();
+    await expect(modal.getByText("Install Dragonball3 firmware")).toBeVisible();
     await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
   });
 
-  test("TC-E2E-DB3-003: Install Dragonball3 leads to multi-robot step 2", async ({
+  test("TC-E2E-DB3-003: Install Dragonball3 firmware leads to multi-robot step 2", async ({
     appPage,
   }) => {
     await openSolutionInWorkspace(appPage, "Task Test Solution");
@@ -691,9 +691,9 @@ test.describe("Deploy GGR3 Config", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    await expect(modal.getByText("Install Dragonball3")).toBeVisible();
+    await expect(modal.getByText("Install Dragonball3 firmware")).toBeVisible();
 
-    await modal.getByText("Install Dragonball3", { exact: true }).first().click();
+    await modal.getByText("Install Dragonball3 firmware", { exact: true }).first().click();
     await appPage.waitForTimeout(300);
 
     await modal.getByRole("button", { name: "Next" }).click();

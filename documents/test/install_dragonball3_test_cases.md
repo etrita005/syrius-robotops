@@ -1,8 +1,8 @@
-# Install Dragonball3 — 测试用例设计文档
+# Install Dragonball3 firmware — 测试用例设计文档
 
 ## 1. 概述
 
-本文档定义 "Install Dragonball3" 功能的测试用例，覆盖后端单元测试和前端 E2E 测试。
+本文档定义 "Install Dragonball3 firmware" 功能的测试用例，覆盖后端单元测试和前端 E2E 测试。
 
 ---
 
@@ -150,7 +150,7 @@
 
 测试执行命令：`npm run test:e2e`（从 `src/` 目录）
 
-### TC-E2E-DB3-001: Install Dragonball3 任务类型出现在创建任务模态框
+### TC-E2E-DB3-001: Install Dragonball3 firmware 任务类型出现在创建任务模态框
 
 **前置条件**：
 - "Task Test Solution" 已创建，且包含 2 台机器人
@@ -158,12 +158,12 @@
 
 **测试步骤**：
 1. 点击 "Create your first task" 按钮
-2. 在任务类型列表中查找 "Install Dragonball3"
+2. 在任务类型列表中查找 "Install Dragonball3 firmware"
 
 **预期结果**：
-- "Install Dragonball3" 在任务类型列表中可见
+- "Install Dragonball3 firmware" 在任务类型列表中可见
 
-### TC-E2E-DB3-002: Install Dragonball3 显示多机器人选择
+### TC-E2E-DB3-002: Install Dragonball3 firmware 显示多机器人选择
 
 **前置条件**：创建任务模态框已打开
 
@@ -171,16 +171,16 @@
 1. 检查模态框内容
 
 **预期结果**：
-- "Install Dragonball3" 可见
+- "Install Dragonball3 firmware" 可见
 - "Robot selection: Multiple robots" 可见
 - 多机器人模式的数量计数包含新的任务类型
 
-### TC-E2E-DB3-003: Install Dragonball3 进入机器人选择步骤后显示复选框
+### TC-E2E-DB3-003: Install Dragonball3 firmware 进入机器人选择步骤后显示复选框
 
 **前置条件**：创建任务模态框已打开
 
 **测试步骤**：
-1. 点击 "Install Dragonball3" 任务类型
+1. 点击 "Install Dragonball3 firmware" 任务类型
 2. 点击 "Next"
 3. 检查机器人选择复选框
 

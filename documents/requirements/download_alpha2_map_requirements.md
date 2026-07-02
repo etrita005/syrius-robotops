@@ -12,7 +12,7 @@
 
 | 术语 | 定义 |
 |------|------|
-| **建图预览包（Sketch Package）** | Alpha2 机器人在 `/opt/cosmos/map/preview/sketch.zip` 路径下的建图数据压缩包 |
+| **建图预览包（Map Package）** | Alpha2 机器人在 `/opt/cosmos/map/preview/sketch.zip` 路径下的建图数据压缩包 |
 | **目标目录（Target Directory）** | 用户在本机指定的文件保存目录路径 |
 | **下载任务（Download Task）** | 通过 Task Flow Engine 执行的 SFTP 下载任务 |
 
@@ -22,7 +22,7 @@
 
 ### FR-01: 任务类型定义
 
-系统应在任务选择器中提供 "Download Alpha2 Sketch" 任务类型，名称为 "Download Alpha2 Sketch"，描述为 "Download the Alpha2 mapping sketch package from the selected robot to a local directory."
+系统应在任务选择器中提供 "Download Alpha2 Map" 任务类型，名称为 "Download Alpha2 Map"，描述为 "Download the Alpha2 map package from the selected robot to a local directory."
 
 ### FR-02: 机器人选择
 

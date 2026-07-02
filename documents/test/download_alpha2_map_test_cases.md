@@ -1,8 +1,8 @@
-# Download Alpha2 Sketch — 测试用例设计文档
+# Download Alpha2 Map — 测试用例设计文档
 
 ## 1. 概述
 
-本文档定义 "Download Alpha2 Sketch" 功能的测试用例，覆盖后端单元测试和前端 E2E 测试。
+本文档定义 "Download Alpha2 Map" 功能的测试用例，覆盖后端单元测试和前端 E2E 测试。
 
 ---
 
@@ -56,7 +56,7 @@
 **前置条件**：engine 中已注册 `SshFileDownloadTask`
 
 **测试步骤**：
-1. 使用 `DOWNLOAD_ALPHA2_SKETCH_DAG` 创建 flow
+1. 使用 `DOWNLOAD_ALPHA2_MAP_DAG` 创建 flow
 2. 验证 flow 创建成功（不抛 "not registered" 错误）
 
 **预期结果**：flow 成功创建并启动
@@ -87,15 +87,15 @@
 **测试步骤**：
 1. 进入 Tasks 标签页
 2. 点击 "Create your first task" 按钮
-3. 在任务类型列表中搜索 "Download Alpha2 Sketch"
+3. 在任务类型列表中搜索 "Download Alpha2 Map"
 
 **预期结果**：
-- 列表中显示 "Download Alpha2 Sketch" 任务类型
+- 列表中显示 "Download Alpha2 Map" 任务类型
 - 描述文本正确显示
 
 ### TC-E2E-DOWNLOAD-002: 任务创建模态框 — 参数配置
 
-**前置条件**：已打开任务创建模态框，"Download Alpha2 Sketch" 已选中
+**前置条件**：已打开任务创建模态框，"Download Alpha2 Map" 已选中
 
 **测试步骤**：
 1. 选择一个机器人
@@ -115,7 +115,7 @@
 2. 验证显示信息
 
 **预期结果**：
-- 显示 "Task Type: Download Alpha2 Sketch"
+- 显示 "Task Type: Download Alpha2 Map"
 - 显示选中的机器人名称
 - 显示 "Local target directory: /tmp"
 
@@ -131,7 +131,7 @@
 5. 验证任务状态变为 "Success"
 
 **预期结果**：
-- 任务列表中出现 "Download Alpha2 Sketch" 任务
+- 任务列表中出现 "Download Alpha2 Map" 任务
 - 任务在 mock 模式下最终状态为 Success
 - 显示 "1 completed" 结果摘要
 

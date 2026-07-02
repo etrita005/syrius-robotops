@@ -3,7 +3,7 @@ import { SshFileTransferTask, type SshFileTransferParams } from "./sshFileTransf
 
 const REMOTE_TARGET_PATH = "/tmp/ae_config_package.zip";
 
-export class TransferAEConfigTask extends SshFileTransferTask {
+export class TransferAppletEngineConfigTask extends SshFileTransferTask {
   protected override buildParams(params: ValueMap): SshFileTransferParams {
     return {
       ...super.buildParams({ ...params, sudo: true }),
