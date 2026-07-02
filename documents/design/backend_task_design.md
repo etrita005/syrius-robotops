@@ -1119,7 +1119,7 @@ Same as `SshFileTransferTask`.
 
 ### Overview
 
-Performs the complete APK installation workflow on the remote robot in a single SSH command: ADB auth fix, stop kuaye service, install APK via `adb install -d -r`, restart kuaye service, and cleanup.
+Performs the complete APK installation workflow on the remote robot in a single SSH command: ADB auth fix (only when needed), stop kuaye service, install APK via `adb install -d -r`, restart kuaye service, and cleanup.
 
 ### Input Parameters
 
@@ -1135,16 +1135,13 @@ Same as `SshCommandTask`.
 
 ### Notes
 
-- Combined command chain:
-  1. `rm -rf ~/.android/ ; true` — Remove ADB auth directory (failure ignored)
-  2. `adb kill-server ; true` — Kill ADB server (failure ignored)
-  3. `adb start-server ; true` — Restart ADB server (failure ignored)
-  4. `systemctl stop syriusrobotics.kuaye.service ; true` — Stop kuaye service (failure ignored)
-  5. **`adb install -d -r /tmp/app_package.apk`** — Install APK (critical step)
-  6. `systemctl start syriusrobotics.kuaye.service ; true` — Restart kuaye service (failure ignored)
-  7. `rm -f /tmp/app_package.apk ; true` — Cleanup (failure ignored)
+- Combined command is wrapped in `sh -c '...'` and executed with `sudo`.
+- At runtime it checks `adb devices` for an already-authorized device (`\s+device$`):
+  - **Authorized path**: stop kuaye service, install APK, restart kuaye service.
+  - **Unauthorized path**: reset ADB auth directory and ADB server, wait 3 seconds, stop kuaye service, install APK, restart kuaye service.
+- ADB reset steps run only when no authorized device is detected, avoiding unnecessary re-authorization prompts on robots that auto-authorize.
 - Uses `-d` (downgrade) and `-r` (replace/overwrite) flags
-- Only step 5 is critical; all other steps are wrapped with `sh -c "... ; true"` to tolerate failures
+- The final `rm -f /tmp/app_package.apk || true` cleanup runs in both branches
 
 ---
 

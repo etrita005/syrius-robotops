@@ -22,7 +22,7 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 - `remoteFilePath` equals `/tmp/app_package.apk`
 - `sudo` is `true`
 
-### TC-APP-002: InstallApp task generates correct combined command
+### TC-APP-002: InstallApp command is wrapped in a single sh -c script
 
 **Precondition**: None
 
@@ -31,13 +31,7 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 2. Call `getSshCommand()` to get the generated command
 
 **Expected Result**:
-- Command contains `adb kill-server`
-- Command contains `adb start-server`
-- Command contains `systemctl stop syriusrobotics.kuaye.service`
-- Command contains `adb install -d -r /tmp/app_package.apk`
-- Command contains `systemctl start syriusrobotics.kuaye.service`
-- Command contains `rm -f /tmp/app_package.apk`
-- Command uses `sh -c` wrappers and `&&` chaining
+- Command starts with `sh -c '`
 
 ### TC-APP-003: InstallApp uses sudo=true
 
@@ -59,21 +53,7 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 
 **Expected Result**: `commandTimeout` equals `300000`
 
-### TC-APP-005: ADB fix steps run before install in correct order
-
-**Precondition**: None
-
-**Test Steps**:
-1. Create `TestableInstallAppTask` instance
-2. Get the generated command
-3. Check index positions of each step
-
-**Expected Result**:
-- `adb kill-server` appears before `adb start-server`
-- `adb start-server` appears before `systemctl stop`
-- `systemctl stop` appears before `adb install`
-
-### TC-APP-005b: Non-critical commands use sh -c wrapper to ignore failures
+### TC-APP-005: InstallApp checks ADB authorization before choosing the install path
 
 **Precondition**: None
 
@@ -82,12 +62,45 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 2. Get the generated command
 
 **Expected Result**:
-- `rm -rf ~/.android/` wrapped with `sh -c "... ; true"`
-- `adb kill-server` wrapped with `sh -c "... ; true"`
-- `systemctl stop` wrapped with `sh -c "... ; true"`
-- `systemctl start` wrapped with `sh -c "... ; true"`
-- `rm -f` wrapped with `sh -c "... ; true"`
-- `adb install` is NOT wrapped with `sh -c`
+- Command contains `adb devices | grep -qE`
+
+### TC-APP-005b: InstallApp skips ADB reset when a device is already authorized
+
+**Precondition**: None
+
+**Test Steps**:
+1. Create `TestableInstallAppTask` instance
+2. Get the generated command
+
+**Expected Result**:
+- Direct install path (`systemctl stop` then `adb install`) appears before the `else` branch
+- ADB reset commands (`rm -rf ~/.android/`, `adb kill-server`, `adb start-server`) only appear after `else`
+
+### TC-APP-005c: InstallApp resets ADB server and waits 3s when no authorized device
+
+**Precondition**: None
+
+**Test Steps**:
+1. Create `TestableInstallAppTask` instance
+2. Get the generated command
+
+**Expected Result**:
+- `else` branch contains `rm -rf ~/.android/`
+- `else` branch contains `adb kill-server`
+- `else` branch contains `adb start-server`
+- `else` branch contains `sleep 3`
+- `else` branch contains `adb install -d -r /tmp/app_package.apk`
+
+### TC-APP-005d: InstallApp cleanup runs in both branches
+
+**Precondition**: None
+
+**Test Steps**:
+1. Create `TestableInstallAppTask` instance
+2. Get the generated command
+
+**Expected Result**:
+- Command contains `rm -f /tmp/app_package.apk`
 
 ### TC-APP-006: CleanupApp generates correct cleanup command
 
