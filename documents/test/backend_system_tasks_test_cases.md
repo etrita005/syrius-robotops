@@ -16,7 +16,7 @@
 |----|-----|
 | **前置条件** | 无 |
 | **输入** | 调用 `getSshCommand()` |
-| **预期结果** | 返回字符串包含 `date -s`、`hwclock --systohc`、`timedatectl set-local-rtc 0`、`timedatectl set-local-rtc 1` |
+| **预期结果** | 返回字符串包含 `date -s`、`hwclock --systohc`、`timedatectl set-local-rtc 0` |
 
 ### TC-SYNC-002: buildParams 强制 sudo=true, retryCount=1
 

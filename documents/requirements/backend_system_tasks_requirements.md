@@ -27,19 +27,19 @@
 
 ### FR-SYNC-01: 任务目标
 
-将机器人系统时间同步为当前 PC 系统时间。
+将机器人系统时间同步为当前 PC 系统时间（UTC）。机器人时区保持 UTC 不变。
 
 ### FR-SYNC-02: 时间获取
 
 - 在任务执行时获取宿主 PC 系统当前时间
-- 时间格式：`YYYY-MM-DD HH:MM:SS`（用于 `date -s` 命令参数）
+- 时间使用 UTC（`Date.getUTC*` 系列方法），格式：`YYYY-MM-DD HH:MM:SS`（用于 `date -s` 命令参数）
 
 ### FR-SYNC-03: 时间设置命令
 
 - 通过 SSH 在机器人上执行时间同步命令组合：
-  - `date -s "<formatted_time>"` — 设置系统时间
+  - `date -s "<formatted_time>"` — 设置系统时间（formatted_time 为 UTC 时间串，机器人时区为 UTC，按 UTC 解析）
   - `hwclock --systohc` — 写入硬件时钟
-  - `timedatectl set-local-rtc 0` → `timedatectl set-local-rtc 1` — 切换 RTC 模式以触发重新读取
+  - `timedatectl set-local-rtc 0` — 设置 RTC 为 UTC 模式
 - 所有命令需要 sudo 权限
 
 ### FR-SYNC-04: 参数

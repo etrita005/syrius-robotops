@@ -3,7 +3,8 @@ import { SshCommandTask, type SshCommandParams } from "./sshCommandTask.js";
 
 function formatTime(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  // Use UTC so the timestamp is interpreted as UTC regardless of the robot's timezone
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
 }
 
 export class SyncTimeTask extends SshCommandTask {
@@ -22,10 +23,10 @@ export class SyncTimeTask extends SshCommandTask {
     const now = new Date();
     this.syncedTime = formatTime(now);
     return [
+      "timedatectl set-timezone UTC",
       `date -s "${this.syncedTime}"`,
       "hwclock --systohc",
       "timedatectl set-local-rtc 0",
-      "timedatectl set-local-rtc 1",
     ].join(" && ");
   }
 

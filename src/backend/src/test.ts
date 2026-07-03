@@ -5137,7 +5137,6 @@ describe("System Maintenance - SyncTimeTask", () => {
     assert.ok(cmd.includes("date -s"));
     assert.ok(cmd.includes("hwclock --systohc"));
     assert.ok(cmd.includes("timedatectl set-local-rtc 0"));
-    assert.ok(cmd.includes("timedatectl set-local-rtc 1"));
   });
 
   it("TC-SYNC-002: buildParams forces sudo=true and retryCount=1", () => {
