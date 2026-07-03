@@ -151,7 +151,7 @@ systemctl stop cosmos-update-engine.service || true && sleep 3 && rm -f /var/lib
 
 ## 4. DAG 定义
 
-三个原子任务为单步 DAG（仅一个任务节点），无需 errorDag。Fix Alpha1.9 OTA 为七步组合 DAG。
+三个原子任务为单步 DAG（仅一个任务节点），无需 errorDag。Fix Alpha1.9 OTA 为九步组合 DAG。
 
 ### 4.1 Sync Time DAG
 
@@ -209,10 +209,10 @@ const FIX_BROKEN_PACKAGES_DAG: DagDefinition = {
 
 ### 4.4 Fix Alpha1.9 OTA Environment DAG
 
-七步组合 DAG，复用现有任务解析器：
+九步组合 DAG，复用现有任务解析器：
 
 ```
-detect_reboot → transfer → install → fix → sync_time → uninstall_l4t → reboot
+detect_reboot → transfer → install → transfer_iot_config → update_iot_config → fix → sync_time → uninstall_l4t → reboot
 ```
 
 | 步骤 | 任务解析器 | 说明 |
@@ -220,6 +220,8 @@ detect_reboot → transfer → install → fix → sync_time → uninstall_l4t �
 | `detect_reboot` | `WaitSshReconnectTask` | 等待手动重启并重连（超时 600s） |
 | `transfer` | `TransferDragonball3Task` | 上传 dragonball3 `.deb` |
 | `install` | `InstallDragonball3Task` | 安装固件 |
+| `transfer_iot_config` | `TransferIotGatewayConfigTask` | 传输 iot-gateway 配置 |
+| `update_iot_config` | `UpdateIotGatewayConfigTask` | 更新 iot-gateway 配置（复用 `update-iot-gateway-config` DAG 中除 `reboot` 外的步骤，不执行重启） |
 | `fix` | `FixBrokenPackagesTask` | 修复破损安装包 |
 | `sync_time` | `SyncTimeTask` | 同步系统时间 |
 | `uninstall_l4t` | `UninstallL4TDownloaderTask` | 卸载 l4t-downloader |
