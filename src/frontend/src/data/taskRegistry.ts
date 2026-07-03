@@ -715,8 +715,32 @@ const FIX_ALPHA19_OTA_DAG: DagDefinition = {
       },
       provides: ["install_done"],
     },
-    fix: {
+    transfer_iot_config: {
       requires: ["robotIp", "robotPort", "install_done"],
+      resolver: {
+        name: "TransferIotGatewayConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "iot_transfer_done" },
+      },
+      provides: ["iot_transfer_done"],
+    },
+    update_iot_config: {
+      requires: ["robotIp", "robotPort", "iot_transfer_done"],
+      resolver: {
+        name: "UpdateIotGatewayConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "iot_update_done" },
+      },
+      provides: ["iot_update_done"],
+    },
+    fix: {
+      requires: ["robotIp", "robotPort", "iot_update_done"],
       resolver: {
         name: "FixBrokenPackagesTask",
         params: {
@@ -1026,7 +1050,7 @@ export const TASK_REGISTRY: TaskRegistry = {
       type: "fix-alpha19-ota",
       name: "Fix Alpha1.9 OTA Environment",
       description:
-        "Repair the Alpha1.9 OTA environment by fixing broken packages, reinstalling dragonball3 firmware, syncing time, and removing l4t-downloader.",
+        "Repair the Alpha1.9 OTA environment by fixing broken packages, reinstalling dragonball3 firmware, updating iot-gateway configuration, syncing time, and removing l4t-downloader.",
       robotSelection: {
         mode: "multiple",
         description:

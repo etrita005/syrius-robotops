@@ -19,7 +19,7 @@
 | **同步时间（Sync Time）** | 获取 PC 系统当前时间，通过 SSH 在机器人上执行 `date` 命令设置 |
 | **L4TDownloader** | Jetson L4T 系统下载器工具包（`l4t-downloader`），通过 dpkg 管理 |
 | **破损安装包（Broken Packages）** | dpkg/apt 因中断或锁冲突而残留的未完成安装任务 |
-| **修复 Alpha1.9 OTA 环境（Fix Alpha1.9 OTA Environment）** | 组合任务：依次执行修复破损包、等待用户手动重启、安装 dragonball3 固件、同步时间、卸载 l4t-downloader、重启 |
+| **修复 Alpha1.9 OTA 环境（Fix Alpha1.9 OTA Environment）** | 组合任务：依次执行修复破损包、等待用户手动重启、安装 dragonball3 固件、更新 iot-gateway 配置（不含重启）、同步时间、卸载 l4t-downloader、重启 |
 
 ---
 
@@ -148,7 +148,7 @@ systemctl stop cosmos-update-engine.service || true && sleep 3 && rm -f /var/lib
 
 ### FR-ALPHA19-01: 任务目标
 
-一键修复 Alpha1.9 机器人的完整 OTA 环境，组合执行：修复破损包 → 等待手动重启 → 传输/安装 dragonball3 固件 → 同步时间 → 卸载 l4t-downloader → 重启。
+一键修复 Alpha1.9 机器人的完整 OTA 环境，组合执行：修复破损包 → 等待手动重启 → 传输/安装 dragonball3 固件 → 更新 iot-gateway 配置（不含重启） → 同步时间 → 卸载 l4t-downloader → 重启。
 
 ### FR-ALPHA19-02: 执行流程
 
@@ -157,10 +157,12 @@ systemctl stop cosmos-update-engine.service || true && sleep 3 && rm -f /var/lib
 | 1 | `WaitSshReconnectTask` | 等待用户手动重启机器人并重连 |
 | 2 | `TransferDragonball3Task` | 上传 dragonball3 `.deb` 固件 |
 | 3 | `InstallDragonball3Task` | 安装固件 |
-| 4 | `FixBrokenPackagesTask` | 修复未完成安装包 |
-| 5 | `SyncTimeTask` | 同步 PC 时间到机器人 |
-| 6 | `UninstallL4TDownloaderTask` | 卸载 l4t-downloader |
-| 7 | `RebootRobotTask` | 重启机器人使所有变更生效 |
+| 4 | `TransferIotGatewayConfigTask` | 传输 iot-gateway 配置 |
+| 5 | `UpdateIotGatewayConfigTask` | 更新 iot-gateway 配置（不执行重启，复用 `update-iot-gateway-config` 任务中除重启外的步骤） |
+| 6 | `FixBrokenPackagesTask` | 修复未完成安装包 |
+| 7 | `SyncTimeTask` | 同步 PC 时间到机器人 |
+| 8 | `UninstallL4TDownloaderTask` | 卸载 l4t-downloader |
+| 9 | `RebootRobotTask` | 重启机器人使所有变更生效 |
 
 ### FR-ALPHA19-03: 异常处理
 
