@@ -8,7 +8,7 @@
 
 ### 1.1 概述
 
-获取 PC 当前系统时间并通过 SSH 在机器人上执行 `date -s` 命令设置时间，同时尝试写入硬件时钟。
+获取 PC 当前系统时间（UTC）并通过 SSH 在机器人上执行 `date -s` 命令设置系统时间，同时写入硬件时钟。机器人时区保持 UTC 不变。
 
 ### 1.2 类继承
 
@@ -28,16 +28,15 @@ BaseTask → SshCommandTask → SyncTimeTask
 
 ### 1.4 SSH 命令
 
-PC 时间在任务执行时获取，拼入命令字符串：
+PC 时间在任务执行时获取（UTC），拼入命令字符串：
 
 ```
-date -s "YYYY-MM-DD HH:MM:SS" && hwclock --systohc && timedatectl set-local-rtc 0 && timedatectl set-local-rtc 1
+date -s "YYYY-MM-DD HH:MM:SS" && hwclock --systohc && timedatectl set-local-rtc 0
 ```
 
-- `date -s "<time>"` — 设置系统时间
+- `date -s "<time>"` — 设置系统时间（time 为 UTC 时间串，机器人时区为 UTC，按 UTC 解析）
 - `hwclock --systohc` — 将系统时间写入硬件时钟
 - `timedatectl set-local-rtc 0` — 设置 RTC 为 UTC 模式
-- `timedatectl set-local-rtc 1` — 设置 RTC 为本地时间模式（触发重新读取）
 
 ### 1.5 输出参数
 
