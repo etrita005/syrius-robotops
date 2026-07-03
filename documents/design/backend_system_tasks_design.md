@@ -8,7 +8,7 @@
 
 ### 1.1 概述
 
-获取 PC 当前系统时间（UTC）并通过 SSH 在机器人上执行 `date -s` 命令设置系统时间，同时写入硬件时钟。机器人时区保持 UTC 不变。
+获取 PC 当前系统时间（UTC）并通过 SSH 在机器人上执行 `date -s` 命令设置系统时间，同时写入硬件时钟。机器人时区保持不变。
 
 ### 1.2 类继承
 
@@ -31,12 +31,13 @@ BaseTask → SshCommandTask → SyncTimeTask
 PC 时间在任务执行时获取（UTC），拼入命令字符串：
 
 ```
-date -s "YYYY-MM-DD HH:MM:SS" && hwclock --systohc && timedatectl set-local-rtc 0
+date -s "YYYY-MM-DD HH:MM:SS UTC" && hwclock --systohc && timedatectl set-local-rtc 0 && timedatectl set-local-rtc 1
 ```
 
-- `date -s "<time>"` — 设置系统时间（time 为 UTC 时间串，机器人时区为 UTC，按 UTC 解析）
+- `date -s "<time> UTC"` — 设置系统时间（time 为 UTC 时间串，UTC 后缀使 `date` 按 UTC 解析，与机器人时区无关）
 - `hwclock --systohc` — 将系统时间写入硬件时钟
 - `timedatectl set-local-rtc 0` — 设置 RTC 为 UTC 模式
+- `timedatectl set-local-rtc 1` — 切换 RTC 为本地时间模式（触发重新读取）
 
 ### 1.5 输出参数
 
@@ -52,7 +53,8 @@ date -s "YYYY-MM-DD HH:MM:SS" && hwclock --systohc && timedatectl set-local-rtc 
 ### 1.6 实现要点
 
 - 在 `onExec` 中先获取当前时间，拼入命令后调用 `super.onExec`
-- 时间格式使用本地时区（`new Date().toLocaleString()` 或自行格式化）
+- 时间格式使用 UTC（`Date.getUTC*` 系列方法），确保时间串为 UTC 值
+- `date -s` 使用 UTC 后缀，使解析与机器人时区无关，无需修改机器人时区
 - Mock 变体返回模拟的 `syncedTime`
 
 ---

@@ -23,7 +23,7 @@ export class SyncTimeTask extends SshCommandTask {
     const now = new Date();
     this.syncedTime = formatTime(now);
     return [
-      `date -s "${this.syncedTime}"`,
+      `date -s "${this.syncedTime} UTC"`,
       "hwclock --systohc",
       "timedatectl set-local-rtc 0",
       "timedatectl set-local-rtc 1",

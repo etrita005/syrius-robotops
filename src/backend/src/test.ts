@@ -5135,6 +5135,7 @@ describe("System Maintenance - SyncTimeTask", () => {
     const task = new TestableSyncTimeTask();
     const cmd = task.testGetSshCommand();
     assert.ok(cmd.includes("date -s"));
+    assert.ok(cmd.includes("UTC"));
     assert.ok(cmd.includes("hwclock --systohc"));
     assert.ok(cmd.includes("timedatectl set-local-rtc 0"));
     assert.ok(cmd.includes("timedatectl set-local-rtc 1"));
