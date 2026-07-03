@@ -739,8 +739,46 @@ const FIX_ALPHA19_OTA_DAG: DagDefinition = {
       },
       provides: ["iot_update_done"],
     },
-    fix: {
+    reboot_iot: {
       requires: ["robotIp", "robotPort", "iot_update_done"],
+      resolver: {
+        name: "RebootRobotTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          ignoreFailure: { value: true },
+          retryCount: { value: 1 },
+        },
+        results: { done: "iot_reboot_done" },
+      },
+      provides: ["iot_reboot_done"],
+    },
+    wait_reconnect_iot: {
+      requires: ["robotIp", "robotPort", "iot_reboot_done"],
+      resolver: {
+        name: "WaitSshReconnectTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          timeout: { value: 600000 },
+        },
+        results: { done: "iot_reconnect_done" },
+      },
+      provides: ["iot_reconnect_done"],
+    },
+    sleep_3min: {
+      requires: ["iot_reconnect_done"],
+      resolver: {
+        name: "SleepTask",
+        params: {
+          sleepMs: { value: 180000 },
+        },
+        results: { done: "iot_sleep_done" },
+      },
+      provides: ["iot_sleep_done"],
+    },
+    fix: {
+      requires: ["robotIp", "robotPort", "iot_sleep_done"],
       resolver: {
         name: "FixBrokenPackagesTask",
         params: {

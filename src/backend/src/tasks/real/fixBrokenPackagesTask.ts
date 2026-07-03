@@ -15,7 +15,7 @@ export class FixBrokenPackagesTask extends SshCommandTask {
       ...params,
       sudo: true,
       retryCount: 1,
-      commandTimeout: (params.commandTimeout as number) ?? 120000,
+      commandTimeout: (params.commandTimeout as number) ?? 1800000,
     });
   }
 
