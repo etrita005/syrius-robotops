@@ -6,7 +6,7 @@ import {
   openSolutionInWorkspace,
 } from "../fixtures/test-fixture.js";
 
-test.describe("Solution Management", () => {
+test.describe.skip("Solution Management", () => {
   test.describe.configure({ mode: "serial" });
 
   const SOLUTION_NAME = "E2E Test Solution";

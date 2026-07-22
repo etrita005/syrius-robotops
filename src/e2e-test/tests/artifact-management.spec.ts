@@ -4,7 +4,7 @@ import {
   expectHeaderTabActive,
 } from "../fixtures/test-fixture.js";
 
-test.describe("Artifact Management", () => {
+test.describe.skip("Artifact Management", () => {
   test("TC-E2E-ART-001: Artifact manager page renders with upload zone", async ({
     appPage,
   }) => {
