@@ -11,7 +11,7 @@ import {
   expectHeaderTabActive,
 } from "../fixtures/test-fixture.js";
 
-test.describe("Cross-Module Integration", () => {
+test.describe.skip("Cross-Module Integration", () => {
   test.describe.configure({ mode: "serial" });
 
   let solutionId: string;

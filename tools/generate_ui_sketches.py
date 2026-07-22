@@ -23,8 +23,10 @@ os.makedirs(ARTIFACT_DIR, exist_ok=True)
 os.makedirs(SYSTEM_LOGS_DIR, exist_ok=True)
 DOWNLOAD_ALPHA2_DIR = os.path.join(BASE_DIR, "download-alpha2-map")
 os.makedirs(DOWNLOAD_ALPHA2_DIR, exist_ok=True)
-APP_INSTALL_DIR = os.path.join(BASE_DIR, "app-install")
+APP_INSTALL_DIR = os.path.join(BASE_DIR, "app-installation")
 os.makedirs(APP_INSTALL_DIR, exist_ok=True)
+LICENSE_TEST_DIR = os.path.join(BASE_DIR, "license-test")
+os.makedirs(LICENSE_TEST_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1651,6 +1653,124 @@ def page_app_install_step4():
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
+# License Test Interface helpers
+# ---------------------------------------------------------------------------
+
+def draw_license_test_header(draw, W):
+    draw.rectangle([0, 0, W, 56], fill="#161616")
+    draw.text((20, 14), "RobotOps", fill="white", font=FONT_LG)
+    draw.text((150, 16), "License Test", fill="#c6c6c6", font=FONT)
+    draw.ellipse([W - 60, 14, W - 28, 46], fill="#393939")
+    draw.text((W - 56, 18), "\u2600", fill="#f4f4f4", font=FONT_MD)
+
+# ---------------------------------------------------------------------------
+# License Test: 01 — Disconnected State
+# ---------------------------------------------------------------------------
+def page_license_test_disconnected():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+
+    draw_license_test_header(draw, W)
+
+    # Connection card
+    draw.rectangle([40, 80, W-40, 210], fill="white", outline="#e0e0e0", width=1)
+    draw.text((64, 100), "Robot Connection", fill="#161616", font=FONT_LG)
+    draw.text((64, 140), "Robot IP", fill="#525252", font=FONT_SM)
+    draw_input(draw, (64, 150, 320, 184), placeholder="192.168.1.100")
+    draw.text((340, 140), "Port", fill="#525252", font=FONT_SM)
+    draw_input(draw, (340, 150, 400, 184), placeholder="22")
+    draw_button(draw, (460, 148, 550, 184), "Connect", bg="#0f62fe", fg="white")
+    draw.text((64, 198), "Not connected", fill="#8d8d8d", font=FONT_SM)
+
+    # License config card — disabled state (left half look dimmer)
+    draw.rectangle([40, 240, W-40, 550], fill=("#fafafa"), outline="#e0e0e0", width=1)
+    draw.text((64, 260), "License Configuration", fill="#161616", font=FONT_LG)
+
+    draw.text((64, 310), "Clear-Janitor Licenses Pool Quota", fill="#a8a8a8", font=FONT_SM)
+    draw_input(draw, (64, 320, 280, 354), placeholder="0")
+
+    draw.text((64, 380), "Clear-Janitor License Type", fill="#a8a8a8", font=FONT_SM)
+    draw.text((72, 398), "Select license type", fill="#c6c6c6", font=FONT)
+    draw.rectangle([64, 410, 280, 444], fill="#f4f4f4", outline="#8d8d8d", width=1)
+
+    draw.text((64, 468), "Authorization Start Time", fill="#a8a8a8", font=FONT_SM)
+    draw_input(draw, (64, 478, 210, 512), placeholder="yyyy-mm-dd")
+    draw_input(draw, (224, 478, 320, 512), placeholder="--:--")
+    draw.text((64, 520), "ISO 8601: —", fill="#c6c6c6", font=FONT_SM)
+
+    draw_button(draw, (64, 530, 220, 566), "Read License Config", bg="#e0e0e0", fg="#8d8d8d")
+    draw_button(draw, (240, 530, 400, 566), "Apply License Config", bg="#e0e0e0", fg="#8d8d8d")
+
+    path = os.path.join(LICENSE_TEST_DIR, "01_disconnected.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# License Test: 02 — Connected State with Mock Data
+# ---------------------------------------------------------------------------
+def page_license_test_connected():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+
+    draw_license_test_header(draw, W)
+
+    # Connection card — connected state
+    draw.rectangle([40, 80, W-40, 210], fill="white", outline="#e0e0e0", width=1)
+    draw.text((64, 100), "Robot Connection", fill="#161616", font=FONT_LG)
+    draw.text((64, 140), "Robot IP", fill="#525252", font=FONT_SM)
+    draw_input(draw, (64, 150, 320, 184), placeholder="192.168.1.1")
+    draw.text((340, 140), "Port", fill="#525252", font=FONT_SM)
+    draw_input(draw, (340, 150, 400, 184), placeholder="22")
+    draw_button(draw, (460, 148, 550, 184), "Disconnect", bg="#fa4d56", fg="white")
+    draw.text((64, 198), "Connected to 192.168.1.1:22", fill="#24a148", font=FONT_SM)
+
+    # License config card — enabled, populated
+    draw.rectangle([40, 240, W-40, 550], fill="white", outline="#e0e0e0", width=1)
+    draw.text((64, 260), "License Configuration", fill="#161616", font=FONT_LG)
+
+    draw.text((64, 310), "Clear-Janitor Licenses Pool Quota", fill="#525252", font=FONT_SM)
+    draw_input(draw, (64, 320, 280, 354), placeholder="100")
+
+    draw.text((64, 380), "Clear-Janitor License Type", fill="#525252", font=FONT_SM)
+    draw.rectangle([64, 410, 280, 444], fill="white", outline="#8d8d8d", width=1)
+    draw.text((72, 418), "Trial", fill="#161616", font=FONT)
+    draw.text((258, 418), "\u25BE", fill="#161616", font=FONT)
+
+    draw.text((64, 468), "Authorization Start Time", fill="#525252", font=FONT_SM)
+    draw_input(draw, (64, 478, 210, 512), placeholder="2024-01-15")
+    draw_input(draw, (224, 478, 320, 512), placeholder="08:30")
+    draw.text((64, 520), "ISO 8601: 2024-01-15T08:30:00Z", fill="#6f6f6f", font=FONT_SM)
+
+    draw_button(draw, (64, 530, 220, 566), "Read License Config")
+    draw_button(draw, (240, 530, 400, 566), "Apply License Config", bg="#0f62fe", fg="white")
+
+    path = os.path.join(LICENSE_TEST_DIR, "02_connected.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# License Test: 03 — Apply Success (with toast)
+# ---------------------------------------------------------------------------
+def page_license_test_apply_success():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+
+    page_license_test_connected()
+
+    toast_w, toast_h = 400, 60
+    toast_x, toast_y = (W - toast_w) // 2, H - 100
+    draw.rectangle([toast_x, toast_y, toast_x + toast_w, toast_y + toast_h], fill="#e8f6e8", outline="#24a148", width=1)
+    draw.text((toast_x + 16, toast_y + 12), "\u2714  Applied", fill="#24a148", font=FONT_MD)
+    draw.text((toast_x + 16, toast_y + 34), "License config applied successfully.", fill="#525252", font=FONT_SM)
+
+    path = os.path.join(LICENSE_TEST_DIR, "03_apply_success.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
@@ -1701,5 +1821,10 @@ if __name__ == "__main__":
     page_system_logs_main()
     page_system_logs_entry_detail()
     page_system_logs_bundle_download()
+
+    # License Test Interface
+    page_license_test_disconnected()
+    page_license_test_connected()
+    page_license_test_apply_success()
 
     print(f"\nAll UI sketches generated in {BASE_DIR}")

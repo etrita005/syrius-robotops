@@ -5271,3 +5271,205 @@ describe("System Maintenance - FixBrokenPackagesTask", () => {
     assert.equal((result as ValueMap).exitCode, 0);
   });
 });
+
+// ============================================================
+// License Test Service Integration Tests
+// ============================================================
+
+import { MockLicenseTestService } from "./services/mockLicenseTestService.js";
+import { createLicenseTestRoutes } from "./routes/licenseTestRoutes.js";
+import type {
+  ConnectResponse,
+  SessionResponse,
+  ReadResponse,
+  ApplyResponse,
+} from "./types/licenseTest.js";
+import {
+  LICENSE_KEY_LICENSES,
+  LICENSE_KEY_TYPE,
+  LICENSE_KEY_AUTH_START,
+} from "./types/licenseTest.js";
+
+function createLicenseTestApp() {
+  const service = new MockLicenseTestService();
+  const app = new Hono();
+  app.route("/api/license-test", createLicenseTestRoutes(service));
+  return { app, service };
+}
+
+describe("License Test - Backend Integration", () => {
+  it("TC-BE-LIC-001: Session starts empty", async () => {
+    const { app } = createLicenseTestApp();
+    const res = await app.request("/api/license-test/session");
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as SessionResponse;
+    assert.equal(body.connected, false);
+    assert.equal(body.robotIp, undefined);
+    assert.equal(body.robotPort, undefined);
+  });
+
+  it("TC-BE-LIC-002: Connect validates input - empty IP", async () => {
+    const { app } = createLicenseTestApp();
+    const res = await app.request("/api/license-test/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ robotIp: "" }),
+    });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as { error: string };
+    assert.equal(body.error, "INVALID_IP");
+  });
+
+  it("TC-BE-LIC-002b: Connect validates input - missing IP", async () => {
+    const { app } = createLicenseTestApp();
+    const res = await app.request("/api/license-test/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("TC-BE-LIC-002c: Connect validates input - invalid port", async () => {
+    const { app } = createLicenseTestApp();
+    const res = await app.request("/api/license-test/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ robotIp: "192.168.1.1", robotPort: 0 }),
+    });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as { error: string };
+    assert.equal(body.error, "INVALID_PORT");
+  });
+
+  it("TC-BE-LIC-003: Connect in mock mode returns config", async () => {
+    const { app } = createLicenseTestApp();
+    const res = await app.request("/api/license-test/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ robotIp: "192.168.1.1", robotPort: 22 }),
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as ConnectResponse;
+    assert.equal(body.connected, true);
+    assert.equal(body.robotIp, "192.168.1.1");
+    assert.equal(body.robotPort, 22);
+    assert.ok(body.config);
+    assert.equal(typeof body.config[LICENSE_KEY_LICENSES], "string");
+    assert.ok(["None", "Trial", "Formal"].includes(body.config[LICENSE_KEY_TYPE]));
+    assert.ok(body.config[LICENSE_KEY_AUTH_START].length > 0);
+  });
+
+  it("TC-BE-LIC-004: Read requires session", async () => {
+    const { app } = createLicenseTestApp();
+    const res = await app.request("/api/license-test/read", {
+      method: "POST",
+    });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as { error: string };
+    assert.equal(body.error, "NO_SESSION");
+  });
+
+  it("TC-BE-LIC-005: Apply updates mock config and subsequent read reflects changes", async () => {
+    const { app } = createLicenseTestApp();
+
+    await app.request("/api/license-test/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ robotIp: "192.168.1.1", robotPort: 22 }),
+    });
+
+    const newConfig = {
+      [LICENSE_KEY_LICENSES]: "200",
+      [LICENSE_KEY_TYPE]: "Formal",
+      [LICENSE_KEY_AUTH_START]: "2025-06-01T12:00:00Z",
+    };
+
+    const applyRes = await app.request("/api/license-test/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: newConfig }),
+    });
+    assert.equal(applyRes.status, 200);
+    const applyBody = (await applyRes.json()) as ApplyResponse;
+    assert.equal(applyBody.applied, true);
+
+    const readRes = await app.request("/api/license-test/read", {
+      method: "POST",
+    });
+    assert.equal(readRes.status, 200);
+    const readBody = (await readRes.json()) as ReadResponse;
+    assert.equal(readBody.config[LICENSE_KEY_LICENSES], "200");
+    assert.equal(readBody.config[LICENSE_KEY_TYPE], "Formal");
+    assert.equal(readBody.config[LICENSE_KEY_AUTH_START], "2025-06-01T12:00:00Z");
+  });
+
+  it("TC-BE-LIC-006: Disconnect clears session", async () => {
+    const { app } = createLicenseTestApp();
+
+    await app.request("/api/license-test/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ robotIp: "192.168.1.1", robotPort: 22 }),
+    });
+
+    const discRes = await app.request("/api/license-test/disconnect", {
+      method: "POST",
+    });
+    assert.equal(discRes.status, 200);
+
+    const sessionRes = await app.request("/api/license-test/session");
+    const body = (await sessionRes.json()) as SessionResponse;
+    assert.equal(body.connected, false);
+  });
+
+  it("TC-BE-LIC-007: Apply validation rejects invalid license type", async () => {
+    const { app } = createLicenseTestApp();
+
+    await app.request("/api/license-test/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ robotIp: "192.168.1.1", robotPort: 22 }),
+    });
+
+    const res = await app.request("/api/license-test/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: { [LICENSE_KEY_TYPE]: "Invalid" } }),
+    });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as { error: string };
+    assert.equal(body.error, "INVALID_LICENSE_TYPE");
+  });
+
+  it("TC-BE-LIC-008: Connect with default port (omitted)", async () => {
+    const { app } = createLicenseTestApp();
+    const res = await app.request("/api/license-test/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ robotIp: "192.168.1.1" }),
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as ConnectResponse;
+    assert.equal(body.robotPort, 22);
+  });
+
+  it("TC-BE-LIC-009: Apply validation rejects negative license count", async () => {
+    const { app } = createLicenseTestApp();
+
+    await app.request("/api/license-test/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ robotIp: "192.168.1.1", robotPort: 22 }),
+    });
+
+    const res = await app.request("/api/license-test/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: { [LICENSE_KEY_LICENSES]: "-1" } }),
+    });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as { error: string };
+    assert.equal(body.error, "INVALID_LICENSES");
+  });
+});

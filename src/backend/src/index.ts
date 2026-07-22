@@ -64,6 +64,9 @@ import {
 } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
+import { LicenseTestService } from "./services/licenseTestService.js";
+import { MockLicenseTestService } from "./services/mockLicenseTestService.js";
+import { createLicenseTestRoutes } from "./routes/licenseTestRoutes.js";
 import { SSH_USERNAME, SSH_PASSWORD } from "./config.js";
 import { configureLogger, createLogger } from "./logger/index.js";
 import { loadAppConfig, parseCliArgs, resolveRuntimePaths, isPkgRuntime } from "./runtime/appConfig.js";
@@ -247,6 +250,12 @@ async function main(): Promise<void> {
   await taskFlowEngine.loadPersistedFlows();
 
   app.route("/api/flows", createTaskFlowRoutes(taskFlowEngine));
+
+  const licenseTestService = config.runtime.mock
+    ? new MockLicenseTestService()
+    : new LicenseTestService();
+  app.route("/api/license-test", createLicenseTestRoutes(licenseTestService));
+
   app.route("/", createStaticRoutes(staticAssetService));
 
   app.notFound((c) => {
