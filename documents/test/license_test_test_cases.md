@@ -101,6 +101,26 @@
 | Expected Status | 400 |
 | Expected Response | `{ error: "INVALID_LICENSES" }` |
 
+## TC-LIC-011: Restart app succeeds (mock)
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Precondition | Connected in mock mode |
+| Input | `POST /api/license-test/restart-app` |
+| Expected Status | 200 |
+| Expected Response | `{ restarted: true }` |
+
+## TC-LIC-012: Restart app requires session
+
+| Item | Value |
+|------|-------|
+| Priority | Medium |
+| Precondition | No active session |
+| Input | `POST /api/license-test/restart-app` |
+| Expected Status | 400 |
+| Expected Response | `{ error: "NO_SESSION" }` |
+
 ---
 
 ## E2E Test Cases
@@ -169,6 +189,15 @@ These tests run against the full stack with backend in `--mock` mode via Playwri
 | Precondition | Mock backend + Vite frontend running |
 | Input | Leave IP empty, click Connect |
 | Expected Behavior | "IP address is required." error shown. No backend call. |
+
+### TC-E2E-LIC-008: Restart app button available when connected
+
+| Item | Value |
+|------|-------|
+| Priority | Medium |
+| Precondition | Connected in mock mode |
+| Input | Click "Restart App" |
+| Expected Behavior | Success toast "App restarted". After 2s, "Config refreshed" toast. Config fields remain populated. |
 
 ---
 

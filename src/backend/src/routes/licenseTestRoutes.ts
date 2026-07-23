@@ -222,5 +222,23 @@ export function createLicenseTestRoutes(service: ILicenseTestService): Hono {
     }
   });
 
+  router.post("/restart-app", async (c) => {
+    try {
+      await service.restartApp();
+      return c.json({ restarted: true });
+    } catch (err) {
+      if (err instanceof NoSessionError) {
+        return c.json({ error: "NO_SESSION", message: err.message }, 400);
+      }
+      if (err instanceof RobotCommandError) {
+        return c.json({ error: "ROBOT_COMMAND_FAILED", message: err.message }, 502);
+      }
+      if (err instanceof RobotTimeoutError) {
+        return c.json({ error: "ROBOT_TIMEOUT", message: err.message }, 504);
+      }
+      throw err;
+    }
+  });
+
   return router;
 }
