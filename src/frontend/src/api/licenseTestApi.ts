@@ -28,3 +28,7 @@ export async function readConfig(): Promise<ReadResponse> {
 export async function applyConfig(config: LicenseConfig): Promise<ApplyResponse> {
   return post<ApplyResponse>(`${BASE}/apply`, { config });
 }
+
+export async function restartApp(): Promise<{ restarted: boolean }> {
+  return post<{ restarted: boolean }>(`${BASE}/restart-app`);
+}

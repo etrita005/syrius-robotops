@@ -96,4 +96,11 @@ export class MockLicenseTestService implements ILicenseTestService {
     this.config = { ...config };
     this.log.info({ config: this.config }, "Applied license config (mock)");
   }
+
+  async restartApp(): Promise<void> {
+    this.requireSession();
+    this.log.info("Restarting Android app (mock)");
+    await new Promise((r) => setTimeout(r, 500));
+    this.log.info("Android app restarted (mock)");
+  }
 }
