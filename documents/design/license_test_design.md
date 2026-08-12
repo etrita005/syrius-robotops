@@ -60,7 +60,6 @@ interface ILicenseTestService {
   getSession(): Promise<LicenseTestSession | null>;
   readConfig(): Promise<LicenseConfig>;
   applyConfig(config: LicenseConfig): Promise<void>;
-  restartApp(): Promise<void>;
 }
 ```
 
@@ -76,46 +75,27 @@ function createLicenseTestRoutes(service: ILicenseTestService): Hono;
 - `GET /session`：调用 `service.getSession()`，返回 `SessionResponse`。
 - `POST /read`：调用 `service.readConfig()`，返回 `ReadResponse`。
 - `POST /apply`：解析 body 中的 `config`，校验各字段，调用 `service.applyConfig()`，返回 `ApplyResponse`。
-- `POST /restart-app`：调用 `service.restartApp()`，返回 `{ restarted: true }`。
 
 ### 3.4 ADB 命令辅助函数
 
 ```typescript
 const CONTENT_URI = "content://com.syriusrobotics.platform.launcher.mockkv/kv";
-const APP_PACKAGE = "com.syriusrobotics.platform.launcher";
 
-function readAllKeysCommand(): string {
-  return `adb shell content query --uri ${CONTENT_URI}`;
+function readKeyCommand(key: string): string {
+  return `adb shell content query --uri ${CONTENT_URI}/${key}`;
 }
 
-function deleteInsertKeyCommand(key: string, value: string): string {
-  return `adb shell content delete --uri ${CONTENT_URI} --where "key='${escapeSqlValue(key)}'" && adb shell content insert --uri ${CONTENT_URI} --bind key:s:${key} --bind value:s:${value}`;
+function insertKeyCommand(key: string, value: string): string {
+  return `adb shell content insert --uri ${CONTENT_URI} --bind key:s:${key} --bind value:s:'${escapeShellValue(value)}'`;
 }
 
-function restartAppCommand(): string {
-  return `adb shell am force-stop ${APP_PACKAGE} && adb shell monkey -p ${APP_PACKAGE} -c android.intent.category.LAUNCHER 1`;
-}
-
-function isoToUtcMs(iso: string): string {
-  const ms = Date.parse(iso);
-  if (isNaN(ms)) return "0";
-  return String(ms);
-}
-
-function utcMsToIso(ms: string): string {
-  const n = Number(ms);
-  if (!n) return "";
-  return new Date(n).toISOString();
+function updateKeyCommand(key: string, value: string): string {
+  return `adb shell content update --uri ${CONTENT_URI} --bind value:s:'${escapeShellValue(value)}' --where "key='${escapeSqlValue(key)}'"`;
 }
 ```
 
-**设计要点**：
-- **批量读取**：`content query --uri .../kv`（无 key 路径）一次返回全部键值对，`parseAllQueryOutput` 解析所有 `Row:` 行。
-- **批量写入**：每个 key 的 `delete` + `insert` 用 `&&` 串联成一条命令，3 个 key 合并为 1 次 SSH 调用。不使用 `content update --where`（实践中不生效）。
-- **UTC 毫秒时间戳存储**：Authorization Start Time 在机器人上存储为 UTC 毫秒时间戳字符串（如 `"1766620800000"`），避免 ISO 8601 中的 `:` 与 `content` 命令 `--bind` 分隔符冲突。API 层通过 `isoToUtcMs`/`utcMsToIso` 自动转换，用户界面始终使用 ISO 8601 格式。
-- **应用重启**：使用 `am force-stop` + `monkey -p` 重启目标 Android App。`monkey` 无需指定 Activity 名，自动启动 launcher activity。
-
 转义策略：
+- `escapeShellValue`：将单引号替换为 `'\\''`，安全嵌入 shell 命令值。
 - `escapeSqlValue`：将单引号替换为 `''`，用于 `where` 子句。
 
 ---
@@ -136,7 +116,6 @@ function utcMsToIso(ms: string): string {
 │ + getSession(): Promise<LicenseTestSession | null>   │
 │ + readConfig(): Promise<LicenseConfig>               │
 │ + applyConfig(config): Promise<void>                 │
-│ + restartApp(): Promise<void>                        │
 │ - requireSession(): LicenseTestSession               │
 │ - executeSsh(host, port, cmd, ct, rt): Promise<SshResult> │
 └──────────────────────────────────────────────────────┘
@@ -144,9 +123,8 @@ function utcMsToIso(ms: string): string {
 
 - `executeSsh`：使用 `ssh2` `Client`，设置连接超时（10 s）和命令超时（30 s），通过 `Promise` 封装异步流程。连接成功后在 `ready` 事件中执行命令，捕获 stdout/stderr；`close` 事件时调用 `conn.end()` 并 resolve。
 - `connect`：执行 `echo ok` 验证 SSH，成功后将 session 写入内存，调用 `readConfig()` 返回配置。
-- `readConfig`：使用 `readAllKeysCommand()` 一次读取全部键值对，`parseAllQueryOutput` 解析所有 `Row:` 行，`utcMsToIso` 将授权开始时间从 UTC 毫秒时间戳还原为 ISO 8601 格式。
-- `applyConfig`：对三个键构建 `deleteInsertKeyCommand`（每个键 delete + insert），用 `&&` 串联为单条命令一次性执行。授权开始时间写入前经 `isoToUtcMs` 转换为 UTC 毫秒时间戳字符串。
-- `restartApp`：执行 `am force-stop` 后接 `monkey -p` 重启目标 App，命令超时 30 s。
+- `readConfig`：对三个键分别执行 `readKeyCommand`，解析 `Row: N key=..., value=...` 输出行中的 `value=` 部分。
+- `applyConfig`：对每个键先执行 read 命令，根据输出判断是否有已存在的行（upsert 策略），有则执行 update，无则执行 insert。命令退出码非零时抛错。
 - 安全控制：从 `config.ts` 读取 `SSH_USERNAME` 和 `SSH_PASSWORD`，不记录凭据。
 
 ### 4.2 MockLicenseTestService（Mock 实现）
@@ -168,8 +146,6 @@ function utcMsToIso(ms: string): string {
 │   → 返回内存中的 config                               │
 │ + applyConfig(config): Promise<void>                 │
 │   → 校验类型和数量，更新内存 config                    │
-│ + restartApp(): Promise<void>                        │
-│   → 延迟 500 ms 模拟重启                               │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -200,11 +176,11 @@ sequenceDiagram
   SVC->>SSH: exec "echo ok"
   SSH-->>SVC: exitCode 0
   SVC->>SVC: 存储 session
-  SVC->>SSH: exec readAllKeysCommand (1 次 SSH)
-  SSH->>ADB: adb shell content query --uri .../kv
-  ADB-->>SSH: Row: 0 key=..., value=...
-  SSH-->>SVC: stdout (全部 key)
-  SVC->>SVC: parseAllQueryOutput() + bindSafeToIso8601()
+  SVC->>SSH: exec readKeyCommand × 3
+  SSH->>ADB: adb shell content query × 3
+  ADB-->>SSH: Row: N key=..., value=...
+  SSH-->>SVC: stdout
+  SVC->>SVC: parseQueryOutput()
   SVC-->>API: LicenseConfig
   API-->>UI: { connected: true, config }
   UI->>UI: 填充表单字段
@@ -223,10 +199,16 @@ sequenceDiagram
   UI->>API: POST /apply { config }
   API->>API: 后端校验各字段
   API->>SVC: applyConfig(config)
-  SVC->>SVC: 对每个 key 生成 deleteInsertKeyCommand（iso8601ToBindSafe 转换时间值）
-  SVC->>SVC: 用 && 串联所有命令
-  SVC->>SSH: exec 批处理命令 (1 次 SSH)
-  SSH-->>SVC: exitCode 0
+  loop 对每个键 (3 次)
+    SVC->>SSH: readKeyCommand(key)
+    SSH-->>SVC: 输出
+    alt 已存在该键
+      SVC->>SSH: updateKeyCommand(key, value)
+    else 不存在
+      SVC->>SSH: insertKeyCommand(key, value)
+    end
+    SSH-->>SVC: exitCode 0
+  end
   SVC-->>API: void
   API-->>UI: { applied: true }
   UI->>API: POST /read (自动回读)
@@ -250,27 +232,6 @@ sequenceDiagram
   SVC-->>API: void
   API-->>UI: { connected: false }
   UI->>UI: 禁用配置字段，清空值
-```
-
-### 5.4 重启流程
-
-```mermaid
-sequenceDiagram
-  participant UI as LicenseTestView
-  participant API as /api/license-test
-  participant SVC as LicenseTestService
-  participant SSH as Robot (SSH)
-
-  UI->>API: POST /restart-app
-  API->>SVC: restartApp()
-  SVC->>SSH: exec am force-stop && monkey -p (1 次 SSH)
-  SSH-->>SVC: exitCode 0
-  SVC-->>API: void
-  API-->>UI: { restarted: true }
-  UI->>UI: 等待 2 秒
-  UI->>API: POST /read (自动回读)
-  API-->>UI: { config }
-  UI->>UI: 刷新表单字段
 ```
 
 ---
@@ -330,7 +291,7 @@ type ConnectionStatus = "disconnected" | "connecting" | "connected" | "busy";
 │  │  Auth Start Time     [2024-01-15] [08:30]     │ │
 │  │  ISO 8601: 2024-01-15T08:30:00Z               │ │
 │  │                                                │ │
-│  │  [Read License Config] [Apply License Config]             │ │
+│  │  [Read License Config] [Apply License Config]  │ │
 │  └────────────────────────────────────────────────┘ │
 │                                                     │
 │  ┌─ Last Command Output ──────────────────────────┐ │
@@ -371,10 +332,9 @@ type ConnectionStatus = "disconnected" | "connecting" | "connected" | "busy";
 
 ## 9. 性能设计
 
-- Read：使用 `content query --uri .../kv` 批量读取（1 次 SSH，~2 s）。
-- Apply：每个 key 的 `delete` + `insert` 用 `&&` 串联为单条命令（1 次 SSH，~7 s，原 9 次 ~15 s）。
-- Restart：`force-stop` + `monkey` 一次 SSH 调用（~2 s）。
-- Connect 超时 10 s，Read/Apply 命令超时 30 s，Apply 批处理超时 60 s。
+- 每次操作建立独立 SSH 连接，适用于低频调试场景（非高频轮询）。
+- 无持久化存储，无后台定时任务。
+- Connect 超时 10 s，命令超时 30 s。
 - UI 在 busy 状态时禁用操作按钮，防止重复提交。
 
 ---
@@ -390,7 +350,3 @@ type ConnectionStatus = "disconnected" | "connecting" | "connected" | "busy";
 | D-LIC-05 | Mock 服务独立类而非继承真实服务 | 接口差异大（真实服务需 SSH，Mock 仅内存操作） |
 | D-LIC-06 | 始终替换原有 UI | 用户确认决策：许可证测试界面始终作为唯一界面 |
 | D-LIC-07 | Apply 后自动回读 | 确保 UI 展示的是机器人实际存储的值，而非乐观更新的值 |
-| D-LIC-08 | Read/Apply 批量 SSH 调用 | 减少 SSH 连接开销：Read 3 次→1 次，Apply 9 次→1 次 |
-| D-LIC-09 | delete+insert 替代 content update | `content update --where` 在此 mockkv provider 上不生效 |
-| D-LIC-10 | 授权开始时间存储为 UTC 毫秒时间戳 | `content` 命令 `--bind` 分隔符 `:` 与 ISO 8601 冒号冲突。存储 UTC ms 字符串（如 `"1766620800000"`），API 层 `isoToUtcMs`/`utcMsToIso` 透明转换
-| D-LIC-11 | monkey -p 启动 App | 无需指定 Activity 名称，自动解析 launcher activity |

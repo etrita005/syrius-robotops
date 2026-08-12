@@ -23,7 +23,6 @@ import {
   getSession,
   readConfig,
   applyConfig,
-  restartApp,
 } from "../../api/licenseTestApi.js";
 import type { LicenseConfig, ConnectionStatus, SessionResponse, ReadResponse } from "../../types/licenseTest.js";
 import {
@@ -198,24 +197,6 @@ function LicenseTestContent() {
     }
   }, [config, showToast]);
 
-  const handleRestart = useCallback(async () => {
-    setStatus("busy");
-    try {
-      await restartApp();
-      showToast("success", "App restarted", "Android application has been restarted.");
-      await new Promise((r) => setTimeout(r, 2000));
-      const result = await readConfig();
-      setConfig(result.config);
-      showToast("success", "Config refreshed");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Restart failed";
-      setLastOutput(msg);
-      showToast("error", "Restart failed", msg);
-    } finally {
-      setStatus("connected");
-    }
-  }, [showToast]);
-
   const handleDateChange = useCallback(
     (dates: Date[]) => {
       setDateError(null);
@@ -272,7 +253,7 @@ function LicenseTestContent() {
           <TextInput
             id="robot-ip"
             labelText="Robot IP"
-            placeholder="192.168.55.1"
+            placeholder="192.168.1.100"
             value={robotIp}
             onChange={(e) => { setRobotIp(e.target.value); setIpError(null); }}
             invalid={!!ipError}
@@ -416,9 +397,6 @@ function LicenseTestContent() {
           <Button onClick={handleApply} disabled={isDisabled}>
             {status === "busy" ? <Loading small withOverlay={false} /> : "Apply License Config"}
           </Button>
-          {/* <Button kind="danger" onClick={handleRestart} disabled={isDisabled}>
-            {status === "busy" ? <Loading small withOverlay={false} /> : "Restart App"}
-          </Button> */}
         </div>
       </Tile>
 

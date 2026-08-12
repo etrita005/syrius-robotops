@@ -23,44 +23,34 @@ export interface ILicenseTestService {
   getSession(): Promise<LicenseTestSession | null>;
   readConfig(): Promise<LicenseConfig>;
   applyConfig(config: LicenseConfig): Promise<void>;
-  restartApp(): Promise<void>;
 }
 
 const CONTENT_URI = "content://com.syriusrobotics.platform.launcher.mockkv/kv";
-const APP_PACKAGE = "com.syriusrobotics.platform.launcher";
+
+function escapeShellValue(value: string): string {
+  return value.replace(/'/g, "'\\''");
+}
 
 function escapeSqlValue(value: string): string {
   return value.replace(/'/g, "''");
 }
 
-function readAllKeysCommand(): string {
-  return `adb shell content query --uri ${CONTENT_URI}`;
+function readKeyCommand(key: string): string {
+  return `adb shell content query --uri ${CONTENT_URI}/${key}`;
 }
 
-function deleteInsertKeyCommand(key: string, value: string): string {
-  return `adb shell content delete --uri ${CONTENT_URI} --where "key='${escapeSqlValue(key)}'" && adb shell content insert --uri ${CONTENT_URI} --bind key:s:${key} --bind value:s:${value}`;
+function insertKeyCommand(key: string, value: string): string {
+  return `adb shell content insert --uri ${CONTENT_URI} --bind key:s:${key} --bind value:s:'${escapeShellValue(value)}'`;
 }
 
-function isoToUtcMs(iso: string): string {
-  const ms = Date.parse(iso);
-  if (isNaN(ms)) return "0";
-  return String(ms);
+function updateKeyCommand(key: string, value: string): string {
+  return `adb shell content update --uri ${CONTENT_URI} --bind value:s:'${escapeShellValue(value)}' --where "key='${escapeSqlValue(key)}'"`;
 }
 
-function utcMsToIso(ms: string): string {
-  const n = Number(ms);
-  if (!n) return "";
-  return new Date(n).toISOString();
-}
-
-function parseAllQueryOutput(stdout: string): Record<string, string> {
-  const results: Record<string, string> = {};
-  const re = /Row: \d+ key=([^,]*),\s*value=(.*)/g;
-  let match;
-  while ((match = re.exec(stdout)) !== null) {
-    results[match[1]] = match[2];
-  }
-  return results;
+function parseQueryOutput(stdout: string): string {
+  const match = stdout.match(/Row: \d+ key=[^,]*,\s*value=(.*)/);
+  if (!match || !match[1]) return "";
+  return match[1].trim();
 }
 
 export class LicenseTestService implements ILicenseTestService {
@@ -181,25 +171,33 @@ export class LicenseTestService implements ILicenseTestService {
 
   async readConfig(): Promise<LicenseConfig> {
     const session = this.requireSession();
+    const results: Record<string, string> = {};
 
-    const result = await this.executeSsh(
-      session.robotIp,
-      session.robotPort,
-      readAllKeysCommand(),
-      10_000,
-      30_000
-    );
+    for (const key of LICENSE_KEYS) {
+      const command = readKeyCommand(key);
+      const result = await this.executeSsh(
+        session.robotIp,
+        session.robotPort,
+        command,
+        10_000,
+        30_000
+      );
 
-    const results = result.exitCode !== 0
-      ? {}
-      : parseAllQueryOutput(result.stdout);
+      if (result.exitCode !== 0) {
+        throw new RobotCommandError(
+          `Failed to read key '${key}' (exit code ${result.exitCode}): ${result.stderr}`
+        );
+      }
+
+      results[key] = parseQueryOutput(result.stdout);
+    }
 
     const config: LicenseConfig = {
       [LICENSE_KEY_LICENSES]: results[LICENSE_KEY_LICENSES] || "",
       [LICENSE_KEY_TYPE]: (VALID_LICENSE_TYPES.includes(results[LICENSE_KEY_TYPE] as any)
         ? results[LICENSE_KEY_TYPE]
         : "None") as LicenseConfig[typeof LICENSE_KEY_TYPE],
-      [LICENSE_KEY_AUTH_START]: utcMsToIso(results[LICENSE_KEY_AUTH_START] || ""),
+      [LICENSE_KEY_AUTH_START]: results[LICENSE_KEY_AUTH_START] || "",
     };
 
     this.log.info({ config }, "License config read from robot");
@@ -211,55 +209,50 @@ export class LicenseTestService implements ILicenseTestService {
 
     this.log.info({ config }, "Applying license config to robot");
 
-    const commands: string[] = [];
     for (const key of LICENSE_KEYS) {
       const value = config[key];
       if (value === undefined || value === null) {
         throw new InvalidArgumentError(`Missing value for key '${key}'`);
       }
-      const bindValue = key === LICENSE_KEY_AUTH_START ? isoToUtcMs(value) : value;
-      commands.push(deleteInsertKeyCommand(key, bindValue));
-    }
 
-    const batchCommand = commands.join(" && ");
-    const result = await this.executeSsh(
-      session.robotIp,
-      session.robotPort,
-      batchCommand,
-      10_000,
-      60_000
-    );
-
-    if (result.exitCode !== 0) {
-      throw new RobotCommandError(
-        `Batch apply failed (exit code ${result.exitCode}): ${result.stderr}`
+      const readCmd = readKeyCommand(key);
+      const readResult = await this.executeSsh(
+        session.robotIp,
+        session.robotPort,
+        readCmd,
+        10_000,
+        30_000
       );
-    }
 
-    this.log.info("License config applied to robot");
-  }
+      if (readResult.exitCode !== 0) {
+        throw new RobotCommandError(
+          `Failed to query key '${key}' (exit code ${readResult.exitCode}): ${readResult.stderr}`
+        );
+      }
 
-  async restartApp(): Promise<void> {
-    const session = this.requireSession();
+      const existingValue = parseQueryOutput(readResult.stdout);
+      const hasExisting = readResult.stdout.includes("Row:");
 
-    this.log.info({ ip: session.robotIp }, "Restarting Android app");
+      const command = hasExisting
+        ? updateKeyCommand(key, value)
+        : insertKeyCommand(key, value);
 
-    const command = `adb shell am force-stop ${APP_PACKAGE} && adb shell monkey -p ${APP_PACKAGE} -c android.intent.category.LAUNCHER 1`;
-    const result = await this.executeSsh(
-      session.robotIp,
-      session.robotPort,
-      command,
-      10_000,
-      30_000
-    );
-
-    if (result.exitCode !== 0) {
-      throw new RobotCommandError(
-        `Failed to restart app (exit code ${result.exitCode}): ${result.stderr}`
+      const result = await this.executeSsh(
+        session.robotIp,
+        session.robotPort,
+        command,
+        10_000,
+        30_000
       );
-    }
 
-    this.log.info({ ip: session.robotIp }, "Android app restarted");
+      if (result.exitCode !== 0) {
+        throw new RobotCommandError(
+          `Failed to ${hasExisting ? "update" : "insert"} key '${key}' (exit code ${result.exitCode}): ${result.stderr}`
+        );
+      }
+
+      this.log.info({ key, value, operation: hasExisting ? "update" : "insert" }, "Key applied");
+    }
   }
 }
 

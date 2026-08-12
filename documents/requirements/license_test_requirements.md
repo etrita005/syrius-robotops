@@ -46,13 +46,13 @@
 |-----|------|---------|-----------|
 | `clear-janitor-licenses` | Clear-Janitor Licenses Pool Quota | Number Input | 非负整数 |
 | `clear-janitor-license-type` | Clear-Janitor License Type | Dropdown | `None` / `Trial` / `Formal` |
-| `clear-janitor-license-authorization-start-time` | Authorization Start Time | DatePicker + TimePicker | 有效 ISO 8601 格式，带 `Z` 后缀。机器人存储为 UTC 毫秒时间戳字符串，API 层自动转换 |
+| `clear-janitor-license-authorization-start-time` | Authorization Start Time | DatePicker + TimePicker | 有效 ISO 8601 格式，带 `Z` 后缀 |
 
 ### 4.2 机器人会话 Schema
 
 ```json
 {
-  "robotIp": "192.168.55.1",
+  "robotIp": "192.168.1.100",
   "robotPort": 22,
   "connectedAt": 1721664200000
 }
@@ -98,12 +98,6 @@
 ### FR-LIC-007：单会话模式
 - 后端同一时间只维护一个机器人会话。连接至新机器人时替换之前的会话并记录警告日志。
 
-### FR-LIC-008：重启应用按钮
-- 界面提供 **Restart App** 按钮，仅在已连接时可用。
-- 点击后，前端调用 `/api/license-test/restart-app`。
-- 后端通过 SSH 执行 `am force-stop` 后接 `monkey -p` 重启目标 App（package：`com.syriusrobotics.platform.launcher`）。
-- 重启成功后，前端等待 2 秒，自动调用 Read 刷新配置字段。
-
 ---
 
 ## 6. 用例模型
@@ -120,7 +114,6 @@
 | UC-LIC-03 | 读取许可证配置 | 用户点击 Read，从机器人拉取最新配置值 |
 | UC-LIC-04 | 应用许可证配置 | 用户修改配置值后点击 Apply，将值写入机器人 |
 | UC-LIC-05 | 切换目标机器人 | 用户输入新 IP 后直接点击 Connect，覆盖当前会话 |
-| UC-LIC-06 | 重启 Android 应用 | 用户点击 Restart App，后端 force-stop 并 restart 目标 App，自动刷新配置 |
 
 ---
 
@@ -135,13 +128,12 @@
 | GET | `/api/license-test/session` | 返回当前会话状态 |
 | POST | `/api/license-test/read` | 从机器人读取许可证配置 |
 | POST | `/api/license-test/apply` | 将许可证配置写入机器人 |
-| POST | `/api/license-test/restart-app` | 重启目标 Android App |
 
 ### 7.2 请求/响应合约
 
 #### Connect
-请求：`{ "robotIp": "192.168.55.1", "robotPort": 22 }`
-响应：`{ "connected": true, "robotIp": "192.168.55.1", "robotPort": 22, "config": { ... } }`
+请求：`{ "robotIp": "192.168.1.100", "robotPort": 22 }`
+响应：`{ "connected": true, "robotIp": "192.168.1.100", "robotPort": 22, "config": { ... } }`
 
 #### Disconnect
 响应：`{ "connected": false }`
@@ -155,9 +147,6 @@
 #### Apply
 请求：`{ "config": { "clear-janitor-licenses": "100", "clear-janitor-license-type": "Trial", "clear-janitor-license-authorization-start-time": "2024-01-15T08:30:00Z" } }`
 响应：`{ "applied": true }`
-
-#### Restart App
-响应：`{ "restarted": true }`
 
 ---
 
@@ -208,9 +197,6 @@ Read 和 Apply 按钮位于配置卡片底部，连接前和操作进行中禁�
 ### UI-LIC-006：主题支持
 支持明/暗主题切换，沿用 Carbon Design System `white` / `g100` 主题。
 
-### UI-LIC-007：重启按钮
-Restart App 按钮位于 Read 和 Apply 按钮旁，使用 danger 样式。仅连接状态下可用，点击后显示 loading 状态。
-
 ---
 
 ## 11. 非功能性需求
@@ -238,8 +224,8 @@ Restart App 按钮位于 Read 和 Apply 按钮旁，使用 danger 样式。仅�
 - UI 清晰区分 disconnected、connecting、connected、busy 状态。
 
 ### NF-LIC-006：性能
-- 批量操作：Read 使用 `content query --uri .../kv` 一次读取全部键（1 次 SSH 调用）；Apply 使用 `&&` 串联所有 delete+insert 操作（1 次 SSH 调用）。
-- Connect 超时 10 s，命令超时 30 s（Apply 批处理超时 60 s）。
+- 每次操作建立独立 SSH 连接，适用于低频调试场景。
+- 无持久化存储或后台轮询。
 - UI 在 busy 状态时禁用操作按钮。
 
 ---
@@ -249,4 +235,3 @@ Restart App 按钮位于 Read 和 Apply 按钮旁，使用 danger 样式。仅�
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | 1.0 | 2026-07-22 | 初始版本：替换 RobotOps Studio UI 为许可证测试界面 |
-| 1.1 | 2026-07-23 | 新增 Restart App 功能；Read/Apply 改为批量 SSH 调用；写入策略改为 delete+insert |
