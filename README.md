@@ -249,6 +249,15 @@ npm test
 
 The test runner starts a temporary embedded Object Store instance and API server automatically, runs all test cases, then cleans up. No external services required.
 
+The test script runs as `npx tsx --test --test-force-exit src/test.ts`. `--test-force-exit` is required: the pino worker transport created at module load (`src/logger/index.ts`) holds permanent pipe handles, so without it the test process hangs forever after the suite finishes. The full suite (~330 cases) takes about 100 seconds.
+
+To run a subset, use `--test-name-pattern`:
+
+```bash
+cd src/backend
+npx tsx --test --test-name-pattern "SSE" --test-force-exit src/test.ts
+```
+
 ### End-to-End (E2E) Tests
 
 E2E tests use **Playwright** for browser automation against the React frontend, with the backend running in **mock mode** (`--mock` flag). All 25 backend task resolvers use mock variants that return canned responses instead of connecting to real robots via SSH.

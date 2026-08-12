@@ -293,6 +293,28 @@
 | Input | Wait after adding a robot |
 | Expected Result | Success notification disappears after 5 seconds |
 
+## TC-ROB-011: Single Shared SSE Connection with Multiple Robots (E2E)
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Test Target | Verify the frontend opens exactly one SSE connection regardless of robot count (frontend single shared connection, `documents/design/sse-manager.md` 6.4) |
+| Precondition | Solution with 4 robots created via API; E2E mock backend running |
+| Input | Open the solution in the workspace, navigate to Robots tab, wait for robot cards |
+| Expected Result | `performance.getEntriesByType("resource")` contains exactly **1** entry whose name matches `/api/sse` |
+| Verification Point | SSE connection count == 1; all 4 robot cards visible with data (SSE events delivered over the shared connection) |
+
+## TC-ROB-012: SSE Connection Count Unchanged After Adding Robot (E2E)
+
+| Item | Value |
+|------|-------|
+| Priority | High |
+| Test Target | Verify adding a robot does not open an additional SSE connection |
+| Precondition | Solution open in workspace with 1 robot |
+| Input | Add a second robot via the Add Robot modal, wait for it to appear |
+| Expected Result | SSE connection count remains exactly 1 |
+| Verification Point | `performance.getEntriesByType("resource")` `/api/sse` entry count stays 1 before and after adding the robot |
+
 ## Backend Service Unit Tests
 
 ### TC-SOL-SVC-001 ~ TC-SOL-SVC-023: SolutionService Core Tests

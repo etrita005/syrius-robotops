@@ -140,14 +140,14 @@
 | **输入** | `buildParams({ robotIp: "192.168.1.10" })` |
 | **预期结果** | `sudo === true`, `retryCount === 1` |
 
-### TC-FIX-005: commandTimeout 默认 120000ms
+### TC-FIX-005: commandTimeout 默认 1800000ms
 
 **测试目标**：验证默认命令超时。
 
 | 项 | 值 |
 |----|-----|
 | **输入** | `buildParams({ robotIp: "192.168.1.10" })` |
-| **预期结果** | `commandTimeout === 120000` |
+| **预期结果** | `commandTimeout === 1800000` |
 
 ### TC-FIX-006: Mock 返回成功
 

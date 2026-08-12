@@ -434,6 +434,17 @@
 | **Expected Result** | Route file imports only `Hono`, `randomUUID`, and the `SseManager` type |
 | **Verification Point** | No imports from `memStore/`, `services/taskFlowEngine/`, or `services/robotService.js` |
 
+### TC-SSE-047: Frontend uses a single shared SSE connection
+
+| Item | Value |
+|------|-------|
+| **Test Target** | Verify the frontend consumes all events through one shared `EventSource` (FR-SSE-013, `documents/design/sse-manager.md` 6.4) |
+| **Precondition** | E2E mock backend running; solution with 4 robots |
+| **Input** | Open solution, navigate to Robots tab, wait for robot cards to render |
+| **Expected Result** | Exactly 1 SSE connection to `/api/sse`; robot cards receive real-time data over it |
+| **Verification Point** | Browser resource entries matching `/api/sse` count == 1; all robot cards visible |
+| **E2E Mapping** | TC-ROB-011, TC-ROB-012 in `documents/test/solution_management_test_cases.md` (`src/e2e-test/tests/robot-management.spec.ts`) |
+
 ---
 
 ## 6. Legacy Compatibility and Migration Tests
@@ -625,6 +636,13 @@ const robotService = new RobotService(
 cd src/backend
 npm install
 npm test
+```
+
+`npm test` runs `npx tsx --test --test-force-exit src/test.ts`. `--test-force-exit` is required because the pino worker transport (created at module load in `src/logger/index.ts`) holds permanent pipe handles; without it the process never exits after the suite finishes. Run a subset with `--test-name-pattern`:
+
+```bash
+cd src/backend
+npx tsx --test --test-name-pattern "SSE" --test-force-exit src/test.ts
 ```
 
 All new test cases are added to the existing `src/backend/src/test.ts` file, following the existing test organization patterns.

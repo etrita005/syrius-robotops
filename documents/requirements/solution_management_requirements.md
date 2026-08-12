@@ -570,13 +570,13 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 - 缓存支持按 key 前缀批量删除（`deleteByPrefix`），用于解决方案删除/关闭时的级联清理。
 - 缓存值格式为 `{ info: RobotBasicInfo, fetchedAt: string }`，其中 `fetchedAt` 为 ISO 8601 时间戳。
 - mem_store DAG 执行器通过 `registerDagExecutor` 注册，当前实现为 `fetch-robot-info` 类型，通过 SSH 连接机器人获取 `RobotBasicInfo`。
-- 缓存更新时自动通过 SSE 向订阅该 key 的前端客户端推送 `{ key, value, type: "update" }` 事件。
+- 缓存更新时通过统一 SSE 端点广播 `memstore/entry-updated` 事件（payload 含 `key`、`value`、`properties`），前端在单条共享连接上按 `key` 过滤接收。
 
 **FR-SOL-027**：MemStore REST API 与 SSE。
 
 - 后端提供 mem_store 只读 RESTful API（`/api/memstore/...`），前端可通过此 API 读取缓存的机器人动态信息。
 - 后端提供统一 SSE 订阅端点（`GET /api/sse`），由共享 `SseManager` 管理（详见 `documents/requirements/sse-manager.md`）。所有模块的事件（含 `memstore/*`、`task-flow-engine/*` 等）通过该端点广播，按事件名命名空间区分。
-- 由于 mem_store key 格式 `robot:{solutionId}/{robotId}` 包含 `/` 字符，所有 mem_store REST API 均使用 query parameter 传递 key（如 `?key=robot:my-solution/robot-abc123`）。
+- 由于 mem_store key 格式 `robot:{solutionId}/{robotId}` 包含 `/` 字符，所有 mem_store REST API 均使用 query parameter 传递 key（如 `?key=robot:my-solution/robot-abc123`）。统一 SSE 端点 `GET /api/sse` 不接受 key 参数，前端通过单条共享连接接收全部事件并按 key 过滤。
 - SSE 连接维护心跳（每 30 秒发送 `ping` 事件），连接断开时自动清理资源。
 
 ---

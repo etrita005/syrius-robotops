@@ -75,6 +75,7 @@ syrius-robotops/
 - Development with watch: `cd src/backend && npx tsx watch src/index.ts`
 - Mock mode: `cd src/backend && npx tsx src/index.ts --mock`
 - Unit/integration tests: `npm --workspace backend run test`
+  - The script runs as `npx tsx --test --test-force-exit src/test.ts`. `--test-force-exit` is required because the pino worker transport (created at module load in `src/logger/index.ts`) holds permanent handles; without it the process never exits after the suite finishes. Run a subset: `cd src/backend && npx tsx --test --test-name-pattern "SSE" --test-force-exit src/test.ts`
 
 ### Frontend
 
@@ -155,3 +156,19 @@ After any non-trivial code change (feature addition, modification, deletion, ref
 3. **Sync test code**: Ensure unit tests (`src/backend/src/test.ts` etc.) and E2E tests (`src/e2e-test/tests/`) cover the changed behavior. Add new tests for new functionality, update existing tests for changed behavior, and remove tests for removed functionality.
 
 4. **E2E test update scope**: When test cases in `documents/test/` change, the corresponding E2E test specs in `src/e2e-test/tests/` MUST be updated to match. E2E test case IDs (e.g., `TC-E2E-SOL-001`) should map to documented test cases.
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as GitHub issues, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.

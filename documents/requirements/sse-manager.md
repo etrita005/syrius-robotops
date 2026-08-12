@@ -140,11 +140,12 @@ This requirement does **not** cover frontend consumption logic, which remains th
   - `RobotCacheEventHandler` iterates over `memStore.listCaches()` and sends one `memstore/entry-current` event per cached entry.
   - `TaskFlowEngine` iterates over its in-memory flow records and sends one `task-flow-engine/flow-current` event per active flow.
 
-### FR-SSE-013: Backward Compatibility During Migration
+### FR-SSE-013: Single Shared Frontend Connection
 
-- During the migration period, the existing endpoints (`/api/sse?key=` and `/api/flows/events`) may remain functional but are marked deprecated.
-- The unified endpoint `/api/sse` is the canonical endpoint for all new frontend code.
-- The two legacy SSE Manager implementations are removed once all consumers are migrated.
+- The frontend must consume all SSE events through a **single** `EventSource` connected to the unified endpoint `GET /api/sse`.
+- Consumers subscribe by event name (TaskFlow events) or by memstore key (MemStore events); the shared connection dispatches events to the matching subscribers.
+- The connection is opened on the first subscription and closed when the last subscription is released (reference counting).
+- No frontend code may create more than one `EventSource` at the application level; connection count must be independent of the number of robots or tasks displayed.
 
 ---
 

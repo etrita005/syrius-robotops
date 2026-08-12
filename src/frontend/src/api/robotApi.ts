@@ -1,5 +1,9 @@
 import { get, post, del } from "./client.js";
 import {
+  subscribeMemStoreKey as subscribeSharedMemStoreKey,
+  type MemStoreSseEventData,
+} from "./sseClient.js";
+import {
   StoredRobotData,
   CreateRobotInput,
   RobotWithBasicInfoResponse,
@@ -125,51 +129,7 @@ export async function queryMemStoreCaches(properties?: Record<string, unknown>):
 
 export function subscribeMemStoreKey(
   key: string,
-  onData: (data: { key: string; value: unknown; type: string; properties?: Record<string, unknown> }) => void
+  onData: (data: MemStoreSseEventData) => void
 ): () => void {
-  const eventSource = new EventSource(`/api/sse?key=${encodeURIComponent(key)}`);
-
-  const handleCurrent = (event: MessageEvent) => {
-    try {
-      const parsed = JSON.parse(event.data);
-      const payload = parsed.payload ?? parsed;
-      if (payload.key !== key) return;
-      onData({ key: payload.key, value: payload.value, type: "current", properties: payload.properties });
-    } catch {
-      // ignore parse errors
-    }
-  };
-
-  const handleUpdated = (event: MessageEvent) => {
-    try {
-      const parsed = JSON.parse(event.data);
-      const payload = parsed.payload ?? parsed;
-      if (payload.key !== key) return;
-      onData({ key: payload.key, value: payload.value, type: "update", properties: payload.properties });
-    } catch {
-      // ignore parse errors
-    }
-  };
-
-  const handleDeleted = (event: MessageEvent) => {
-    try {
-      const parsed = JSON.parse(event.data);
-      const payload = parsed.payload ?? parsed;
-      if (payload.key !== key) return;
-      onData({ key: payload.key, value: undefined, type: "deleted" });
-    } catch {
-      // ignore parse errors
-    }
-  };
-
-  eventSource.addEventListener("memstore/entry-current", handleCurrent);
-  eventSource.addEventListener("memstore/entry-updated", handleUpdated);
-  eventSource.addEventListener("memstore/entry-deleted", handleDeleted);
-
-  return () => {
-    eventSource.removeEventListener("memstore/entry-current", handleCurrent);
-    eventSource.removeEventListener("memstore/entry-updated", handleUpdated);
-    eventSource.removeEventListener("memstore/entry-deleted", handleDeleted);
-    eventSource.close();
-  };
+  return subscribeSharedMemStoreKey(key, onData);
 }

@@ -5257,10 +5257,10 @@ describe("System Maintenance - FixBrokenPackagesTask", () => {
     assert.equal(params.retryCount, 1);
   });
 
-  it("TC-FIX-005: commandTimeout defaults to 120000", () => {
+  it("TC-FIX-005: commandTimeout defaults to 1800000", () => {
     const task = new TestableFixBrokenPackagesTask();
     const params = task.testBuildParams({ robotIp: "192.168.1.10" });
-    assert.equal(params.commandTimeout, 120000);
+    assert.equal(params.commandTimeout, 1800000);
   });
 
   it("TC-FIX-006: MockFixBrokenPackagesTask returns success", async () => {
