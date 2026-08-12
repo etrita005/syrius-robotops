@@ -7,7 +7,7 @@ import {
   clickSidebarTab,
 } from "../fixtures/test-fixture.js";
 
-test.describe.skip("Robot Management", () => {
+test.describe("Robot Management", () => {
   test.describe.configure({ mode: "serial" });
 
   let solutionId: string;
