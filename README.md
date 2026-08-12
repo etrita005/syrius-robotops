@@ -1,7 +1,5 @@
 # RobotOps Studio
 
-> **NOTE:** This branch is currently configured to run the **Mini-Program License Test Interface**. The standard RobotOps Studio UI (Solutions, Artifacts, Robots, Tasks, System Logs) has been replaced with a single-purpose license test page. The backend API, TaskFlow engine, and ObjectStore services remain unchanged. See `documents/requirements/license_test_requirements.md` for details.
-
 Robot Commissioning & Operations Studio — a field robot management and upgrade tool designed for FAE (Field Application Engineers).
 
 ## Project Overview

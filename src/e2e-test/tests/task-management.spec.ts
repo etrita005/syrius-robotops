@@ -8,7 +8,7 @@ import {
 } from "../fixtures/test-fixture.js";
 import assert from "node:assert/strict";
 
-test.describe.skip("Task Management", () => {
+test.describe("Task Management", () => {
   test.describe.configure({ mode: "serial" });
 
   let solutionId: string;
@@ -493,7 +493,7 @@ test.describe.skip("Task Management", () => {
   });
 });
 
-test.describe.skip("Deploy GGR3 Config", () => {
+test.describe("Deploy GGR3 Config", () => {
   test.describe.configure({ mode: "serial" });
 
   let solutionId: string;

@@ -4,7 +4,7 @@ import {
   expectHeaderTabActive,
 } from "../fixtures/test-fixture.js";
 
-test.describe.skip("System Logs", () => {
+test.describe("System Logs", () => {
   test("TC-E2E-SL-001: System Logs page renders", async ({ appPage }) => {
     await navigateToSystemLogs(appPage);
 
