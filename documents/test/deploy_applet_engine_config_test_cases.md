@@ -128,7 +128,7 @@
 | 优先级 | 中 |
 | 前置条件 | 同 TC-E2E-AE-001 |
 | 步骤 | 打开 CreateTaskModal，留在 Type 步骤 |
-| 预期 | `Robot selection: Multiple robots` 文本计数从 4 增加到 5；先前的四个任务类型（Upgrade BUP / Movebase Disk Cleanup / Upgrade Movebase / Apply Alpha2 Map）仍可见。 |
+| 预期 | `Robot selection: Multiple robots` 文本计数为 13（当前全部多机器人任务类型总数）；其中 `Deploy AppletEngine Config` 及既有任务类型（Upgrade BUP / Movebase Disk Cleanup / Upgrade Movebase / Apply Alpha2 Map 等）均可见。 |
 
 ---
 

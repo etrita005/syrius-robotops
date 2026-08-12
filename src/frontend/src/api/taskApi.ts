@@ -1,4 +1,5 @@
 import { get, post, del } from "./client.js";
+import { subscribeSseEvents } from "./sseClient.js";
 import type { FlowSummary, FlowType } from "../types/task.js";
 
 export interface CreateFlowInput {
@@ -71,30 +72,7 @@ export async function batchDelete(ids: string[]): Promise<void> {
 export function subscribeTaskEvents(
   onEvent: (event: string, data: Record<string, unknown>) => void
 ): () => void {
-  const eventSource = new EventSource("/api/sse");
-
-  const handleMessage = (event: MessageEvent) => {
-    try {
-      const parsed = JSON.parse(event.data);
-      if (parsed.type === "ping") return;
-      const payload = parsed.payload ?? parsed;
-      onEvent(event.type === "message" ? "unknown" : event.type, payload);
-    } catch {
-      // ignore parse errors
-    }
-  };
-
-  eventSource.addEventListener("task-flow-engine/flow-current", handleMessage);
-  eventSource.addEventListener("task-flow-engine/flow-created", handleMessage);
-  eventSource.addEventListener("task-flow-engine/flow-updated", handleMessage);
-  eventSource.addEventListener("task-flow-engine/flow-completed", handleMessage);
-  eventSource.addEventListener("task-flow-engine/flow-removed", handleMessage);
-  eventSource.addEventListener("task-flow-engine/task-updated", handleMessage);
-  eventSource.addEventListener("task-flow-engine/task-result", handleMessage);
-  eventSource.addEventListener("task-flow-engine/error-handling-started", handleMessage);
-  eventSource.addEventListener("task-flow-engine/error-handling-completed", handleMessage);
-
-  return () => {
-    eventSource.close();
-  };
+  return subscribeSseEvents((eventType, data) => {
+    onEvent(eventType === "message" ? "unknown" : eventType, data);
+  });
 }

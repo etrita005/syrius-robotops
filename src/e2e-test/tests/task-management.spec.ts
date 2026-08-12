@@ -118,8 +118,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 9 multi-robot task types should show "Multiple robots" (after Install Dragonball3 firmware was added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
+    // All 13 multi-robot task types should show "Multiple robots" (after Install Dragonball3 firmware was added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(13);
 
     // Verify the single-robot task type is present
     await expect(modal.getByText("Robot selection: Single robot")).toBeVisible();
@@ -257,8 +257,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 9 task types should show "Multiple robots" (after Install Dragonball3 firmware was added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
+    // All 13 task types should show "Multiple robots" (after Install Dragonball3 firmware was added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(13);
   });
 
   test("TC-E2E-TASK-013: Update IoT Gateway Config leads to multi-robot step 2", async ({
@@ -621,7 +621,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Install App")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(13);
   });
 
   test("TC-E2E-TASK-020: Install App leads to multi-robot step 2 then params step", async ({
@@ -677,7 +677,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Install Dragonball3 firmware")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(9);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(13);
   });
 
   test("TC-E2E-DB3-003: Install Dragonball3 firmware leads to multi-robot step 2", async ({

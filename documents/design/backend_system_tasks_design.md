@@ -121,7 +121,7 @@ BaseTask → SshCommandTask → FixBrokenPackagesTask
 |------|------|--------|------|
 | `robotIp` | `string` | (required) | 目标机器人 IP |
 | `robotPort` | `number` | `22` | SSH 端口 |
-| `commandTimeout` | `number` | `120000` | 命令超时(ms，2分钟) |
+| `commandTimeout` | `number` | `1800000` | 命令超时(ms，30分钟) |
 
 继承自 `SshCommandTask` 的其他参数。`sudo` 强制为 `true`，`retryCount` 强制为 `1`。
 

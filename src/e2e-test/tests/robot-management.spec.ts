@@ -173,4 +173,49 @@ test.describe("Robot Management", () => {
       ).toBeVisible();
     }
   });
+
+  test("TC-E2E-ROB-010: Single shared SSE connection with multiple robots", async ({
+    appPage,
+  }) => {
+    const sseRequests: string[] = [];
+    const onRequest = (req: { url: () => string }) => {
+      if (req.url().includes("/api/sse")) sseRequests.push(req.url());
+    };
+    appPage.on("request", onRequest);
+
+    await openSolutionInWorkspace(appPage, "Robot Test Solution");
+    await clickSidebarTab(appPage, "Robots");
+
+    for (const address of ["192.168.1.101", "10.0.0.50"]) {
+      await expect(appPage.getByText(address).first()).toBeVisible({ timeout: 5000 });
+    }
+    await appPage.waitForTimeout(500);
+
+    expect(sseRequests.length).toBe(1);
+  });
+
+  test("TC-E2E-ROB-011: SSE connection count unchanged after adding robot", async ({
+    appPage,
+  }) => {
+    const sseRequests: string[] = [];
+    const onRequest = (req: { url: () => string }) => {
+      if (req.url().includes("/api/sse")) sseRequests.push(req.url());
+    };
+    appPage.on("request", onRequest);
+
+    await openSolutionInWorkspace(appPage, "Robot Test Solution");
+    await clickSidebarTab(appPage, "Robots");
+
+    await appPage.getByRole("button", { name: "Add Robot" }).click();
+    const modal = appPage.getByRole("dialog", { name: "Add Robot" });
+    await expect(modal).toBeVisible();
+
+    await modal.locator("input").first().fill("10.0.0.99");
+    await modal.getByRole("button", { name: "Add" }).click();
+    await appPage.waitForTimeout(500);
+
+    await expect(appPage.getByText("10.0.0.99")).toBeVisible({ timeout: 5000 });
+
+    expect(sseRequests.length).toBe(1);
+  });
 });

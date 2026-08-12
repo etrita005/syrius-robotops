@@ -221,7 +221,7 @@ interface MemStore {
 | GET | `/api/memstore/cache/meta?key={key}` | Read cache metadata |
 | GET | `/api/sse` | Unified SSE endpoint for all module events (managed by shared `SseManager`, see `documents/design/sse-manager.md`) |
 
-> **URL 设计说明**：由于 key 格式 `robot:{solutionId}/{robotId}` 包含 `/` 字符，不能作为 URL 路径参数，因此 mem_store REST API 和 SSE 端点均使用 query parameter 传递 key（如 `?key=robot:my-solution/robot-abc123`）。
+> **URL 设计说明**：由于 key 格式 `robot:{solutionId}/{robotId}` 包含 `/` 字符，不能作为 URL 路径参数，因此 mem_store REST API 使用 query parameter 传递 key（如 `?key=robot:my-solution/robot-abc123`）。统一 SSE 端点 `GET /api/sse` 不接受 key 参数：前端通过单条共享 SSE 连接接收所有事件，按事件负载中的 `key` 字段过滤自己关心的条目（详见 `documents/design/sse-manager.md` 6.4 节）。
 
 ### 3.2 当前激活解决方案管理器（ActiveSolutionManager）
 
@@ -414,7 +414,7 @@ function enrichRobotFromBackend(robot: RobotWithBasicInfoResponse): RobotDefinit
 function generateMockRobotInfo(address: string, alias: string): Omit<RobotDefinition, keyof StoredRobotData>;
 ```
 
-> **Design decision**: 机器人动态信息（model、SN 等）由后端通过 SSH 协议从机器人获取，并通过 mem_store 缓存。前端首次通过 `/robots/info` 获取全量数据，之后为每个机器人订阅 mem_store SSE（key 为 `robot:{solutionId}/{robotId}`）接收实时更新推送。当后端 SSH 获取失败或缓存尚未就绪时，前端仍使用 `generateMockRobotInfo()` 生成兜底数据。`enrichRobotFromBackend` 函数优先使用后端返回的 basicInfo，缺失字段用 mock 数据补充。仅 `alias`、`address` 和 `port` 可编辑/持久化，所有动态字段只读。
+> **Design decision**: 机器人动态信息（model、SN 等）由后端通过 SSH 协议从机器人获取，并通过 mem_store 缓存。前端首次通过 `/robots/info` 获取全量数据，之后通过单条共享 SSE 连接（`GET /api/sse`）订阅 mem_store 事件，按 key（`robot:{solutionId}/{robotId}` 及 `${...}/sw`）过滤接收每台机器人的实时更新推送，SSE 连接数恒为 1，不随机器人数量增长。当后端 SSH 获取失败或缓存尚未就绪时，前端仍使用 `generateMockRobotInfo()` 生成兜底数据。`enrichRobotFromBackend` 函数优先使用后端返回的 basicInfo，缺失字段用 mock 数据补充。仅 `alias`、`address` 和 `port` 可编辑/持久化，所有动态字段只读。
 
 ---
 
@@ -1095,9 +1095,9 @@ function bumpPatchVersion(version: string): string {
 | 7. Local settings persistence | `localStorage` | Active solution ID, recent solutions list, and UI preferences are persisted in browser `localStorage`. |
 | 8. Artifact ref count atomicity | Simple implementation (optimistic lock) | ETag-based read-modify-write with up to 5 retries; no distributed locks or transactions. Managed by backend ArtifactService. |
 | 9. Checksum algorithm | SHA-256 | Used for artifact deduplication and integrity verification. |
-| 10. Robot info acquisition | Backend SSH + mem_store cache + SSE | Robot dynamic info (model, SN, etc.) is fetched via SSH by the backend and cached in mem_store. Frontend subscribes to per-robot SSE for real-time updates. Mock data (`generateMockRobotInfo`) serves as fallback when SSH fails or cache is not yet ready. |
+| 10. Robot info acquisition | Backend SSH + mem_store cache + SSE | Robot dynamic info (model, SN, etc.) is fetched via SSH by the backend and cached in mem_store. The frontend subscribes through a single shared SSE connection (`GET /api/sse`) and filters events by memstore key; connection count stays 1 regardless of robot count. Mock data (`generateMockRobotInfo`) serves as fallback when SSH fails or cache is not yet ready. |
 | 11. Robot editability | Only `alias`, `address` and `port` | Only alias, address (host part) and port are user-editable and persisted. Users input address in `<host>:<port>` format; the system parses and stores host and port separately. All other fields are dynamically fetched and read-only. |
 | 12. Solution/Robot business logic | Backend services | Business logic (validation, ID generation, address parsing, dedup, version bumping) runs in backend `SolutionService` and `RobotService`. Frontend API clients are thin wrappers. |
 | 13. Mem_store key format | `robot:{solutionId}/{robotId}` | Namespace prefix `robot:` avoids collision with other resource types. `/` separator expresses hierarchy. Supports `deleteByPrefix("robot:{solutionId}/")` for solution-level cleanup. |
-| 14. Mem_store REST API key passing | Query parameter (`?key=...`) | Since keys contain `/`, they cannot be used as URL path segments. All mem_store REST endpoints and SSE endpoint accept key via query parameter. |
+| 14. Mem_store REST API key passing | Query parameter (`?key=...`) | Since keys contain `/`, they cannot be used as URL path segments. Mem_store REST endpoints accept key via query parameter; the unified SSE endpoint `GET /api/sse` takes no key and broadcasts all events for the frontend to filter by key. |
 | 15. Solution lifecycle cache cleanup | Callback pattern | `SolutionService.onSolutionRemove()` and `SolutionService.onSolutionClose()` callbacks notify `RobotService.removeSolutionCache()` to clean up mem_store entries via `deleteByPrefix()`. |

@@ -379,8 +379,19 @@ export function createSseRoutes(sseManager: SseManager): Hono {
 
 | Legacy Endpoint | Status | Action |
 |-----------------|--------|--------|
-| `GET /api/sse?key=` | Deprecated | Remove after frontend migration |
-| `GET /api/flows/events` | Deprecated | Remove after frontend migration |
+| `GET /api/sse?key=` | Removed | Frontend migrated to a single shared connection; the query parameter is ignored by the route |
+| `GET /api/flows/events` | Removed | Frontend migrated to the unified endpoint |
+
+### 6.4 Frontend Single Shared Connection
+
+The frontend maintains exactly **one** `EventSource` pointing at `GET /api/sse` for the whole application. All consumers multiplex over this connection:
+
+- MemStore consumers (`subscribeMemStoreKey`) register a per-key listener; incoming `memstore/entry-current`, `memstore/entry-updated`, and `memstore/entry-deleted` events are dispatched to the listener whose key matches `payload.key`.
+- TaskFlow consumers (`subscribeTaskEvents`) register a generic listener; all `task-flow-engine/*` events are dispatched by event name.
+- Connection lifecycle is reference-counted: the `EventSource` is opened when the first subscriber registers and closed when the last subscriber unsubscribes.
+- The browser natively reconnects a dropped `EventSource`; after reconnection the backend pushes fresh `memstore/entry-current` / `task-flow-engine/flow-current` state, so subscribers recover without manual resync.
+
+This keeps the number of SSE connections constant (1) regardless of how many robots or tasks are displayed, and avoids exhausting the browser per-host connection limit (6 for HTTP/1.1).
 
 ---
 

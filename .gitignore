@@ -30,4 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Playwright MCP artifacts (page snapshots, console logs)
+.playwright-mcp/
+
+# Local agent skill docs (project docs live in documents/)
+/docs/
+
 .kilo/
