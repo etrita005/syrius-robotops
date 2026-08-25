@@ -22,4 +22,29 @@ export class FixBrokenPackagesTask extends SshCommandTask {
   protected override getSshCommand(_params: ValueMap): string {
     return FIX_COMMAND;
   }
+
+  protected override async onExec(params: ValueMap, context?: ValueMap): Promise<ValueMap> {
+    const host = (params.robotMdnsDomain as string) ?? (params.robotIp as string);
+    const port = (params.robotPort as number) ?? 22;
+
+    this.log.info(
+      { host, port },
+      "FixBrokenPackages: starting — stop cosmos-update-engine, clear dpkg locks, dpkg --configure -a, apt --fix-broken install"
+    );
+
+    try {
+      const result = await super.onExec(params, context);
+      this.log.info(
+        { host, port, exitCode: result.exitCode },
+        "FixBrokenPackages: succeeded"
+      );
+      return result;
+    } catch (err) {
+      this.log.warn(
+        { host, port, err: err instanceof Error ? err.message : String(err) },
+        "FixBrokenPackages: failed (will be ignored if ignoreFailure is set)"
+      );
+      throw err;
+    }
+  }
 }

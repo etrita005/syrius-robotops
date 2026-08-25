@@ -59,8 +59,21 @@ const UPGRADE_MOVEBASE_DAG: DagDefinition = {
       },
       provides: ["transfer_done"],
     },
-    upgrade: {
+    fix_broken: {
       requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "FixBrokenPackagesTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          ignoreFailure: { value: true },
+        },
+        results: { done: "fix_broken_done" },
+      },
+      provides: ["fix_broken_done"],
+    },
+    upgrade: {
+      requires: ["robotIp", "robotPort", "fix_broken_done"],
       resolver: {
         name: "UpgradeMovebaseTask",
         params: {
