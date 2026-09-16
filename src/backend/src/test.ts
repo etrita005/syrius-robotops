@@ -1263,6 +1263,14 @@ import {
   MockDeployGGR3ConfigTask,
   MockDeleteGGR3ConfigTask,
 } from "./tasks/index.js";
+import {
+  TransferAlgorithmConfigTask,
+  UpdateAlgorithmConfigTask,
+  DeleteAlgorithmConfigTask,
+  MockTransferAlgorithmConfigTask,
+  MockUpdateAlgorithmConfigTask,
+  MockDeleteAlgorithmConfigTask,
+} from "./tasks/index.js";
 import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir as osTmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
@@ -1670,6 +1678,218 @@ describe("Deploy GGR3 Config tasks", () => {
     assert.equal(typeof MockTransferGGR3ConfigTask, "function");
     assert.equal(typeof MockDeployGGR3ConfigTask, "function");
     assert.equal(typeof MockDeleteGGR3ConfigTask, "function");
+  });
+});
+
+class TestableUpdateAlgorithmConfigTask extends UpdateAlgorithmConfigTask {
+  public command(params: ValueMap = {}): string {
+    return this.getSshCommand(params);
+  }
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableDeleteAlgorithmConfigTask extends DeleteAlgorithmConfigTask {
+  public command(params: ValueMap = {}): string {
+    return this.getSshCommand(params);
+  }
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableTransferAlgorithmConfigTask extends TransferAlgorithmConfigTask {
+  public lastSeenLocalFilePath: string | undefined;
+  public superCalled = false;
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+  // Stub the SFTP path by overriding the parent SshFileTransferTask.onExec.
+  // This is invoked via `super.onExec(augmentedParams, context)` from
+  // TransferAlgorithmConfigTask.onExec, so we observe the augmented localFilePath.
+  public stubbedSuperOnExec(params: ValueMap): ValueMap {
+    this.superCalled = true;
+    this.lastSeenLocalFilePath = params.localFilePath as string;
+    return {
+      done: true,
+      success: true,
+      bytesTransferred: 0,
+      localChecksum: "",
+      remoteChecksum: "",
+      integrityVerified: true,
+    };
+  }
+}
+
+// Patch SshFileTransferTask.prototype.onExec for instances of
+// TestableTransferAlgorithmConfigTask only, mirroring the AppletEngine/GGR3 stubs.
+function installTransferAlgorithmConfigStub(): () => void {
+  const parentProto = Object.getPrototypeOf(TransferAlgorithmConfigTask.prototype) as {
+    onExec: (params: ValueMap, context?: ValueMap) => Promise<ValueMap>;
+  };
+  const original = parentProto.onExec;
+  parentProto.onExec = async function (
+    this: TestableTransferAlgorithmConfigTask | object,
+    params: ValueMap,
+    context?: ValueMap
+  ) {
+    if (this instanceof TestableTransferAlgorithmConfigTask) {
+      return this.stubbedSuperOnExec(params);
+    }
+    return original.call(this, params, context);
+  };
+  return () => {
+    parentProto.onExec = original;
+  };
+}
+
+describe("Update Algorithm Config tasks", () => {
+  let restoreTransferStub: (() => void) | undefined;
+
+  beforeEach(() => {
+    restoreTransferStub = installTransferAlgorithmConfigStub();
+  });
+
+  afterEach(() => {
+    restoreTransferStub?.();
+    restoreTransferStub = undefined;
+  });
+
+  it("TC-UAC-001: UpdateAlgorithmConfigTask builds the unzip + chown command with sudo", () => {
+    const task = new TestableUpdateAlgorithmConfigTask();
+    const cmd = task.command({});
+
+    // The zip contains a top-level config_tree folder, so extraction must
+    // target the parent rdconf directory.
+    const fragments = [
+      "unzip -o /tmp/algorithm_config_package.zip -d /opt/cosmos/etc/rdconf",
+      "chown -R cosmos:cosmos /opt/cosmos/etc/rdconf/config_tree",
+    ];
+    let cursor = 0;
+    for (const f of fragments) {
+      const idx = cmd.indexOf(f, cursor);
+      assert.ok(idx !== -1, `fragment missing or out of order: ${f}`);
+      cursor = idx + f.length;
+    }
+
+    // Negative assertion: must NOT extract directly into config_tree
+    // (that would create config_tree/config_tree).
+    assert.equal(
+      cmd.includes("-d /opt/cosmos/etc/rdconf/config_tree"),
+      false,
+      "Must not extract directly into the config_tree directory"
+    );
+
+    // Negative assertion: must NOT clear the target directory before extraction.
+    assert.equal(
+      cmd.includes("rm -rf /opt/cosmos/etc/rdconf"),
+      false,
+      "Target config tree must not be cleared before extraction"
+    );
+
+    // Negative assertion: must NOT restart any service or reboot the robot.
+    assert.equal(
+      cmd.includes("systemctl"),
+      false,
+      "Update Algorithm Config must not restart any service"
+    );
+    assert.equal(
+      cmd.includes(" reboot"),
+      false,
+      "Update Algorithm Config must not reboot the robot"
+    );
+
+    const built = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(built.sudo, true);
+    assert.equal(built.commandTimeout, 60000);
+    assert.equal(built.retryCount, 1);
+  });
+
+  it("TC-UAC-002: DeleteAlgorithmConfigTask returns the cleanup command and forces sudo", () => {
+    const task = new TestableDeleteAlgorithmConfigTask();
+    const cmd = task.command({});
+    assert.equal(cmd, "rm -f /tmp/algorithm_config_package.zip");
+    const built = task.params({ robotIp: "192.168.1.10" });
+    assert.equal(built.sudo, true);
+  });
+
+  it("TC-UAC-003: TransferAlgorithmConfigTask hardcodes the remote target path", () => {
+    const task = new TestableTransferAlgorithmConfigTask();
+    const built = task.params({
+      robotIp: "192.168.1.10",
+      localFilePath: "/tmp/x.zip",
+    });
+    assert.equal(built.remoteFilePath, "/tmp/algorithm_config_package.zip");
+    assert.equal(built.sudo, true);
+  });
+
+  it("TC-UAC-004: TransferAlgorithmConfigTask resolves artifact via getArtifactPath and forwards localFilePath", async () => {
+    const task = new TestableTransferAlgorithmConfigTask();
+    const tmpDir = mkdtempSync(pathJoin(osTmpdir(), "ac-getpath-"));
+    const stubArtifactPath = pathJoin(tmpDir, "algorithm_config_package.zip");
+    writeFileSync(stubArtifactPath, "stub-zip-content");
+    let receivedArtifactId: string | undefined;
+    const artifactService = {
+      async getArtifactPath(artifactId: string): Promise<string> {
+        receivedArtifactId = artifactId;
+        return stubArtifactPath;
+      },
+    };
+
+    const result = await task.exec(
+      { robotIp: "192.168.1.10", artifactId: "art-1" },
+      { artifactService }
+    );
+
+    assert.equal(result.success, true);
+    assert.equal(task.superCalled, true, "super.onExec should be invoked");
+    assert.equal(receivedArtifactId, "art-1");
+    assert.equal(
+      task.lastSeenLocalFilePath,
+      stubArtifactPath,
+      "localFilePath should equal the path returned by getArtifactPath"
+    );
+  });
+
+  it("TC-UAC-005: TransferAlgorithmConfigTask falls through to super when artifactId/service is absent", async () => {
+    const task = new TestableTransferAlgorithmConfigTask();
+    const tmpDir = mkdtempSync(pathJoin(osTmpdir(), "ac-fallthrough-"));
+    const localFilePath = pathJoin(tmpDir, "x.zip");
+    writeFileSync(localFilePath, "stub");
+
+    const result = await task.exec({
+      robotIp: "192.168.1.10",
+      localFilePath,
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(task.superCalled, true);
+    assert.equal(task.lastSeenLocalFilePath, localFilePath);
+  });
+
+  it("TC-UAC-006: Mock Update Algorithm Config tasks return success quickly", async () => {
+    const transferMock = new MockTransferAlgorithmConfigTask();
+    const updateMock = new MockUpdateAlgorithmConfigTask();
+    const deleteMock = new MockDeleteAlgorithmConfigTask();
+
+    const [t, u, x] = await Promise.all([
+      transferMock.exec({ robotIp: "192.168.1.10", artifactId: "a" }),
+      updateMock.exec({ robotIp: "192.168.1.10" }),
+      deleteMock.exec({ robotIp: "192.168.1.10" }),
+    ]);
+    assert.equal(t.success, true);
+    assert.equal(u.success, true);
+    assert.equal(x.success, true);
+  });
+
+  it("TC-UAC-007: tasks/index.ts exports all six Update Algorithm Config task classes", () => {
+    assert.equal(typeof TransferAlgorithmConfigTask, "function");
+    assert.equal(typeof UpdateAlgorithmConfigTask, "function");
+    assert.equal(typeof DeleteAlgorithmConfigTask, "function");
+    assert.equal(typeof MockTransferAlgorithmConfigTask, "function");
+    assert.equal(typeof MockUpdateAlgorithmConfigTask, "function");
+    assert.equal(typeof MockDeleteAlgorithmConfigTask, "function");
   });
 });
 

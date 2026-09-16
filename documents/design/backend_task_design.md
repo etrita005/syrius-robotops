@@ -1243,3 +1243,88 @@ Same as `SshCommandTask`.
 
 - Hardcoded command: `rm -f /tmp/dragonball3_package.deb`
 - Uses `-f` (force) to silently ignore missing files
+
+---
+
+## 39. TransferAlgorithmConfigTask
+
+### Overview
+
+Resolves the algorithm config artifact storage path from the artifact service and uploads the zip to the robot via SFTP. Used as the `transfer` step of the Update Algorithm Config flow.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID to resolve and transfer |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ getArtifactPath(id): Promise<string> }` | Service to resolve artifact storage path |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/tmp/algorithm_config_package.zip`
+- Uses `artifactService.getArtifactPath(artifactId)` to resolve the local file path directly
+- If `artifactId` or `artifactService` is absent, falls through to `super.onExec()` directly
+- Implementation mirrors `TransferAlpha2MapTask`
+
+---
+
+## 40. UpdateAlgorithmConfigTask
+
+### Overview
+
+Extracts the uploaded algorithm config zip into `/opt/cosmos/etc/rdconf` so that the archive's top-level `config_tree` folder is deployed to `/opt/cosmos/etc/rdconf/config_tree`, then fixes directory ownership to `cosmos:cosmos`. Used as the `update_config` step of the Update Algorithm Config flow.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `60000` (1 min) | Override for config extraction |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`, `retryCount` is forced to `1` because the command mutates remote state and must not be retried without rerunning transfer.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded 2-step command joined by `&&`:
+  1. `unzip -o /tmp/algorithm_config_package.zip -d /opt/cosmos/etc/rdconf` — the zip root contains the `config_tree` folder, so the extraction root is the parent `rdconf` directory (extracting directly into `config_tree` would create `config_tree/config_tree`); same-named files are overwritten
+  2. `chown -R cosmos:cosmos /opt/cosmos/etc/rdconf/config_tree` — fix user and group ownership
+- Does **not** clear the target directory first: files outside the zip's content set remain untouched
+- Does **not** include any `systemctl restart` / `reboot`: no service is restarted by this task
+- The temporary zip is removed by `DeleteAlgorithmConfigTask` after a successful update (or by the errorDag on failure)
+- Mock variant returns a successful SSH-style result without connecting to a robot
+
+---
+
+## 41. DeleteAlgorithmConfigTask
+
+### Overview
+
+Deletes the transferred algorithm config zip (`/tmp/algorithm_config_package.zip`) on the remote robot. Used as the success-flow cleanup step and the errorDag cleanup step of the Update Algorithm Config flow.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. No additional parameters. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -f /tmp/algorithm_config_package.zip`
+- Uses `-f` (force) to silently ignore a missing file, keeping the cleanup idempotent
+- Implementation mirrors `DeleteAppletEngineConfigTask`
