@@ -347,6 +347,65 @@ const APPLY_ALPHA2_MAP_ERROR_DAG: DagDefinition = {
   },
 };
 
+const UPDATE_ALGORITHM_CONFIG_DAG: DagDefinition = {
+  tasks: {
+    transfer: {
+      requires: ["robotIp", "robotPort", "artifactId"],
+      resolver: {
+        name: "TransferAlgorithmConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    update_config: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "UpdateAlgorithmConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "update_done" },
+      },
+      provides: ["update_done"],
+    },
+    delete_package: {
+      requires: ["robotIp", "robotPort", "update_done"],
+      resolver: {
+        name: "DeleteAlgorithmConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "delete_done" },
+      },
+      provides: ["delete_done"],
+    },
+  },
+};
+
+const UPDATE_ALGORITHM_CONFIG_ERROR_DAG: DagDefinition = {
+  tasks: {
+    error_cleanup: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "DeleteAlgorithmConfigTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "error_cleanup_done" },
+      },
+      provides: ["error_cleanup_done"],
+    },
+  },
+};
+
 const UPDATE_IOT_GATEWAY_CONFIG_DAG: DagDefinition = {
   tasks: {
     transfer_config: {
@@ -1101,6 +1160,27 @@ export const TASK_REGISTRY: TaskRegistry = {
         artifactId: {
           type: "artifact",
           label: "Dragonball3 firmware package (.deb)",
+          required: true,
+        },
+      },
+    },
+    {
+      type: "update-algorithm-config",
+      name: "Update Algorithm Config",
+      description:
+        "Update the algorithm config package on selected robots and deploy it to /opt/cosmos/etc/rdconf/config_tree.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to update the algorithm config.",
+      },
+      dag: UPDATE_ALGORITHM_CONFIG_DAG,
+      expectedResults: ["delete_done"],
+      errorDag: UPDATE_ALGORITHM_CONFIG_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "Algorithm config package",
           required: true,
         },
       },
