@@ -25,6 +25,8 @@ DOWNLOAD_ALPHA2_DIR = os.path.join(BASE_DIR, "download-alpha2-map")
 os.makedirs(DOWNLOAD_ALPHA2_DIR, exist_ok=True)
 APP_INSTALL_DIR = os.path.join(BASE_DIR, "app-installation")
 os.makedirs(APP_INSTALL_DIR, exist_ok=True)
+BLACKBOX_DIR = os.path.join(BASE_DIR, "blackbox-log-collection")
+os.makedirs(BLACKBOX_DIR, exist_ok=True)
 UPDATE_ALGORITHM_CONFIG_DIR = os.path.join(BASE_DIR, "update-algorithm-config")
 os.makedirs(UPDATE_ALGORITHM_CONFIG_DIR, exist_ok=True)
 
@@ -1803,6 +1805,208 @@ def page_update_algorithm_config_step4():
     img.save(path)
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
+def page_blackbox_step1():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 1)
+    draw.text((mx + 24, my + 110), "Step 1: Select Task Type", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "The task type determines robot selection mode and parameters.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 158, mx + mw - 24, my + 192), placeholder="Search task types...")
+    types = [
+        ("Upgrade BUP", "Upgrade the BUP firmware on selected robots.", "Multiple robots"),
+        ("Collect Blackbox Logs", "Trigger blackbox log collection and obtain the S3 download link.", "Multiple robots", True),
+        ("Upgrade Movebase", "Upgrade the Movebase software on selected robots.", "Multiple robots"),
+        ("Apply Alpha2 Map", "Apply an Alpha2 format map package.", "Multiple robots"),
+        ("Update IoT Gateway Config", "Update iot-gateway configuration.", "Multiple robots"),
+        ("Download Alpha2 Map", "Download the Alpha2 map package from the selected robot to a local directory.", "Single robot"),
+    ]
+    for i, type_info in enumerate(types):
+        name, desc, mode_label = type_info[0], type_info[1], type_info[2]
+        selected = len(type_info) > 3 and type_info[3]
+        y = my + 208 + i * 68
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 56], fill="white", outline="#0f62fe" if selected else "#c6c6c6", width=2 if selected else 1)
+        if selected:
+            draw.ellipse([mx + 40, y + 16, mx + 56, y + 32], fill="#0f62fe")
+        else:
+            draw.ellipse([mx + 40, y + 16, mx + 56, y + 32], outline="#8d8d8d", width=1)
+        draw.text((mx + 70, y + 8), name, fill="#161616", font=FONT_MD)
+        draw.text((mx + 70, y + 26), desc, fill="#525252", font=FONT_SM)
+        draw.text((mx + 70, y + 40), f"Robot selection: {mode_label}", fill="#8d8d8d", font=FONT_SM)
+    draw_button(draw, (mx + mw - 220, my + mh - 60, mx + mw - 120, my + mh - 28), "Cancel")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+    path = os.path.join(BLACKBOX_DIR, "01_create_task_step1_type.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Blackbox Log Collection: 02 --- Step 2: Select Robots (Multi, checkboxes)
+# ---------------------------------------------------------------------------
+def page_blackbox_step2():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 2)
+    draw.text((mx + 24, my + 110), "Step 2: Select Robots", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "Task type: Collect Blackbox Logs (Multiple robots)", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 150), "Select one or more target robots to collect their blackbox logs.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 174, mx + mw - 24, my + 208), placeholder="Search robots...")
+    robots = [(True, "AGV-01", "192.168.1.101:22", "X100"), (False, "AGV-02", "192.168.1.102:22", "X100"), (False, "AGV-03", "robot-03.local:22", "X200")]
+    draw.rectangle([mx + 24, my + 228, mx + mw - 24, my + 260], fill="#f4f4f4", outline="#e0e0e0", width=1)
+    draw.rectangle([mx + 40, my + 236, mx + 52, my + 248], fill="#0f62fe")
+    draw.line([mx + 44, my + 240, mx + 47, my + 244, mx + 52, my + 236], fill="white", width=2)
+    draw.text((mx + 62, my + 234), "Select all robots", fill="#161616", font=FONT_SM)
+    for i, (checked, alias, address, model) in enumerate(robots):
+        y = my + 268 + i * 44
+        fill = "white" if i % 2 == 0 else "#fafafa"
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 40], fill=fill, outline="#e0e0e0", width=1)
+        cb_x, cb_y = mx + 44, y + 10
+        if checked and i == 0:
+            draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], fill="#0f62fe")
+            draw.line([cb_x + 4, cb_y + 8, cb_x + 7, cb_y + 12, cb_x + 12, cb_y + 4], fill="white", width=2)
+        else:
+            draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], outline="#8d8d8d", width=1)
+        draw.text((mx + 100, y + 10), alias, fill="#161616", font=FONT_SM)
+        draw.text((mx + 220, y + 10), address, fill="#525252", font=FONT_SM)
+        draw.text((mx + 380, y + 10), model, fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + mh - 80), "1 robot selected", fill="#525252", font=FONT_SM)
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+    path = os.path.join(BLACKBOX_DIR, "02_create_task_step2_robots.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Blackbox Log Collection: 03 --- Step 3: Configure Params (region + processes)
+# ---------------------------------------------------------------------------
+def page_blackbox_step3():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 90, 640, 620
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 3)
+    draw.text((mx + 24, my + 108), "Step 3: Configure Parameters", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "Task: Collect Blackbox Logs", fill="#525252", font=FONT_SM)
+
+    y = my + 168
+    draw.text((mx + 44, y), "Region *", fill="#161616", font=FONT_MD)
+    draw.rectangle([mx + 44, y + 22, mx + 220, y + 52], fill="white", outline="#8d8d8d", width=1)
+    draw.text((mx + 52, y + 28), "cn", fill="#161616", font=FONT_SM)
+    draw.text((mx + 190, y + 28), "\u25bc", fill="#161616", font=FONT_SM)
+
+    y = y + 76
+    draw.text((mx + 44, y), "Processes *", fill="#161616", font=FONT_MD)
+    draw.text((mx + 44, y + 22), "Select one or more robot processes whose logs should be collected.", fill="#525252", font=FONT_SM)
+    procs = [
+        "algorithm", "assisted_teleops", "charging_external_device",
+        "cleaning_external_device", "cosmos_update_engine",
+        "emergency_stop_device", "gadgetman", "handle_device",
+        "holter", "lifting_external_device", "motion_controller_server",
+        "solorc", "vrs",
+    ]
+    row_h = 30
+    for i, name in enumerate(procs):
+        py = y + 50 + i * row_h
+        cb_x, cb_y = mx + 48, py + 7
+        if name in ("gadgetman", "solorc"):
+            draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], fill="#0f62fe")
+            draw.line([cb_x + 4, cb_y + 8, cb_x + 7, cb_y + 12, cb_x + 12, cb_y + 4], fill="white", width=2)
+        else:
+            draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], outline="#8d8d8d", width=1)
+        draw.text((mx + 76, py + 2), name, fill="#161616", font=FONT_SM)
+
+    draw.text((mx + 44, my + mh - 96), "2 selected", fill="#525252", font=FONT_SM)
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+    path = os.path.join(BLACKBOX_DIR, "03_create_task_step3_params.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Blackbox Log Collection: 04 --- Step 4: Confirm and Create
+# ---------------------------------------------------------------------------
+def page_blackbox_step4():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 150, 600, 500
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 4)
+    draw.text((mx + 24, my + 110), "Step 4: Confirm", fill="#161616", font=FONT_MD)
+    fields = [
+        ("Task Type", "Collect Blackbox Logs"),
+        ("Target Robots", "AGV-01 (192.168.1.101:22)"),
+        ("Region", "cn"),
+        ("Processes", "gadgetman,solorc"),
+    ]
+    fy = my + 160
+    for label, value in fields:
+        draw.text((mx + 24, fy), label + ":", fill="#525252", font=FONT_MD)
+        draw.text((mx + 200, fy), value, fill="#161616", font=FONT_MD)
+        fy += 40
+    draw.text((mx + 24, fy + 10), "Are you sure you want to create this task?", fill="#161616", font=FONT_MD)
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Create", bg="#0f62fe", fg="white")
+    path = os.path.join(BLACKBOX_DIR, "04_create_task_step4_confirm.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Blackbox Log Collection: 05 --- Task Result Details (S3 download link)
+# ---------------------------------------------------------------------------
+def page_blackbox_result_details():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 250, 90, 700, 620
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Task Result Details", fill="#161616", font=FONT_LG)
+    draw.text((mx + 24, my + 66), "Task: Collect Blackbox Logs    Robots: AGV-01    State: COMPLETED", fill="#525252", font=FONT_MD)
+
+    fields = [
+        ("done", "true"),
+        ("deviceId", "M000000000000"),
+        ("region", "cn"),
+        ("processNames", "gadgetman, solorc"),
+        ("cloudTaskID", "2026-0907-1030"),
+        ("blackBoxTaskID", "2026-0907-1030_M000000000000"),
+        ("s3Url", "s3://blackbox-report-context-fws-cn-cn-northwest-1/2026-0907-1030/M000000000000/M000000000000.zip"),
+        ("s3LsCommand", "aws s3 --profile blackbox-cn-northwest-1 ls s3://blackbox-report-...zip"),
+        ("s3CpCommand", "aws s3 --profile blackbox-cn-northwest-1 cp s3://blackbox-report-...zip ."),
+    ]
+    fy = my + 100
+    draw.rectangle([mx + 24, fy, mx + mw - 24, fy + 34], fill="#e0e0e0")
+    draw.text((mx + 36, fy + 9), "collect_logs", fill="#161616", font=FONT_MD)
+    fy += 44
+    for label, value in fields:
+        draw.text((mx + 36, fy + 4), label, fill="#525252", font=FONT_SM)
+        draw.text((mx + 180, fy + 4), value, fill="#161616", font=FONT_SM)
+        if value.startswith("s3://") or value.startswith("aws s3"):
+            draw_button(draw, (mx + mw - 140, fy, mx + mw - 40, fy + 24), "Copy", bg="#e0e0e0", fg="#161616")
+        fy += 34
+    path = os.path.join(BLACKBOX_DIR, "05_task_result_details.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -1843,6 +2047,11 @@ if __name__ == "__main__":
     page_app_install_step2()
     page_app_install_step3()
     page_app_install_step4()
+    page_blackbox_step1()
+    page_blackbox_step2()
+    page_blackbox_step3()
+    page_blackbox_step4()
+    page_blackbox_result_details()
 
     # Update Algorithm Config (sub-module, special task)
     page_update_algorithm_config_step1()

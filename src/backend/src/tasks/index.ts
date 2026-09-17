@@ -102,3 +102,5 @@ export { UninstallL4TDownloaderTask } from "./real/uninstallL4TDownloaderTask.js
 export { MockUninstallL4TDownloaderTask } from "./mock/mockUninstallL4TDownloaderTask.js";
 export { FixBrokenPackagesTask } from "./real/fixBrokenPackagesTask.js";
 export { MockFixBrokenPackagesTask } from "./mock/mockFixBrokenPackagesTask.js";
+export { CollectBlackboxLogTask } from "./real/collectBlackboxLogTask.js";
+export { MockCollectBlackboxLogTask } from "./mock/mockCollectBlackboxLogTask.js";

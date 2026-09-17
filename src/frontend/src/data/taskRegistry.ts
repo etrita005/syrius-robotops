@@ -4,7 +4,7 @@ export interface RobotSelection {
 }
 
 export interface TaskParamDescriptor {
-  type: "artifact" | "text" | "number" | "select" | "checkbox";
+  type: "artifact" | "text" | "number" | "select" | "checkbox" | "multiselect";
   label: string;
   required: boolean;
   description?: string;
@@ -449,6 +449,56 @@ const UPDATE_IOT_GATEWAY_CONFIG_DAG: DagDefinition = {
   },
 };
 
+const COLLECT_BLACKBOX_LOGS_DAG: DagDefinition = {
+  tasks: {
+    fetch_info: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "GetRobotBasicInfoTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { robotInfo: "robotInfo" },
+      },
+      provides: ["robotInfo"],
+    },
+    collect_logs: {
+      requires: ["robotInfo", "region", "procList"],
+      resolver: {
+        name: "CollectBlackboxLogTask",
+        params: {
+          robotInfo: "robotInfo",
+          region: "region",
+          procList: "procList",
+        },
+        results: {
+          done: "collect_done",
+          deviceId: "collect_deviceId",
+          region: "collect_region",
+          processNames: "collect_processNames",
+          cloudTaskID: "collect_cloudTaskID",
+          blackBoxTaskID: "collect_blackBoxTaskID",
+          s3Url: "collect_s3Url",
+          s3LsCommand: "collect_s3Ls",
+          s3CpCommand: "collect_s3Cp",
+        },
+      },
+      provides: [
+        "collect_done",
+        "collect_deviceId",
+        "collect_region",
+        "collect_processNames",
+        "collect_cloudTaskID",
+        "collect_blackBoxTaskID",
+        "collect_s3Url",
+        "collect_s3Ls",
+        "collect_s3Cp",
+      ],
+    },
+  },
+};
+
 const DOWNLOAD_ALPHA2_MAP_DAG: DagDefinition = {
   tasks: {
     download: {
@@ -889,6 +939,22 @@ const FIX_ALPHA19_OTA_DAG: DagDefinition = {
   },
 };
 
+const BLACKBOX_PROCESS_LIST: string[] = [
+  "cosmos_update_engine",
+  "assisted_teleops",
+  "charging_external_device",
+  "cleaning_external_device",
+  "emergency_stop_device",
+  "handle_device",
+  "holter",
+  "lifting_external_device",
+  "motion_controller_server",
+  "solorc",
+  "gadgetman",
+  "vrs",
+  "algorithm",
+];
+
 export const TASK_REGISTRY: TaskRegistry = {
   version: "1.0.0",
   taskTypes: [
@@ -996,6 +1062,48 @@ export const TASK_REGISTRY: TaskRegistry = {
       dag: UPDATE_IOT_GATEWAY_CONFIG_DAG,
       expectedResults: ["reboot_done"],
       params: {},
+    },
+    {
+      type: "collect-blackbox-logs",
+      name: "Collect Blackbox Logs",
+      description:
+        "Trigger blackbox log collection for selected robots and obtain the S3 download link.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to collect their blackbox logs.",
+      },
+      dag: COLLECT_BLACKBOX_LOGS_DAG,
+      expectedResults: [
+        "collect_done",
+        "collect_deviceId",
+        "collect_region",
+        "collect_processNames",
+        "collect_cloudTaskID",
+        "collect_blackBoxTaskID",
+        "collect_s3Url",
+        "collect_s3Ls",
+        "collect_s3Cp",
+      ],
+      params: {
+        region: {
+          type: "select",
+          label: "Region",
+          required: true,
+          defaultValue: "cn",
+          description:
+            "Robot cloud region. cn for mainland China, ap for overseas.",
+          options: ["cn", "ap"],
+        },
+        procList: {
+          type: "multiselect",
+          label: "Processes",
+          required: true,
+          description:
+            "Select one or more robot processes whose logs should be collected.",
+          options: BLACKBOX_PROCESS_LIST,
+        },
+      },
     },
     {
       type: "download-alpha2-map",

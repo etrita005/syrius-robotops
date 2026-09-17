@@ -530,6 +530,48 @@ export default function CreateTaskModal({
               ))}
             </Select>
           )}
+          {paramDesc.type === "multiselect" && (
+            <div style={{ maxHeight: "200px", overflow: "auto", border: `1px solid ${borderLight}` }}>
+              {(paramDesc.options ?? []).map((opt) => {
+                const selectedValues = (params[paramKey] ?? "")
+                  .split(",")
+                  .filter(Boolean);
+                const isSelected = selectedValues.includes(opt);
+                return (
+                  <div
+                    key={opt}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "0.5rem 0.75rem",
+                      borderBottom: `1px solid ${borderRow}`,
+                      cursor: "pointer",
+                    }}
+                    onClick={() => {
+                      const next = new Set(selectedValues);
+                      if (next.has(opt)) next.delete(opt);
+                      else next.add(opt);
+                      setParams({ ...params, [paramKey]: Array.from(next).join(",") });
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      readOnly
+                      style={{ marginRight: "0.75rem" }}
+                      aria-label={`Select process ${opt}`}
+                    />
+                    <span style={{ fontSize: "0.875rem" }}>{opt}</span>
+                  </div>
+                );
+              })}
+              {params[paramKey] && (
+                <p style={{ padding: "0.5rem 0.75rem", color: textSecondary, fontSize: "0.8125rem" }}>
+                  {params[paramKey].split(",").filter(Boolean).length} selected
+                </p>
+              )}
+            </div>
+          )}
           {paramDesc.type === "checkbox" && (
             <Checkbox
               id={`param-${paramKey}`}

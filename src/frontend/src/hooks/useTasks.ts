@@ -176,6 +176,8 @@ export function useTasks(solutionId: string | null) {
         finishedAt: f.finishedAt,
         taskStates: f.taskStates,
         input: f.input,
+        results: f.results,
+        taskResults: f.taskResults,
       })),
     [flows, robotMap, tick]
   );
