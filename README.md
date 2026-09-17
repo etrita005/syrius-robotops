@@ -12,7 +12,7 @@ RobotOps Studio provides a unified interface for managing multiple robots in the
 |--------|-------------|
 | **Solution Management** | Top-level organizational unit. All sub-resources (robots, upgrades, maps, configs, diagnostics, logs) belong to a solution. CRUD, clone, export/import (ZIP), active solution context, recent solutions. |
 | **Artifact Management** | Global shared resource store for immutable large files (firmware, maps, etc.). Upload with SHA-256 deduplication, reference counting, artifact selector for cross-module use. |
-| **Task Flow Engine** | DAG-based task execution engine (powered by `flowed`). Create, pause, resume, stop task flows. Built-in resolvers: SshCommandTask, GetRobotBasicInfoTask. SSE real-time status updates. Persistence and crash recovery for user flows. |
+| **Task Flow Engine** | DAG-based task execution engine (powered by `flowed`). Create, pause, resume, stop task flows. Built-in resolvers: SshCommandTask, GetRobotBasicInfoTask, CollectBlackboxLogTask (MQTT-based blackbox log collection). SSE real-time status updates. Persistence and crash recovery for user flows. |
 
 ### Architecture
 
@@ -278,7 +278,7 @@ All commands run from the `src/` workspace root:
 ```bash
 cd src
 
-npm run test:e2e           # Run all 40 tests (auto-starts servers)
+npm run test:e2e           # Run all 74 tests (auto-starts servers)
 npm run test:e2e:headed    # Run with browser visible
 npm run test:e2e:debug     # Run in debug mode (step-through)
 ```
@@ -311,8 +311,8 @@ Tests are organized by business module, mapping to `documents/test/` test cases:
 | Test Suite | File | Tests | Test Case IDs |
 |-----------|------|-------|--------------|
 | Solution Management | `tests/solution-management.spec.ts` | 7 | TC-E2E-SOL-001 ~ 007 |
-| Robot Management | `tests/robot-management.spec.ts` | 9 | TC-E2E-ROB-001 ~ 009 |
-| Task Management | `tests/task-management.spec.ts` | 6 | TC-E2E-TASK-001 ~ 006 |
+| Robot Management | `tests/robot-management.spec.ts` | 11 | TC-E2E-ROB-001 ~ 009 + extras |
+| Task Management | `tests/task-management.spec.ts` | 38 | TC-E2E-TASK-001 ~ 020, AE/GGR3/DB3/UAC/BBL suites |
 | Artifact Management | `tests/artifact-management.spec.ts` | 5 | TC-E2E-ART-001 ~ 005 |
 | System Logs | `tests/system-logs.spec.ts` | 7 | TC-E2E-SL-001 ~ 007 |
 | Cross-Module | `tests/cross-module.spec.ts` | 6 | TC-E2E-CROSS-001 ~ 006 |
@@ -327,9 +327,10 @@ Shared fixtures and API utility helpers are in `fixtures/test-fixture.ts`.
 | Artifact Management | TC-ART-001 ~ TC-ART-015 | Upload, deduplication, refCount, delete protection, audit |
 | Task Flow Engine | TC-TFE-001 ~ TC-TFE-035 | Flow lifecycle, SSE, persistence, recovery, resolver registry |
 | Cross-Module | TC-CROSS-001 ~ TC-CROSS-005 | Solution delete → refCount decrement, clone → refCount increment |
-| E2E (Playwright) | TC-E2E-SOL/ROB/TASK/ART/SL/CROSS | 40 browser-based tests against mock backend |
+| Blackbox Log Collection | TC-BBL-* | Protocol helpers, region config, task validation, mock result, flow integration, registration |
+| E2E (Playwright) | TC-E2E-SOL/ROB/TASK/ART/SL/CROSS/BBL | 74 browser-based tests against mock backend |
 
-Test case documents: `documents/test/solution_management_test_cases.md`, `documents/test/artifact_management_test_cases.md`, `documents/test/task_flow_engine_test_cases.md`, `documents/test/cross_module_test_cases.md`
+Test case documents: `documents/test/solution_management_test_cases.md`, `documents/test/artifact_management_test_cases.md`, `documents/test/task_flow_engine_test_cases.md`, `documents/test/cross_module_test_cases.md`, `documents/test/blackbox_log_collection_test_cases.md`
 
 ## Generating the User Manual
 

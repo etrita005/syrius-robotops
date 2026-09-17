@@ -161,7 +161,7 @@ class TaskFlowEngine {
 
 ```typescript
 interface TaskFlowEngineOptions {
-  completedFlowTtlMs?: number;   // 默认: 30 * 60 * 1000 (30 分钟)
+  completedFlowTtlMs?: number;   // 默认: 7 * 24 * 60 * 60 * 1000 (7 天)
   cleanupIntervalMs?: number;    // 默认: 5 * 60 * 1000 (5 分钟)
 }
 ```
@@ -838,7 +838,7 @@ private computeExpectedResults(record: FlowRecord): string[] {
 ### 10.1 配置参数
 
 ```typescript
-const DEFAULT_TTL_MS = 30 * 60 * 1000;       // 30 分钟
+const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;       // 7 天
 const DEFAULT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;  // 5 分钟
 ```
 

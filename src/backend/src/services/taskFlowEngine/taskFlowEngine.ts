@@ -80,7 +80,7 @@ function getTaskCodes(dag: FlowSpec): string[] {
   return Object.keys(dag.tasks ?? {});
 }
 
-const DEFAULT_TTL_MS = 30 * 60 * 1000;
+const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
 export class TaskFlowEngine implements ISseManagerEventHandler {

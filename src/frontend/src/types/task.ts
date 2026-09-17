@@ -35,6 +35,8 @@ export interface TaskDefinition {
   finishedAt?: string;
   taskStates: Record<string, TaskState>;
   input?: Record<string, unknown>;
+  results?: Record<string, unknown>;
+  taskResults?: Record<string, Record<string, unknown>>;
 }
 
 // Re-export task registry types for backward compatibility

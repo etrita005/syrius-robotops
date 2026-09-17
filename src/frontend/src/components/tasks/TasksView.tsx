@@ -49,6 +49,34 @@ const STATE_TEXT_COLORS: Record<string, string> = {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
+function formatResultValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function isCopyable(value: string): boolean {
+  return value.startsWith("aws ") || value.startsWith("s3://") || value.startsWith("http");
+}
+
+function extractS3Result(task: TaskDefinition): string | null {
+  const taskResults = task.taskResults ?? {};
+  for (const fields of Object.values(taskResults)) {
+    const s3Url = (fields as Record<string, unknown> | undefined)?.s3Url;
+    if (typeof s3Url === "string" && s3Url.startsWith("s3://") && s3Url.length > 0) {
+      return s3Url;
+    }
+  }
+  const results = task.results ?? {};
+  for (const value of Object.values(results)) {
+    if (typeof value === "string" && value.startsWith("s3://") && value.endsWith(".zip")) {
+      return value;
+    }
+  }
+  return null;
+}
+
 export default function TasksView({ solutionId, onBackToSolutions }: TasksViewProps) {
   const { activeMeta } = useActiveSolution();
   const {
@@ -76,11 +104,46 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TaskDefinition | null>(null);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [detailTarget, setDetailTarget] = useState<TaskDefinition | null>(null);
   const { showToast } = useToast();
 
   const bgPending = useThemeColor("#e0e0e0", "#525252");
   const textSecondary = useThemeColor("#525252", "#c6c6c6");
   const textTertiary = useThemeColor("#6f6f6f", "#a8a8a8");
+
+  const copyText = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast("success", "Copied", `${label} copied to clipboard.`);
+    } catch {
+      showToast("error", "Copy failed", "Clipboard is not available in this context.", 0);
+    }
+  };
+
+  const renderResultSummary = (t: TaskDefinition) => {
+    if (t.state !== "COMPLETED") return t.resultSummary;
+    const s3Url = extractS3Result(t);
+    if (!s3Url) return t.resultSummary;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", alignItems: "flex-start" }}>
+        <span style={{ fontSize: "0.75rem", color: textSecondary }}>{t.resultSummary}</span>
+        <span
+          title="Copy S3 download URL"
+          onClick={() => copyText(s3Url, "S3 URL")}
+          style={{
+            fontSize: "0.75rem",
+            fontFamily: "monospace",
+            color: "#0f62fe",
+            wordBreak: "break-all",
+            cursor: "pointer",
+            textDecoration: "underline",
+          }}
+        >
+          {s3Url}
+        </span>
+      </div>
+    );
+  };
 
   useEffect(() => {
     if (error) {
@@ -277,10 +340,15 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
     robotAliases: t.robotAliases.join(", ") || "--",
     taskName: t.taskName,
     state: renderStateTag(t.state),
-    resultSummary: t.resultSummary,
+    resultSummary: renderResultSummary(t),
     elapsedTime: t.elapsedTime,
     actions: (
       <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", alignItems: "center" }}>
+        {(t.state === "COMPLETED" || t.state === "FAILED") && (
+          <Button kind="ghost" size="sm" onClick={() => setDetailTarget(t)}>
+            Details
+          </Button>
+        )}
         {getActionsForState(t.state).map((action) => {
           const isPending = pendingActions.has(t.id);
           return (
@@ -508,6 +576,115 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
           </p>
         </div>
       </Modal>
+
+      <Modal
+        open={detailTarget !== null}
+        modalHeading="Task Result Details"
+        size="lg"
+        passiveModal
+        onRequestClose={() => setDetailTarget(null)}
+      >
+        <div className="modal-content-enter">
+          {detailTarget && <TaskResultDetails task={detailTarget} onCopy={showToast} />}
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function TaskResultDetails({
+  task,
+  onCopy,
+}: {
+  task: TaskDefinition;
+  onCopy: (kind: "success" | "error", title: string, message: string, duration?: number) => void;
+}) {
+  const copyValue = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      onCopy("success", "Copied", `${label} copied to clipboard.`);
+    } catch {
+      onCopy("error", "Copy failed", "Clipboard is not available in this context.", 0);
+    }
+  };
+
+  const textSecondary = { color: "#525252" } as const;
+
+  const section = (title: string, fields: [string, string][]) => (
+    <div key={title} style={{ marginBottom: "1.25rem" }}>
+      <p style={{ marginBottom: "0.5rem", fontWeight: 600, fontSize: "0.875rem" }}>{title}</p>
+      {fields.length === 0 ? (
+        <p style={{ color: textSecondary.color, fontSize: "0.8125rem" }}>No result data.</p>
+      ) : (
+        fields.map(([label, value]) => (
+          <div
+            key={label}
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "0.5rem",
+              padding: "0.375rem 0",
+              borderBottom: "1px solid #f0f0f0",
+            }}
+          >
+            <span style={{ minWidth: "180px", color: textSecondary.color, fontSize: "0.8125rem" }}>
+              {label}
+            </span>
+            <span style={{ flex: 1, fontSize: "0.8125rem", wordBreak: "break-all" }}>{value}</span>
+            {isCopyable(value) && (
+              <Button kind="ghost" size="sm" onClick={() => copyValue(value, label)}>
+                Copy
+              </Button>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  const resultSections: { title: string; fields: [string, string][] }[] = [];
+  const taskResults = task.taskResults ?? {};
+  if (Object.keys(taskResults).length > 0) {
+    for (const [taskCode, fields] of Object.entries(taskResults)) {
+      resultSections.push({
+        title: taskCode,
+        fields: Object.entries(fields ?? {}).map(([key, value]) => [key, formatResultValue(value)]),
+      });
+    }
+  } else if (task.results && Object.keys(task.results).length > 0) {
+    resultSections.push({
+      title: "Results",
+      fields: Object.entries(task.results).map(([key, value]) => [key, formatResultValue(value)]),
+    });
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: "1.25rem" }}>
+        <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+          <div>
+            <span style={textSecondary}>Task: </span>
+            <span style={{ fontWeight: 500 }}>{task.taskName}</span>
+          </div>
+          <div>
+            <span style={textSecondary}>Robots: </span>
+            <span style={{ fontWeight: 500 }}>{task.robotAliases.join(", ") || "--"}</span>
+          </div>
+          <div>
+            <span style={textSecondary}>State: </span>
+            <span style={{ fontWeight: 500 }}>{task.state}</span>
+          </div>
+          <div>
+            <span style={textSecondary}>Elapsed: </span>
+            <span style={{ fontWeight: 500 }}>{task.elapsedTime}</span>
+          </div>
+        </div>
+      </div>
+      {resultSections.length === 0 ? (
+        <p style={textSecondary}>This task has no result data to display.</p>
+      ) : (
+        resultSections.map((s) => section(s.title, s.fields))
+      )}
     </div>
   );
 }

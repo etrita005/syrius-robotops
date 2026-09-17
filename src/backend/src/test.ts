@@ -5491,3 +5491,308 @@ describe("System Maintenance - FixBrokenPackagesTask", () => {
     assert.equal((result as ValueMap).exitCode, 0);
   });
 });
+
+// ============================================================
+// Blackbox Log Collection: CollectBlackboxLogTask
+// ============================================================
+
+import { CollectBlackboxLogTask, type CollectBlackboxRunOptions } from "./tasks/real/collectBlackboxLogTask.js";
+import { MockCollectBlackboxLogTask } from "./tasks/mock/mockCollectBlackboxLogTask.js";
+import {
+  buildCloudTaskId,
+  buildProcessList,
+  buildRequestPayload,
+  buildTopics,
+  parseTaskFinishedMessage,
+  isCreateTaskSucceeded,
+  buildS3Url,
+  buildS3Commands,
+} from "./services/blackbox/blackboxProtocol.js";
+import {
+  getBlackboxRegionConfig,
+  BLACKBOX_REGIONS,
+} from "./services/blackbox/blackboxConfig.js";
+
+describe("Blackbox protocol helpers", () => {
+  it("TC-BBL-PROTO-001: cloudTaskID uses YYYY-MMDD-HHMM format", () => {
+    const id = buildCloudTaskId(new Date(2026, 8, 7, 10, 30));
+    assert.equal(id, "2026-0907-1030");
+  });
+
+  it("TC-BBL-PROTO-002: process list entries carry log context type", () => {
+    const list = buildProcessList(["gadgetman", "solorc"]);
+    assert.deepEqual(list, [
+      { name: "gadgetman", contextTypes: [{ name: "log" }] },
+      { name: "solorc", contextTypes: [{ name: "log" }] },
+    ]);
+  });
+
+  it("TC-BBL-PROTO-003: request payload has cloudTaskID/action/processList", () => {
+    const payload = JSON.parse(buildRequestPayload("2026-0907-1030", ["gadgetman"])) as Record<string, unknown>;
+    assert.equal(payload.cloudTaskID, "2026-0907-1030");
+    assert.equal(payload.action, "createTask");
+    const processList = payload.processList as Array<{ name: string }>;
+    assert.equal(processList[0].name, "gadgetman");
+  });
+
+  it("TC-BBL-PROTO-004: topics embed the device id", () => {
+    const topics = buildTopics("ABC123");
+    assert.equal(topics.keepalive, "snapshot/blackbox/ABC123/keepalive");
+    assert.equal(topics.request, "snapshot/blackbox/ABC123/request");
+    assert.equal(topics.response, "snapshot/blackbox/ABC123/response");
+  });
+
+  it("TC-BBL-PROTO-005: taskFinished response is parsed", () => {
+    const info = parseTaskFinishedMessage(
+      JSON.stringify({ msg: "taskFinished", cloudTaskID: "2026-0907-1030", taskInfo: { blackBoxTaskID: "BB_01" } })
+    );
+    assert.ok(info);
+    assert.equal(info!.cloudTaskID, "2026-0907-1030");
+    assert.equal(info!.blackBoxTaskID, "BB_01");
+  });
+
+  it("TC-BBL-PROTO-006: create-task-succeeded message is detected, other messages are ignored", () => {
+    assert.equal(isCreateTaskSucceeded(JSON.stringify({ msg: "create task succeeded" })), true);
+    assert.equal(isCreateTaskSucceeded(JSON.stringify({ msg: "other" })), false);
+    assert.equal(parseTaskFinishedMessage(JSON.stringify({ msg: "create task succeeded" })), null);
+    assert.equal(parseTaskFinishedMessage("not json"), null);
+  });
+
+  it("TC-BBL-PROTO-007: s3 url replaces first underscore with device segment", () => {
+    const url = buildS3Url(
+      "s3://blackbox-report-context-fws-cn-cn-northwest-1/",
+      "DID1",
+      "2026-0907-1030_DID1"
+    );
+    assert.equal(url, "s3://blackbox-report-context-fws-cn-cn-northwest-1/2026-0907-1030/DID1/DID1.zip");
+  });
+
+  it("TC-BBL-PROTO-008: s3 ls/cp commands embed the profile", () => {
+    const url = "s3://bucket/path.zip";
+    const commands = buildS3Commands("blackbox-cn-northwest-1", url);
+    assert.equal(commands.s3LsCommand, "aws s3 --profile blackbox-cn-northwest-1 ls s3://bucket/path.zip");
+    assert.equal(commands.s3CpCommand, "aws s3 --profile blackbox-cn-northwest-1 cp s3://bucket/path.zip .");
+  });
+});
+
+describe("Blackbox region config", () => {
+  it("TC-BBL-CFG-001: resolves cn/ap configurations", () => {
+    assert.equal(BLACKBOX_REGIONS.length, 2);
+    const cn = getBlackboxRegionConfig("cn");
+    assert.equal(cn.region, "cn");
+    assert.match(cn.broker, /iot\.cn-northwest-1\.amazonaws\.com\.cn/);
+    assert.equal(cn.s3Profile, "blackbox-cn-northwest-1");
+    assert.match(cn.certDir, /res[\\/]blackbox[\\/]cn$/);
+    const ap = getBlackboxRegionConfig("ap");
+    assert.equal(ap.region, "ap");
+    assert.match(ap.broker, /iot\.ap-northeast-1\.amazonaws\.com/);
+    assert.equal(ap.s3Profile, "blackbox-ap-northeast-1");
+  });
+
+  it("TC-BBL-CFG-002: rejects unsupported regions", () => {
+    assert.throws(() => getBlackboxRegionConfig("eu"), /Unsupported blackbox region: eu/);
+  });
+});
+
+describe("CollectBlackboxLogTask", () => {
+  it("TC-BBL-TASK-001: rejects when robotInfo has no thingsId", async () => {
+    const task = new CollectBlackboxLogTask();
+    await assert.rejects(
+      task.exec({ robotInfo: {}, region: "cn", procList: ["gadgetman"] }, { flowId: "t1" }),
+      /Device ID is missing/
+    );
+  });
+
+  it("TC-BBL-TASK-002: rejects empty process list", async () => {
+    const task = new CollectBlackboxLogTask();
+    await assert.rejects(
+      task.exec({ robotInfo: { thingsId: "DID1" }, region: "cn", procList: [] }, { flowId: "t2" }),
+      /Process list must not be empty/
+    );
+  });
+
+  it("TC-BBL-TASK-003: rejects unsupported region", async () => {
+    const task = new CollectBlackboxLogTask();
+    await assert.rejects(
+      task.exec({ robotInfo: { thingsId: "DID1" }, region: "eu", procList: ["gadgetman"] }, { flowId: "t3" }),
+      /Unsupported blackbox region: eu/
+    );
+  });
+});
+
+class TestableCollectBlackboxLogTask extends CollectBlackboxLogTask {
+  public received: CollectBlackboxRunOptions | undefined;
+  protected override async runCollect(options: CollectBlackboxRunOptions): Promise<Record<string, unknown>> {
+    this.received = options;
+    return {
+      deviceId: options.deviceId,
+      region: options.region,
+      processNames: options.processNames,
+      cloudTaskID: "2026-0907-1030",
+      blackBoxTaskID: "2026-0907-1030_TEST",
+      s3Url: "s3://blackbox-report-context-fws-cn-cn-northwest-1/2026-0907-1030/DID1/TEST.zip",
+      s3LsCommand: "aws s3 --profile blackbox-cn-northwest-1 ls s3://x",
+      s3CpCommand: "aws s3 --profile blackbox-cn-northwest-1 cp s3://x .",
+    };
+  }
+}
+
+describe("CollectBlackboxLogTask runCollect seam", () => {
+  it("TC-BBL-TASK-004: parses comma separated procList and passes through device id", async () => {
+    const task = new TestableCollectBlackboxLogTask();
+    const result = await task.exec(
+      { robotInfo: { thingsId: "DID1" }, region: "cn", procList: "gadgetman, solorc ,,algorithm" },
+      { flowId: "t4" }
+    ) as Record<string, unknown>;
+
+    assert.equal(task.received?.deviceId, "DID1");
+    assert.equal(task.received?.region, "cn");
+    assert.deepEqual(task.received?.processNames, ["gadgetman", "solorc", "algorithm"]);
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.s3Url, "s3://blackbox-report-context-fws-cn-cn-northwest-1/2026-0907-1030/DID1/TEST.zip");
+  });
+});
+
+describe("MockCollectBlackboxLogTask", () => {
+  it("TC-BBL-MOCK-001: returns simulated success result with s3 url and commands", async () => {
+    const task = new MockCollectBlackboxLogTask();
+    const startedAt = Date.now();
+    const result = await task.exec(
+      { robotInfo: { thingsId: "M000000000000" }, region: "cn", procList: ["gadgetman"] },
+      { flowId: "mock-1" }
+    ) as Record<string, unknown>;
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.deviceId, "M000000000000");
+    assert.equal(result.region, "cn");
+    assert.ok(Array.isArray(result.processNames) && (result.processNames as string[]).includes("gadgetman"));
+    assert.ok(typeof result.cloudTaskID === "string" && (result.cloudTaskID as string).length > 0);
+    assert.ok(typeof result.blackBoxTaskID === "string" && (result.blackBoxTaskID as string).length > 0);
+    const s3Url = result.s3Url as string;
+    assert.ok(s3Url.startsWith("s3://blackbox-report-context-fws-cn-cn-northwest-1/"));
+    assert.ok(s3Url.endsWith(".zip"));
+    assert.match(result.s3LsCommand as string, /aws s3 --profile blackbox-cn-northwest-1 ls /);
+    assert.match(result.s3CpCommand as string, /aws s3 --profile blackbox-cn-northwest-1 cp /);
+    assert.ok(elapsedMs >= 1000, `expected ~1.5s delay, got ${elapsedMs}ms`);
+  });
+});
+
+describe("Blackbox - Flow Integration", () => {
+  const buildRegistry = (): ResolverRegistry => {
+    const registry = new ResolverRegistry();
+    registry.register("GetRobotBasicInfoTask", MockGetRobotBasicInfoTask as unknown as TaskResolverClass);
+    registry.register("CollectBlackboxLogTask", MockCollectBlackboxLogTask as unknown as TaskResolverClass);
+    return registry;
+  };
+
+  const buildDag = (): FlowSpec => ({
+    tasks: {
+      fetch_info: {
+        requires: ["robotIp", "robotPort"],
+        provides: ["robotInfo"],
+        resolver: {
+          name: "GetRobotBasicInfoTask",
+          params: { robotIp: "robotIp", robotPort: "robotPort" },
+          results: { robotInfo: "robotInfo" },
+        },
+      },
+      collect_logs: {
+        requires: ["robotInfo", "region", "procList"],
+        provides: [
+          "collect_done", "collect_deviceId", "collect_region", "collect_processNames",
+          "collect_cloudTaskID", "collect_blackBoxTaskID", "collect_s3Url", "collect_s3Ls", "collect_s3Cp",
+        ],
+        resolver: {
+          name: "CollectBlackboxLogTask",
+          params: { robotInfo: "robotInfo", region: "region", procList: "procList" },
+          results: {
+            done: "collect_done",
+            deviceId: "collect_deviceId",
+            region: "collect_region",
+            processNames: "collect_processNames",
+            cloudTaskID: "collect_cloudTaskID",
+            blackBoxTaskID: "collect_blackBoxTaskID",
+            s3Url: "collect_s3Url",
+            s3LsCommand: "collect_s3Ls",
+            s3CpCommand: "collect_s3Cp",
+          },
+        },
+      },
+    },
+  });
+
+  it("TC-BBL-FLOW-001: executes fetch_info + collect_logs DAG and exposes s3 result", async () => {
+    const registry = buildRegistry();
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    try {
+      const summary = await testEngine.createFlow("internal", buildDag(), {
+        robotIp: "192.168.1.10",
+        robotPort: 22,
+        region: "cn",
+        procList: ["gadgetman"],
+      });
+      await waitForFlowComplete(testEngine, summary.id, 15000);
+
+      const flow = testEngine.getFlow(summary.id);
+      assert.ok(flow);
+      assert.equal(flow.state, "COMPLETED");
+      assert.equal(flow.taskStates["fetch_info"], "COMPLETED");
+      assert.equal(flow.taskStates["collect_logs"], "COMPLETED");
+      const collectResult = flow.taskResults?.["collect_logs"] as Record<string, unknown> | undefined;
+      assert.ok(collectResult, "collect_logs task result should exist");
+      assert.equal(collectResult.done, true);
+      const s3Url = collectResult.s3Url as string;
+      assert.ok(s3Url.startsWith("s3://"));
+      assert.ok(s3Url.endsWith(".zip"));
+      assert.match(collectResult.s3CpCommand as string, /aws s3/);
+    } finally {
+      testEngine.destroy();
+    }
+  });
+
+  it("TC-BBL-FLOW-002: fails the flow when collect step throws", async () => {
+    class FailingMockCollectTask extends MockCollectBlackboxLogTask {
+      protected override async onExec(_params: ValueMap): Promise<ValueMap> {
+        throw new Error("Simulated blackbox collection failure");
+      }
+    }
+
+    const registry = buildRegistry();
+    registry.register("CollectBlackboxLogTask", FailingMockCollectTask as unknown as TaskResolverClass);
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    try {
+      const summary = await testEngine.createFlow("internal", buildDag(), {
+        robotIp: "192.168.1.10",
+        robotPort: 22,
+        region: "cn",
+        procList: ["gadgetman"],
+      });
+      await waitForFlowComplete(testEngine, summary.id, 15000);
+
+      const flow = testEngine.getFlow(summary.id);
+      assert.ok(flow);
+      assert.equal(flow.state, "FAILED");
+      assert.equal(flow.taskStates["fetch_info"], "COMPLETED");
+      assert.equal(flow.taskStates["collect_logs"], "FAILED");
+    } finally {
+      testEngine.destroy();
+    }
+  });
+});
+
+describe("Blackbox resolver registration", () => {
+  it("TC-BBL-REG-001: registers CollectBlackboxLogTask", () => {
+    const registry = new ResolverRegistry();
+    registry.register("CollectBlackboxLogTask", CollectBlackboxLogTask as unknown as TaskResolverClass);
+    assert.equal(registry.has("CollectBlackboxLogTask"), true);
+  });
+});
