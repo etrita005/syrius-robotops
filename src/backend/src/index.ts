@@ -64,6 +64,7 @@ import {
   SyncTimeTask, MockSyncTimeTask,
   UninstallL4TDownloaderTask, MockUninstallL4TDownloaderTask,
   FixBrokenPackagesTask, MockFixBrokenPackagesTask,
+  CollectBlackboxLogTask, MockCollectBlackboxLogTask,
 } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
@@ -193,6 +194,7 @@ async function main(): Promise<void> {
     { name: "SyncTimeTask", real: SyncTimeTask, mock: MockSyncTimeTask },
     { name: "UninstallL4TDownloaderTask", real: UninstallL4TDownloaderTask, mock: MockUninstallL4TDownloaderTask },
     { name: "FixBrokenPackagesTask", real: FixBrokenPackagesTask, mock: MockFixBrokenPackagesTask },
+    { name: "CollectBlackboxLogTask", real: CollectBlackboxLogTask, mock: MockCollectBlackboxLogTask },
   ]);
 
   const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);

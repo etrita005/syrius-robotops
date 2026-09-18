@@ -1328,3 +1328,50 @@ Same as `SshCommandTask`.
 - Hardcoded command: `rm -f /tmp/algorithm_config_package.zip`
 - Uses `-f` (force) to silently ignore a missing file, keeping the cleanup idempotent
 - Implementation mirrors `DeleteAppletEngineConfigTask`
+
+---
+
+## 42. CollectBlackboxLogTask
+
+### Overview
+
+Triggers Alpha2 Movebase blackbox log collection for a robot by publishing an MQTT request to the robot's AWS IoT topics (matching the standalone `collect.py` protocol) and waiting for the `taskFinished` response. Produces the S3 download URL and `aws s3` ls/cp commands. The robot uploads the collected log zip to S3 itself; this task never downloads it.
+
+The robot's DeviceID (`--did`) is resolved automatically from the robot's `thingsId`, which is read by the upstream `GetRobotBasicInfoTask` (the DAG chains `fetch_info → collect_logs`).
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `robotInfo` | `object` | (required) | Result of `GetRobotBasicInfoTask`; must carry `thingsId` used as the MQTT DeviceID |
+| `region` | `string` | `"cn"` | Cloud region: `cn` (AWS IoT cn-northwest-1) or `ap` (AWS IoT ap-northeast-1) |
+| `procList` | `string \| string[]` | (required) | Process names to collect, comma-separated string or array; empty is rejected |
+
+### Context Parameters
+
+None.
+
+### Output Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `done` | `true` | Flow completion marker |
+| `success` | `true` | Task success marker |
+| `deviceId` | `string` | Robot DeviceID used for the MQTT topics |
+| `region` | `"cn" \| "ap"` | Resolved region |
+| `processNames` | `string[]` | Normalized process list actually requested |
+| `cloudTaskID` | `string` | Cloud task ID (`YYYY-MMDD-HHMM`) |
+| `blackBoxTaskID` | `string` | Task ID reported by the robot in the `taskFinished` response |
+| `s3Url` | `string` | S3 download URL: `{bucket}{blackBoxTaskID first `_` replaced by `/{deviceId}/`}.zip` |
+| `s3LsCommand` | `string` | `aws s3 --profile {profile} ls {s3Url}` |
+| `s3CpCommand` | `string` | `aws s3 --profile {profile} cp {s3Url} .` |
+
+### Notes
+
+- Direct `BaseTask` subclass (not an SSH/SFTP task); talks to AWS IoT via MQTT over TLS port 8883 using client certificates under `res/blackbox/{cn,ap}` (per-region certs/keys are versioned in this repository for internal distribution).
+- Uses the `mqtt` npm package through `src/backend/src/services/blackbox/blackboxClient.ts`; pure protocol helpers live in `blackboxProtocol.ts`; region constants in `blackboxConfig.ts`.
+- Topics and payload follow `collect.py`: `snapshot/blackbox/{deviceId}/{keepalive|request|response}` with payload `{ cloudTaskID, action: "createTask", processList: [{ name, contextTypes: [{ name: "log" }] }] }`.
+- Waits up to `timeoutMs` (default 6,000,000 ms, i.e. 6000 s, matching the script) for `msg == "taskFinished"`; ignores other response messages after logging.
+- Connect failures retry up to 3 attempts with exponential backoff inside `blackboxClient`.
+- Throws on missing `thingsId`, empty process list, unsupported region, missing cert files, or timeout; `BaseTask` translates the thrown failure when `ignoreFailure` is set.
+- Mock variant (`MockCollectBlackboxLogTask`) simulates success (~1.5 s) and returns a deterministic S3 URL/profile command so flows and E2E can run without a broker.
