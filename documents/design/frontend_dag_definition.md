@@ -123,9 +123,9 @@ input variables ──→ [transfer] ──→ [apply] ──→ [delete_package
 - 解析器：`TransferAlpha2MapTask`, `ApplyAlpha2MapTask`, `DeleteAlpha2MapTask`, `SleepTask`
 - 输入依赖：`robotIp`, `robotPort`, `artifactId`
 - 预期结果：`wait_done`
-- `transfer` 节点将 Alpha2 地图压缩包传输到机器人 `/home/developer/alpha2_map_package.zip`
-- `apply` 节点执行三步操作：清除旧地图 (`rm -rf /opt/cosmos/map/ws/*`)、解压新地图 (`unzip -o`)、修正目录所有权 (`chown -R pivot:pivot`)
-- `delete_package` 节点清理已传输的地图压缩包 (`rm -rf /home/developer/alpha2_map_package.zip`)
+- `transfer` 节点将 Alpha2 地图压缩包传输到机器人 `/tmp/alpha2_map_package.zip`
+- `apply` 节点执行五步操作：清除旧地图 (`rm -rf /opt/cosmos/map/ws/*`)、解压新地图 (`unzip -o`)、修正目录所有权 (`chown -R pivot:pivot`)、删除 SQLite 数据库文件 (`rm /opt/cosmos/map/sqlite/*`)、重启 marie 服务 (`systemctl restart marie.service`)
+- `delete_package` 节点清理已传输的地图压缩包 (`rm -rf /tmp/alpha2_map_package.zip`)
 - `wait` 节点等待 30 秒让 marie 检测并加载新地图 (marie 每 10 秒检查 `/opt/cosmos/map/ws/` 目录更新)
 - 异常 DAG：清理残留地图包
 

@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-本文档定义 "Collect Blackbox Logs"（blackbox 收集日志）功能的测试用例，覆盖后端单元/集成测试与前端 E2E 测试。测试分为纯协议函数测试、任务解析器测试（mock 与参数校验）、flow 集成测试与 UI/E2E 测试。
+本文档定义 "Collect BlackBox Logs"（blackbox 收集日志）功能的测试用例，覆盖后端单元/集成测试与前端 E2E 测试。测试分为纯协议函数测试、任务解析器测试（mock 与参数校验）、flow 集成测试与 UI/E2E 测试。
 
 ---
 
@@ -131,6 +131,32 @@
 
 **预期结果**：传入底层 `collectBlackboxLogs` 的 `processNames === ["gadgetman", "solorc"]`（去空白、过滤空项）
 
+### 2.3.1 设备信息解析（GetBlackboxDeviceInfoTask）
+
+#### TC-BBL-DEV-001: 手动 deviceId 跳过 SSH
+
+**前置条件**：使用 `GetBlackboxDeviceInfoTask`
+
+**测试步骤**：`exec({ deviceId: "MANUAL-DID-1", robotIp: "", robotPort: 22 })`
+
+**预期结果**：返回 `success === true`、`source === "manual"`、`robotInfo.thingsId === "MANUAL-DID-1"`；未发起任何 SSH 连接（可通过对父类 SSH 路径的桩/间谍验证）
+
+#### TC-BBL-DEV-002: deviceId 去空白
+
+**前置条件**：同 TC-BBL-DEV-001
+
+**测试步骤**：`exec({ deviceId: "  MANUAL-DID-1  ", robotIp: "", robotPort: 22 })`
+
+**预期结果**：`robotInfo.thingsId === "MANUAL-DID-1"`
+
+#### TC-BBL-DEV-003: 无手动 deviceId 时回退 SSH
+
+**前置条件**：使用 `MockGetBlackboxDeviceInfoTask`
+
+**测试步骤**：`exec({ deviceId: "", robotIp: "192.168.1.10", robotPort: 22 })`
+
+**预期结果**：走父类 `MockGetRobotBasicInfoTask` 路径，返回完整 `robotInfo`（含 `thingsId`），无 `source: "manual"`
+
 ### 2.4 Mock 任务（MockCollectBlackboxLogTask）
 
 #### TC-BBL-MOCK-001: Mock 返回模拟成功结果
@@ -152,11 +178,11 @@
 
 #### TC-BBL-FLOW-001: 完整两步 DAG（mock）完成且结果含 S3 URL
 
-**前置条件**：ResolverRegistry 注册 `MockGetRobotBasicInfoTask`、`MockCollectBlackboxLogTask`；使用内存 ObjectStore + SpySseManager
+**前置条件**：ResolverRegistry 注册 `MockGetBlackboxDeviceInfoTask`、`MockCollectBlackboxLogTask`；使用内存 ObjectStore + SpySseManager
 
 **测试步骤**：
 1. 按 §5.2 的 DAG（fetch_info + collect_logs）创建 internal flow
-2. input：`{ robotIp: "192.168.1.10", robotPort: 22, region: "cn", procList: ["gadgetman"] }`
+2. input：`{ robotIp: "192.168.1.10", robotPort: 22, deviceId: "", region: "cn", procList: ["gadgetman"] }`
 3. 等待 flow 完成
 
 **预期结果**：
@@ -172,6 +198,20 @@
 **测试步骤**：同 DAG 创建 flow，等待完成
 
 **预期结果**：flow state `FAILED`；`taskStates["collect_logs"] === "FAILED"`
+
+#### TC-BBL-FLOW-003: 手动 device id 的 DAG（mock）
+
+**前置条件**：ResolverRegistry 注册 `MockGetBlackboxDeviceInfoTask`、`MockCollectBlackboxLogTask`
+
+**测试步骤**：
+1. 按 §5.2 的 DAG（fetch_info + collect_logs）创建 internal flow
+2. input：`{ robotIp: "", robotPort: 22, deviceId: "MANUAL-DID-1", region: "cn", procList: ["gadgetman"] }`
+3. 等待 flow 完成
+
+**预期结果**：
+- flow state `COMPLETED`
+- `taskResults["fetch_info"].robotInfo.thingsId === "MANUAL-DID-1"`
+- `taskResults["collect_logs"].deviceId === "MANUAL-DID-1"`（未发生 SSH 查询）
 
 ### 2.6 注册验证
 
@@ -195,7 +235,7 @@
 
 **测试步骤**：
 1. 进入 Tasks 页，打开 Create Task 模态框
-2. 搜索/查看 "Collect Blackbox Logs"
+2. 搜索/查看 "Collect BlackBox Logs"
 
 **预期结果**：类型可见，显示 "Robot selection: Multiple robots"
 
@@ -205,13 +245,13 @@
 
 **测试步骤**：在任务类型步骤统计 "Robot selection: Multiple robots"
 
-**预期结果**：共 15 项（Update Algorithm Config 与 Collect Blackbox Logs 加入后由 13 → 15）
+**预期结果**：共 15 项（Update Algorithm Config 与 Collect BlackBox Logs 加入后由 13 → 15）
 
 ### TC-E2E-BBL-003: 选择类型进入机器人选择步骤
 
 **前置条件**：模态框已打开
 
-**测试步骤**：点击 "Collect Blackbox Logs" → Next
+**测试步骤**：点击 "Collect BlackBox Logs" → Next
 
 **预期结果**：出现 "Select all robots" 与两台测试机器人复选框
 
@@ -233,7 +273,7 @@
 **测试步骤**：进入 Confirm 步骤
 
 **预期结果**：
-- 显示 "Task Type: Collect Blackbox Logs"
+- 显示 "Task Type: Collect BlackBox Logs"
 - 显示选中机器人
 - 显示 "Region: cn"、"Processes: gadgetman, solorc"
 
@@ -243,7 +283,7 @@
 
 **测试步骤**：
 1. 完成向导创建 1 个任务
-2. 任务列表出现 "Collect Blackbox Logs"
+2. 任务列表出现 "Collect BlackBox Logs"
 3. 等待 flow 完成
 
 **预期结果**：任务状态摘要为 Success（mock 下 fetch_info ~3s + collect ~1-2s，等待超时 ≤ 30s）
@@ -257,6 +297,22 @@
 2. 轮询 flow 至 COMPLETED
 
 **预期结果**：`GET /api/flows` 返回的 `taskResults`/`results` 含 `collect_s3Url`、`collect_s3Ls`、`collect_s3Cp`，均以预期前缀/命令开头
+
+### TC-E2E-BBL-008: 手动输入 device id 创建任务
+
+**前置条件**：已创建测试 Solution（可无机器人）；mock backend
+
+**测试步骤**：
+1. 进入 Tasks 页，打开 Create Task 模态框，选择 "Collect BlackBox Logs" → Next
+2. 不勾选任何机器人，在 "Device IDs" 多行文本域输入两个 device id（每行一个）
+3. Next 可用；在 Params 步骤勾选进程；进入 Confirm 步骤
+4. 点击 Create
+
+**预期结果**：
+- 第 2 步中 "Device IDs" 文本域可见，输入后 Next 按钮可用
+- Confirm 步骤显示 "Manual Device IDs: <id1>, <id2>"
+- 创建后任务列表新增 2 条任务（每个 device id 一条），Robot Aliases 列展示对应 device id
+- 任务最终 Success（mock）
 
 ---
 

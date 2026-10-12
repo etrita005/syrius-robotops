@@ -14,7 +14,7 @@ import {
   Breadcrumb,
   BreadcrumbItem,
 } from "@carbon/react";
-import { Grid, List } from "@carbon/react/icons";
+import { Grid, List, SortAscending, SortDescending, ArrowsVertical } from "@carbon/react/icons";
 import { useRobots } from "../../hooks/useRobots.js";
 import { RobotDefinition, formatAddressDisplay, formatInfoValue } from "../../types/robot.js";
 import AddRobotModal from "./AddRobotModal.js";
@@ -29,6 +29,8 @@ interface RobotsViewProps {
 }
 
 type ViewMode = "grid" | "list";
+
+type SortDirection = "none" | "asc" | "desc";
 
 const VIEW_MODE_KEY = "robotops_robots_view_mode";
 
@@ -63,6 +65,7 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
   } = useRobots(solutionId);
 
   const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode);
+  const [sortDir, setSortDir] = useState<SortDirection>("none");
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [addOpen, setAddOpen] = useState(false);
@@ -90,20 +93,29 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
-    if (!term) return robots;
-    return robots.filter(
-      (r) =>
-        r.alias.toLowerCase().includes(term) ||
-        formatAddressDisplay(r.address, r.port).toLowerCase().includes(term) ||
-        r.model.toLowerCase().includes(term) ||
-        r.robotSN.toLowerCase().includes(term)
-    );
-  }, [robots, search]);
+    const matched = term
+      ? robots.filter(
+          (r) =>
+            r.alias.toLowerCase().includes(term) ||
+            formatAddressDisplay(r.address, r.port).toLowerCase().includes(term) ||
+            r.model.toLowerCase().includes(term) ||
+            r.robotSN.toLowerCase().includes(term)
+        )
+      : robots;
+    if (sortDir === "none") return matched;
+    return [...matched].sort((a, b) => {
+      const order = a.alias.localeCompare(b.alias, undefined, { numeric: true, sensitivity: "base" });
+      return sortDir === "asc" ? order : -order;
+    });
+  }, [robots, search, sortDir]);
 
   const handleToggleView = (mode: ViewMode) => {
     setViewMode(mode);
     storeViewMode(mode);
   };
+
+  const cycleSort = () =>
+    setSortDir((d) => (d === "none" ? "asc" : d === "asc" ? "desc" : "none"));
 
   const toggleSelection = (robotId: string) => {
     const next = new Set(selectedIds);
@@ -523,7 +535,21 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
                   Batch Delete ({selectedIds.size})
                 </Button>
               )}
-            <div style={{ marginLeft: "auto", display: "flex", gap: "0.25rem" }}>
+            <div style={{ marginLeft: "auto", display: "flex", gap: "0.25rem", alignItems: "center" }}>
+              <Button
+                kind={sortDir === "none" ? "tertiary" : "primary"}
+                size="sm"
+                renderIcon={
+                  sortDir === "desc"
+                    ? SortDescending
+                    : sortDir === "asc"
+                      ? SortAscending
+                      : ArrowsVertical
+                }
+                onClick={cycleSort}
+              >
+                {sortDir === "none" ? "Sort" : sortDir === "asc" ? "Alias A-Z" : "Alias Z-A"}
+              </Button>
               <Button
                 kind={viewMode === "grid" ? "primary" : "tertiary"}
                 size="sm"

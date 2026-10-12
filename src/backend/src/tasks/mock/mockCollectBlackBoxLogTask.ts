@@ -1,5 +1,5 @@
 import type { ValueMap } from "flowed";
-import { CollectBlackboxLogTask } from "../real/collectBlackboxLogTask.js";
+import { CollectBlackboxLogTask } from "../real/collectBlackBoxLogTask.js";
 import { buildCloudTaskId, parseProcessList } from "../../services/blackbox/blackboxProtocol.js";
 
 const MOCK_BUCKET_CN = "s3://blackbox-report-context-fws-cn-cn-northwest-1/";

@@ -3,11 +3,13 @@ import {
   Modal,
   Button,
   TextInput,
+  TextArea,
   InlineLoading,
   Select,
   SelectItem,
   Checkbox,
 } from "@carbon/react";
+import { SortAscending, SortDescending, ArrowsVertical } from "@carbon/react/icons";
 import type { TaskTypeDefinition } from "../../data/taskRegistry.js";
 import type { StoredRobotData } from "../../types/robot.js";
 import { formatAddressDisplay } from "../../types/robot.js";
@@ -23,12 +25,15 @@ interface CreateTaskModalProps {
   onClose: () => void;
   onCreate: (
     robotIds: string[],
+    manualDeviceIds: string[],
     taskType: TaskTypeDefinition,
     params: Record<string, string>
   ) => Promise<void>;
 }
 
 const STEPS = ["Type", "Robots", "Params", "Confirm"];
+
+type SortDirection = "none" | "asc" | "desc";
 
 export default function CreateTaskModal({
   open,
@@ -56,7 +61,9 @@ export default function CreateTaskModal({
   const [robots, setRobots] = useState<StoredRobotData[]>([]);
   const [robotsLoading, setRobotsLoading] = useState(false);
   const [robotSearch, setRobotSearch] = useState("");
+  const [robotSortDir, setRobotSortDir] = useState<SortDirection>("none");
   const [selectedRobotIds, setSelectedRobotIds] = useState<Set<string>>(new Set());
+  const [manualDeviceIdsText, setManualDeviceIdsText] = useState("");
   const [selectedTaskType, setSelectedTaskType] = useState<TaskTypeDefinition | null>(null);
   const [taskTypeSearch, setTaskTypeSearch] = useState("");
   const [params, setParams] = useState<Record<string, string>>({});
@@ -70,6 +77,7 @@ export default function CreateTaskModal({
     if (open) {
       setStep(1);
       setSelectedRobotIds(new Set());
+      setManualDeviceIdsText("");
       setSelectedTaskType(null);
       const defaultParams = Object.fromEntries(
         taskTypes.flatMap((tt) =>
@@ -82,6 +90,7 @@ export default function CreateTaskModal({
       setError(null);
       setSubmitting(false);
       setRobotSearch("");
+      setRobotSortDir("none");
       setTaskTypeSearch("");
       setArtifactSearch("");
 
@@ -102,13 +111,19 @@ export default function CreateTaskModal({
 
   const filteredRobots = useMemo(() => {
     const term = robotSearch.toLowerCase();
-    if (!term) return robots;
-    return robots.filter(
-      (r) =>
-        r.alias.toLowerCase().includes(term) ||
-        formatAddressDisplay(r.address, r.port).toLowerCase().includes(term)
-    );
-  }, [robots, robotSearch]);
+    const matched = term
+      ? robots.filter(
+          (r) =>
+            r.alias.toLowerCase().includes(term) ||
+            formatAddressDisplay(r.address, r.port).toLowerCase().includes(term)
+        )
+      : robots;
+    if (robotSortDir === "none") return matched;
+    return [...matched].sort((a, b) => {
+      const order = a.alias.localeCompare(b.alias, undefined, { numeric: true, sensitivity: "base" });
+      return robotSortDir === "asc" ? order : -order;
+    });
+  }, [robots, robotSearch, robotSortDir]);
 
   const filteredTaskTypes = useMemo(() => {
     const term = taskTypeSearch.toLowerCase();
@@ -129,6 +144,21 @@ export default function CreateTaskModal({
         a.contentType.toLowerCase().includes(term)
     );
   }, [artifacts, artifactSearch]);
+
+  const manualDeviceIdEnabled = selectedTaskType?.manualDeviceIdInput === true;
+
+  const manualDeviceIds = useMemo(() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const raw of manualDeviceIdsText.split("\n")) {
+      const id = raw.trim();
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        result.push(id);
+      }
+    }
+    return result;
+  }, [manualDeviceIdsText]);
 
   const robotSelectionMode = selectedTaskType?.robotSelection.mode ?? "multiple";
 
@@ -160,6 +190,9 @@ export default function CreateTaskModal({
     }
   };
 
+  const cycleRobotSort = () =>
+    setRobotSortDir((d) => (d === "none" ? "asc" : d === "asc" ? "desc" : "none"));
+
   const handleSelectTaskType = (tt: TaskTypeDefinition) => {
     setSelectedTaskType(tt);
     setSelectedRobotIds(new Set());
@@ -177,7 +210,10 @@ export default function CreateTaskModal({
       case 1:
         return selectedTaskType !== null;
       case 2:
-        return selectedRobotIds.size > 0;
+        return (
+          selectedRobotIds.size > 0 ||
+          (manualDeviceIdEnabled && manualDeviceIds.length > 0)
+        );
       case 3:
         if (!selectedTaskType) return false;
         return Object.entries(selectedTaskType.params)
@@ -207,6 +243,7 @@ export default function CreateTaskModal({
     try {
       await onCreate(
         Array.from(selectedRobotIds),
+        manualDeviceIdEnabled ? manualDeviceIds : [],
         selectedTaskType,
         params
       );
@@ -314,22 +351,41 @@ export default function CreateTaskModal({
     const mode = robotSelectionMode;
     const singleHint = mode === "single"
       ? "Select exactly one target robot for this task type."
-      : "Select one or more target robots from the current solution. You must select at least one robot to proceed.";
+      : manualDeviceIdEnabled
+        ? "Select one or more target robots and/or enter device ids manually below. At least one target is required."
+        : "Select one or more target robots from the current solution. You must select at least one robot to proceed.";
 
     return (
       <div>
         <p style={{ marginBottom: "1rem", color: textSecondary, fontSize: "0.875rem" }}>
           {selectedTaskType?.robotSelection.description ?? singleHint}
         </p>
-        <TextInput
-          id="robot-search-modal"
-          labelText=""
-          hideLabel
-          placeholder="Search robots..."
-          value={robotSearch}
-          onChange={(e) => setRobotSearch(e.target.value)}
-          style={{ marginBottom: "0.75rem" }}
-        />
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.75rem" }}>
+          <div style={{ flex: 1 }}>
+            <TextInput
+              id="robot-search-modal"
+              labelText=""
+              hideLabel
+              placeholder="Search robots..."
+              value={robotSearch}
+              onChange={(e) => setRobotSearch(e.target.value)}
+            />
+          </div>
+          <Button
+            kind={robotSortDir === "none" ? "tertiary" : "primary"}
+            size="sm"
+            renderIcon={
+              robotSortDir === "desc"
+                ? SortDescending
+                : robotSortDir === "asc"
+                  ? SortAscending
+                  : ArrowsVertical
+            }
+            onClick={cycleRobotSort}
+          >
+            {robotSortDir === "none" ? "Sort" : robotSortDir === "asc" ? "Alias A-Z" : "Alias Z-A"}
+          </Button>
+        </div>
         {robotsLoading ? (
           <InlineLoading description="Loading robots..." />
         ) : filteredRobots.length === 0 ? (
@@ -404,6 +460,30 @@ export default function CreateTaskModal({
               {selectedRobotIds.size} robot{selectedRobotIds.size !== 1 ? "s" : ""} selected
             </p>
           </>
+        )}
+        {manualDeviceIdEnabled && (
+          <div
+            style={{
+              marginTop: "1.5rem",
+              paddingTop: "1rem",
+              borderTop: `1px solid ${borderLight}`,
+            }}
+          >
+            <TextArea
+              id="manual-device-ids"
+              labelText="Device IDs"
+              helperText="Optional. Enter one robot device id per line. These targets are collected directly without an SSH query."
+              placeholder={"device-id-1\ndevice-id-2"}
+              rows={4}
+              value={manualDeviceIdsText}
+              onChange={(e) => setManualDeviceIdsText(e.target.value)}
+            />
+            {manualDeviceIds.length > 0 && (
+              <p style={{ marginTop: "0.5rem", color: textSecondary, fontSize: "0.8125rem" }}>
+                {manualDeviceIds.length} device id{manualDeviceIds.length !== 1 ? "s" : ""} entered
+              </p>
+            )}
+          </div>
         )}
       </div>
     );
@@ -622,8 +702,14 @@ export default function CreateTaskModal({
           </div>
           <div style={{ marginBottom: "0.75rem" }}>
             <span style={{ color: textSecondary, fontSize: "0.875rem" }}>Target Robots: </span>
-            <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{robotList}</span>
+            <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{robotList || "(none)"}</span>
           </div>
+          {manualDeviceIds.length > 0 && (
+            <div style={{ marginBottom: "0.75rem" }}>
+              <span style={{ color: textSecondary, fontSize: "0.875rem" }}>Manual Device IDs: </span>
+              <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>{manualDeviceIds.join(", ")}</span>
+            </div>
+          )}
           {paramSummary.map(({ label, value }) => (
             <div key={label} style={{ marginBottom: "0.75rem" }}>
               <span style={{ color: textSecondary, fontSize: "0.875rem" }}>{label}: </span>

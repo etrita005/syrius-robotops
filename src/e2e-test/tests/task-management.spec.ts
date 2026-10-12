@@ -118,7 +118,7 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 15 multi-robot task types should show "Multiple robots" (after Update Algorithm Config and Collect Blackbox Logs were added)
+    // All 15 multi-robot task types should show "Multiple robots" (after Update Algorithm Config and Collect BlackBox Logs were added)
     await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(15);
 
     // Verify the single-robot task type is present
@@ -257,7 +257,7 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 15 task types should show "Multiple robots" (after Update Algorithm Config and Collect Blackbox Logs were added)
+    // All 15 task types should show "Multiple robots" (after Update Algorithm Config and Collect BlackBox Logs were added)
     await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(15);
   });
 
@@ -826,7 +826,7 @@ test.describe("Blackbox Log Collection", () => {
     await deleteSolutionViaAPI(apiURL, solutionId).catch(() => {});
   });
 
-  test("TC-E2E-BBL-001: Collect Blackbox Logs task type appears with multi-robot selection", async ({
+  test("TC-E2E-BBL-001: Collect BlackBox Logs task type appears with multi-robot selection", async ({
     appPage,
   }) => {
     await openSolutionInWorkspace(appPage, "Blackbox Test Solution");
@@ -838,7 +838,7 @@ test.describe("Blackbox Log Collection", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    await expect(modal.getByText("Collect Blackbox Logs")).toBeVisible();
+    await expect(modal.getByText("Collect BlackBox Logs")).toBeVisible();
     await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(15);
   });
 
@@ -854,8 +854,8 @@ test.describe("Blackbox Log Collection", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // Select Collect Blackbox Logs type
-    await modal.locator("div").filter({ hasText: "Collect Blackbox Logs" }).first().click();
+    // Select Collect BlackBox Logs type
+    await modal.getByText("Collect BlackBox Logs", { exact: true }).click();
     await appPage.waitForTimeout(300);
 
     // Robot step
@@ -866,7 +866,7 @@ test.describe("Blackbox Log Collection", () => {
     await appPage.waitForTimeout(500);
 
     // Params step: region select present and process multiselect required
-    await expect(modal.getByText("Region")).toBeVisible();
+    await expect(modal.getByText("Region").first()).toBeVisible();
     await expect(modal.getByText("gadgetman")).toBeVisible();
     await expect(modal.getByRole("button", { name: "Next" })).toBeDisabled();
 
@@ -888,7 +888,7 @@ test.describe("Blackbox Log Collection", () => {
     });
 
     // The S3 url should be shown directly in the task row result cell
-    const row = appPage.locator("tr").filter({ hasText: "Collect Blackbox Logs" }).first();
+    const row = appPage.locator("tr").filter({ hasText: "Collect BlackBox Logs" }).first();
     await expect(row.getByText(/s3:\/\//).first()).toBeVisible();
 
     // Open result details and verify the S3 url is rendered there as well
@@ -916,11 +916,11 @@ test.describe("Blackbox Log Collection", () => {
           dag: {
             tasks: {
               fetch_info: {
-                requires: ["robotIp", "robotPort"],
+                requires: ["robotIp", "robotPort", "deviceId"],
                 provides: ["robotInfo"],
                 resolver: {
-                  name: "GetRobotBasicInfoTask",
-                  params: { robotIp: "robotIp", robotPort: "robotPort" },
+                  name: "GetBlackboxDeviceInfoTask",
+                  params: { robotIp: "robotIp", robotPort: "robotPort", deviceId: "deviceId" },
                   results: { robotInfo: "robotInfo" },
                 },
               },
@@ -958,9 +958,10 @@ test.describe("Blackbox Log Collection", () => {
           input: {
             solutionId: "bbl-sol",
             robotIds: [],
-            taskName: "Collect Blackbox Logs",
+            taskName: "Collect BlackBox Logs",
             robotIp: "192.168.1.10",
             robotPort: 22,
+            deviceId: "",
             region: "cn",
             procList: ["gadgetman"],
           },
@@ -1006,5 +1007,84 @@ test.describe("Blackbox Log Collection", () => {
     assert.ok(s3Url.endsWith(".zip"));
     assert.ok(String(collectResult.s3LsCommand ?? "").startsWith("aws s3 --profile "));
     assert.ok(String(collectResult.s3CpCommand ?? "").startsWith("aws s3 --profile "));
+  });
+
+  test("TC-E2E-BBL-008: create a task with manually entered device ids", async ({ appPage }) => {
+    await openSolutionInWorkspace(appPage, "Blackbox Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    // A task already exists from a previous test, so the header button reads "Create Task".
+    await appPage.getByRole("button", { name: "Create Task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    // Select Collect BlackBox Logs type
+    await modal.getByText("Collect BlackBox Logs", { exact: true }).click();
+    await appPage.waitForTimeout(300);
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    // Robot step: no robot selected, so Next stays disabled until device ids are entered.
+    const deviceIds = modal.getByLabel("Device IDs");
+    await expect(deviceIds).toBeVisible();
+    await expect(modal.getByText("0 robots selected")).toBeVisible();
+    await expect(modal.getByRole("button", { name: "Next" })).toBeDisabled();
+
+    await deviceIds.fill("MANUAL-DID-1\nMANUAL-DID-2");
+    await expect(modal.getByText("2 device ids entered")).toBeVisible();
+    await expect(modal.getByRole("button", { name: "Next" })).toBeEnabled();
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    // Params step
+    await modal.getByText("gadgetman", { exact: true }).click();
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    // Confirm step shows the manual device ids
+    await expect(modal.getByText("Manual Device IDs:")).toBeVisible();
+    await expect(modal.getByText("MANUAL-DID-1, MANUAL-DID-2")).toBeVisible();
+
+    await modal.getByRole("button", { name: "Create" }).click();
+    await appPage.waitForTimeout(1000);
+
+    // One flow is created per device id; the device id is shown as the robot alias.
+    await expect(
+      appPage.locator("tr").filter({ hasText: "MANUAL-DID-1" }).first()
+    ).toBeVisible({ timeout: 15000 });
+    await expect(
+      appPage.locator("tr").filter({ hasText: "MANUAL-DID-2" }).first()
+    ).toBeVisible({ timeout: 15000 });
+  });
+
+  test("TC-E2E-BBL-009: robot list sort button cycles through sort modes", async ({ appPage }) => {
+    await openSolutionInWorkspace(appPage, "Blackbox Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: /^Create (Task|your first task)$/ }).first().click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await modal.getByText("Collect BlackBox Logs", { exact: true }).click();
+    await appPage.waitForTimeout(300);
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    // Default state: no sorting.
+    const sortButton = modal.getByRole("button", { name: "Sort", exact: true });
+    await expect(sortButton).toBeVisible();
+
+    await sortButton.click();
+    await expect(modal.getByRole("button", { name: "Alias A-Z", exact: true })).toBeVisible();
+
+    await modal.getByRole("button", { name: "Alias A-Z", exact: true }).click();
+    await expect(modal.getByRole("button", { name: "Alias Z-A", exact: true })).toBeVisible();
+
+    await modal.getByRole("button", { name: "Alias Z-A", exact: true }).click();
+    await expect(modal.getByRole("button", { name: "Sort", exact: true })).toBeVisible();
   });
 });

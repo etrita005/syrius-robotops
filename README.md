@@ -12,7 +12,7 @@ RobotOps Studio provides a unified interface for managing multiple robots in the
 |--------|-------------|
 | **Solution Management** | Top-level organizational unit. All sub-resources (robots, upgrades, maps, configs, diagnostics, logs) belong to a solution. CRUD, clone, export/import (ZIP), active solution context, recent solutions. |
 | **Artifact Management** | Global shared resource store for immutable large files (firmware, maps, etc.). Upload with SHA-256 deduplication, reference counting, artifact selector for cross-module use. |
-| **Task Flow Engine** | DAG-based task execution engine (powered by `flowed`). Create, pause, resume, stop task flows. Built-in resolvers: SshCommandTask, GetRobotBasicInfoTask, CollectBlackboxLogTask (MQTT-based blackbox log collection). SSE real-time status updates. Persistence and crash recovery for user flows. |
+| **Task Flow Engine** | DAG-based task execution engine (powered by `flowed`). Create, pause, resume, stop task flows. Built-in resolvers: SshCommandTask, GetRobotBasicInfoTask, GetBlackboxDeviceInfoTask (blackbox device id resolution, supports manual device ids without SSH), CollectBlackboxLogTask (MQTT-based blackbox log collection). SSE real-time status updates. Persistence and crash recovery for user flows. |
 
 ### Architecture
 

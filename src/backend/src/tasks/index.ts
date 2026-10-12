@@ -9,6 +9,8 @@ export { MockSshFileTransferTask } from "./mock/mockSshFileTransferTask.js";
 export { GetRobotBasicInfoTask } from "./real/getRobotBasicInfoTask.js";
 export type { RobotBasicInfo } from "./real/getRobotBasicInfoTask.js";
 export { MockGetRobotBasicInfoTask } from "./mock/mockGetRobotBasicInfoTask.js";
+export { GetBlackboxDeviceInfoTask } from "./real/getBlackBoxDeviceInfoTask.js";
+export { MockGetBlackboxDeviceInfoTask } from "./mock/mockGetBlackBoxDeviceInfoTask.js";
 export { GetRobotSoftwareInfoTask } from "./real/getRobotSoftwareInfoTask.js";
 export type { RobotSoftwareInfo } from "./real/getRobotSoftwareInfoTask.js";
 export { MockGetRobotSoftwareInfoTask } from "./mock/mockGetRobotSoftwareInfoTask.js";
@@ -102,5 +104,5 @@ export { UninstallL4TDownloaderTask } from "./real/uninstallL4TDownloaderTask.js
 export { MockUninstallL4TDownloaderTask } from "./mock/mockUninstallL4TDownloaderTask.js";
 export { FixBrokenPackagesTask } from "./real/fixBrokenPackagesTask.js";
 export { MockFixBrokenPackagesTask } from "./mock/mockFixBrokenPackagesTask.js";
-export { CollectBlackboxLogTask } from "./real/collectBlackboxLogTask.js";
-export { MockCollectBlackboxLogTask } from "./mock/mockCollectBlackboxLogTask.js";
+export { CollectBlackboxLogTask } from "./real/collectBlackBoxLogTask.js";
+export { MockCollectBlackboxLogTask } from "./mock/mockCollectBlackBoxLogTask.js";

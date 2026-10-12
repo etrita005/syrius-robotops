@@ -21,6 +21,7 @@ import type { TaskResolverClass } from "flowed";
 import {
   SshCommandTask, MockSshCommandTask,
   GetRobotBasicInfoTask, MockGetRobotBasicInfoTask,
+  GetBlackboxDeviceInfoTask, MockGetBlackboxDeviceInfoTask,
   GetRobotSoftwareInfoTask, MockGetRobotSoftwareInfoTask,
   UpdateRobotBasicInfoTask, MockUpdateRobotBasicInfoTask,
   UpdateRobotSoftwareInfoTask, MockUpdateRobotSoftwareInfoTask,
@@ -150,6 +151,7 @@ async function main(): Promise<void> {
   registerTasks(resolverRegistry, config.runtime.mock, [
     { name: "SshCommandTask", real: SshCommandTask, mock: MockSshCommandTask },
     { name: "GetRobotBasicInfoTask", real: GetRobotBasicInfoTask, mock: MockGetRobotBasicInfoTask },
+    { name: "GetBlackboxDeviceInfoTask", real: GetBlackboxDeviceInfoTask, mock: MockGetBlackboxDeviceInfoTask },
     { name: "GetRobotSoftwareInfoTask", real: GetRobotSoftwareInfoTask, mock: MockGetRobotSoftwareInfoTask },
     { name: "UpdateRobotBasicInfoTask", real: UpdateRobotBasicInfoTask, mock: MockUpdateRobotBasicInfoTask },
     { name: "UpdateRobotSoftwareInfoTask", real: UpdateRobotSoftwareInfoTask, mock: MockUpdateRobotSoftwareInfoTask },

@@ -519,9 +519,9 @@ project/solution 的目标是把现场环境、机器人清单、包版本、配
 - 任务类型名称为 `Apply Alpha2 Map`，可从任务创建向导中选择。
 - 采用单机器人模式，前端为选中的机器人创建独立任务流。
 - 后端执行四步流程：
-  - 传输地图压缩包：从 Artifact Service 下载地图压缩包并通过 SFTP 传输到机器人 `/home/developer/alpha2_map_package.zip`。
-  - 应用地图：通过 SSH 执行以下命令链：清除 `/opt/cosmos/map/ws/*` 旧地图数据 → 解压新地图包到 `/opt/cosmos/map/ws` → 修正目录所有权 `chown -R pivot:pivot /opt/cosmos/map/`。
-  - 清理传输文件：删除机器人上的 `/home/developer/alpha2_map_package.zip`。
+  - 传输地图压缩包：从 Artifact Service 下载地图压缩包并通过 SFTP 传输到机器人 `/tmp/alpha2_map_package.zip`。
+  - 应用地图：通过 SSH 执行以下命令链：清除 `/opt/cosmos/map/ws/*` 旧地图数据 → 解压新地图包到 `/opt/cosmos/map/ws` → 修正目录所有权 `chown -R pivot:pivot /opt/cosmos/map/` → 删除 `/opt/cosmos/map/sqlite/*` 下的数据库文件 → 重启 marie 服务 `systemctl restart marie.service`。
+  - 清理传输文件：删除机器人上的 `/tmp/alpha2_map_package.zip`。
   - 等待 30 秒：marie 每 10 秒检查 `/opt/cosmos/map/ws/` 目录更新，等待 30 秒确保新地图已被加载。
 - 地图应用命令使用 `sudo` 执行。
 - 任务失败时应保留标准任务流失败状态，支持在任务列表中重试。

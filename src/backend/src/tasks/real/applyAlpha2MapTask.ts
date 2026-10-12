@@ -15,6 +15,7 @@ export class ApplyAlpha2MapTask extends SshCommandTask {
       "rm -rf /opt/cosmos/map/ws/*",
       "unzip -o /tmp/alpha2_map_package.zip -d /opt/cosmos/map/ws",
       "chown -R pivot:pivot /opt/cosmos/map/",
+      "rm /opt/cosmos/map/sqlite/*",
       "systemctl restart marie.service",
     ].join(" && ");
   }

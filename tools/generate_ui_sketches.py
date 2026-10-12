@@ -216,9 +216,10 @@ def page_robots_grid_view():
 
     draw_input(draw, (260, 180, 520, 214), placeholder="Search by alias, address, model or SN...")
     draw_button(draw, (540, 180, 660, 214), "Add Robot", bg="#0f62fe", fg="white")
-    draw_button(draw, (810, 180, 950, 214), "Batch Delete (2)", bg="#fa4d56", fg="white")
-    draw_button(draw, (970, 180, 1030, 214), "Grid", bg="#0f62fe", fg="white")
-    draw_button(draw, (1040, 180, 1100, 214), "List")
+    draw_button(draw, (720, 180, 860, 214), "Batch Delete (2)", bg="#fa4d56", fg="white")
+    draw_button(draw, (880, 180, 946, 214), "Sort")
+    draw_button(draw, (966, 180, 1026, 214), "Grid", bg="#0f62fe", fg="white")
+    draw_button(draw, (1036, 180, 1096, 214), "List")
 
     cards = [
         ("AGV-01", "192.168.1.101:22", "X100", "SN123456", "2.3.1"),
@@ -269,9 +270,10 @@ def page_robots_list_view():
 
     draw_input(draw, (260, 180, 520, 214), placeholder="Search by alias, address, model or SN...")
     draw_button(draw, (540, 180, 660, 214), "Add Robot", bg="#0f62fe", fg="white")
-    draw_button(draw, (810, 180, 950, 214), "Batch Delete (2)", bg="#fa4d56", fg="white")
-    draw_button(draw, (970, 180, 1030, 214), "Grid")
-    draw_button(draw, (1040, 180, 1100, 214), "List", bg="#0f62fe", fg="white")
+    draw_button(draw, (720, 180, 860, 214), "Batch Delete (2)", bg="#fa4d56", fg="white")
+    draw_button(draw, (880, 180, 946, 214), "Sort")
+    draw_button(draw, (966, 180, 1026, 214), "Grid")
+    draw_button(draw, (1036, 180, 1096, 214), "List", bg="#0f62fe", fg="white")
 
     y = 240
     draw.rectangle([260, y, W-40, y+36], fill="#e0e0e0")
@@ -727,7 +729,8 @@ def page_create_task_step2():
 
     draw.text((mx + 24, my + 110), "Step 2: Select Robots", fill="#161616", font=FONT_MD)
     draw.text((mx + 24, my + 130), "Task type: Upgrade BUP (Multiple robots)", fill="#525252", font=FONT_SM)
-    draw_input(draw, (mx + 24, my + 158, mx + mw - 24, my + 192), placeholder="Search robots...")
+    draw_input(draw, (mx + 24, my + 158, mx + mw - 140, my + 192), placeholder="Search robots...")
+    draw_button(draw, (mx + mw - 130, my + 158, mx + mw - 24, my + 192), "Sort")
 
     y = my + 208
     draw.rectangle([mx + 24, y, mx + mw - 24, y + 36], fill="#e0e0e0")
@@ -1417,7 +1420,8 @@ def page_download_alpha2_map_step2():
     draw.text((mx + 24, my + 110), "Step 2: Select Robots", fill="#161616", font=FONT_MD)
     draw.text((mx + 24, my + 130), "Task type: Download Alpha2 Map (Single robot)", fill="#525252", font=FONT_SM)
     draw.text((mx + 24, my + 148), "Select exactly one target robot to download the map package from.", fill="#525252", font=FONT_SM)
-    draw_input(draw, (mx + 24, my + 174, mx + mw - 24, my + 208), placeholder="Search robots...")
+    draw_input(draw, (mx + 24, my + 174, mx + mw - 140, my + 208), placeholder="Search robots...")
+    draw_button(draw, (mx + mw - 130, my + 174, mx + mw - 24, my + 208), "Sort")
 
     y = my + 228
     draw.rectangle([mx + 24, y, mx + mw - 24, y + 36], fill="#e0e0e0")
@@ -1575,7 +1579,8 @@ def page_app_install_step2():
     draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 2)
     draw.text((mx + 24, my + 110), "Step 2: Select Robots", fill="#161616", font=FONT_MD)
     draw.text((mx + 24, my + 130), "Task type: Install App (Multiple robots)", fill="#525252", font=FONT_SM)
-    draw_input(draw, (mx + 24, my + 158, mx + mw - 24, my + 192), placeholder="Search robots...")
+    draw_input(draw, (mx + 24, my + 158, mx + mw - 140, my + 192), placeholder="Search robots...")
+    draw_button(draw, (mx + mw - 130, my + 158, mx + mw - 24, my + 192), "Sort")
     robots = [(True, "AGV-01", "192.168.1.101:22", "X100"), (False, "AGV-02", "192.168.1.102:22", "X100"), (False, "AGV-03", "robot-03.local:22", "X200")]
     draw.rectangle([mx + 24, my + 208, mx + mw - 24, my + 240], fill="#f4f4f4", outline="#e0e0e0", width=1)
     draw.rectangle([mx + 40, my + 216, mx + 52, my + 228], fill="#0f62fe")
@@ -1711,7 +1716,8 @@ def page_update_algorithm_config_step2():
     draw.text((mx + 24, my + 110), "Step 2: Select Robots", fill="#161616", font=FONT_MD)
     draw.text((mx + 24, my + 130), "Task type: Update Algorithm Config (Multiple robots)", fill="#525252", font=FONT_SM)
     draw.text((mx + 24, my + 148), "Select one or more target robots to update the algorithm config.", fill="#525252", font=FONT_SM)
-    draw_input(draw, (mx + 24, my + 174, mx + mw - 24, my + 208), placeholder="Search robots...")
+    draw_input(draw, (mx + 24, my + 174, mx + mw - 140, my + 208), placeholder="Search robots...")
+    draw_button(draw, (mx + mw - 130, my + 174, mx + mw - 24, my + 208), "Sort")
     draw.rectangle([mx + 24, my + 228, mx + mw - 24, my + 260], fill="#f4f4f4", outline="#e0e0e0", width=1)
     draw.rectangle([mx + 40, my + 236, mx + 52, my + 248], fill="#0f62fe")
     draw.text((mx + 62, my + 234), "Select all robots", fill="#161616", font=FONT_SM)
@@ -1820,7 +1826,7 @@ def page_blackbox_step1():
     draw_input(draw, (mx + 24, my + 158, mx + mw - 24, my + 192), placeholder="Search task types...")
     types = [
         ("Upgrade BUP", "Upgrade the BUP firmware on selected robots.", "Multiple robots"),
-        ("Collect Blackbox Logs", "Trigger blackbox log collection and obtain the S3 download link.", "Multiple robots", True),
+        ("Collect BlackBox Logs", "Trigger BlackBox log collection and obtain the S3 download link.", "Multiple robots", True),
         ("Upgrade Movebase", "Upgrade the Movebase software on selected robots.", "Multiple robots"),
         ("Apply Alpha2 Map", "Apply an Alpha2 format map package.", "Multiple robots"),
         ("Update IoT Gateway Config", "Update iot-gateway configuration.", "Multiple robots"),
@@ -1853,14 +1859,15 @@ def page_blackbox_step2():
     draw = ImageDraw.Draw(img)
     page_tasks_list()
     draw.rectangle([0, 0, W, H], fill="#00000080")
-    mx, my, mw, mh = 300, 120, 600, 560
+    mx, my, mw, mh = 300, 100, 600, 650
     draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
     draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
     draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 2)
     draw.text((mx + 24, my + 110), "Step 2: Select Robots", fill="#161616", font=FONT_MD)
-    draw.text((mx + 24, my + 130), "Task type: Collect Blackbox Logs (Multiple robots)", fill="#525252", font=FONT_SM)
-    draw.text((mx + 24, my + 150), "Select one or more target robots to collect their blackbox logs.", fill="#525252", font=FONT_SM)
-    draw_input(draw, (mx + 24, my + 174, mx + mw - 24, my + 208), placeholder="Search robots...")
+    draw.text((mx + 24, my + 130), "Task type: Collect BlackBox Logs (Multiple robots)", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 150), "Select target robots and/or enter device ids manually below.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 174, mx + mw - 140, my + 208), placeholder="Search robots...")
+    draw_button(draw, (mx + mw - 130, my + 174, mx + mw - 24, my + 208), "Sort")
     robots = [(True, "AGV-01", "192.168.1.101:22", "X100"), (False, "AGV-02", "192.168.1.102:22", "X100"), (False, "AGV-03", "robot-03.local:22", "X200")]
     draw.rectangle([mx + 24, my + 228, mx + mw - 24, my + 260], fill="#f4f4f4", outline="#e0e0e0", width=1)
     draw.rectangle([mx + 40, my + 236, mx + 52, my + 248], fill="#0f62fe")
@@ -1879,7 +1886,17 @@ def page_blackbox_step2():
         draw.text((mx + 100, y + 10), alias, fill="#161616", font=FONT_SM)
         draw.text((mx + 220, y + 10), address, fill="#525252", font=FONT_SM)
         draw.text((mx + 380, y + 10), model, fill="#525252", font=FONT_SM)
-    draw.text((mx + 24, my + mh - 80), "1 robot selected", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 404), "1 robot selected", fill="#525252", font=FONT_SM)
+
+    # Manual device id input (device ids collected without SSH)
+    draw.line([mx + 24, my + 432, mx + mw - 24, my + 432], fill="#e0e0e0", width=1)
+    draw.text((mx + 24, my + 446), "Device IDs", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 466), "Optional. Enter one device id per line (no SSH query).", fill="#525252", font=FONT_SM)
+    draw.rectangle([mx + 24, my + 488, mx + mw - 24, my + 566], fill="white", outline="#8d8d8d", width=1)
+    draw.text((mx + 36, my + 498), "MANUAL-DID-1", fill="#161616", font=FONT_SM)
+    draw.text((mx + 36, my + 518), "MANUAL-DID-2", fill="#161616", font=FONT_SM)
+    draw.text((mx + 24, my + 576), "2 device ids entered", fill="#525252", font=FONT_SM)
+
     draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
     draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
     path = os.path.join(BLACKBOX_DIR, "02_create_task_step2_robots.png")
@@ -1900,7 +1917,7 @@ def page_blackbox_step3():
     draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
     draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 3)
     draw.text((mx + 24, my + 108), "Step 3: Configure Parameters", fill="#161616", font=FONT_MD)
-    draw.text((mx + 24, my + 130), "Task: Collect Blackbox Logs", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 130), "Task: Collect BlackBox Logs", fill="#525252", font=FONT_SM)
 
     y = my + 168
     draw.text((mx + 44, y), "Region *", fill="#161616", font=FONT_MD)
@@ -1951,8 +1968,9 @@ def page_blackbox_step4():
     draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 4)
     draw.text((mx + 24, my + 110), "Step 4: Confirm", fill="#161616", font=FONT_MD)
     fields = [
-        ("Task Type", "Collect Blackbox Logs"),
+        ("Task Type", "Collect BlackBox Logs"),
         ("Target Robots", "AGV-01 (192.168.1.101:22)"),
+        ("Manual Device IDs", "MANUAL-DID-1, MANUAL-DID-2"),
         ("Region", "cn"),
         ("Processes", "gadgetman,solorc"),
     ]
@@ -1980,7 +1998,7 @@ def page_blackbox_result_details():
     mx, my, mw, mh = 250, 90, 700, 620
     draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
     draw.text((mx + 24, my + 20), "Task Result Details", fill="#161616", font=FONT_LG)
-    draw.text((mx + 24, my + 66), "Task: Collect Blackbox Logs    Robots: AGV-01    State: COMPLETED", fill="#525252", font=FONT_MD)
+    draw.text((mx + 24, my + 66), "Task: Collect BlackBox Logs    Robots: AGV-01    State: COMPLETED", fill="#525252", font=FONT_MD)
 
     fields = [
         ("done", "true"),
