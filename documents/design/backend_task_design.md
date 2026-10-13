@@ -146,6 +146,50 @@ No additional parameters (command is hardcoded).
 
 ---
 
+## 3.1 GetBlackboxDeviceInfoTask
+
+### Overview
+
+Resolves the device id (a.k.a. `thingsId`) used by the `Collect BlackBox Logs` flow. It extends `GetRobotBasicInfoTask` and adds a manual override: when a `deviceId` is supplied, it is used directly and **no SSH connection is made**; otherwise the task falls back to the inherited SSH based robot basic info query.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `deviceId` | `string` | `""` | Manually provided blackbox device id. When non-empty, it is used as `robotInfo.thingsId` without any SSH query |
+| `robotIp` | `string` | (required) | Target robot IP, only used when `deviceId` is empty (inherited) |
+| `robotPort` | `number` | `22` | SSH port, only used when `deviceId` is empty (inherited) |
+
+Inherits all remaining parameters from `GetRobotBasicInfoTask` / `SshCommandTask` (used only on the SSH fallback path).
+
+### Output Parameters
+
+Same shape as `GetRobotBasicInfoTask`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | `true` | Task success marker |
+| `source` | `"manual"` | Present only on the manual path; indicates the device id was supplied by the caller |
+| `robotInfo` | `object` | On the manual path only `{ thingsId }` is populated; on the SSH path the full `RobotBasicInfo` object is returned |
+| `rawOutput` | `string` | Full stdout (SSH path only) |
+| `robotInfo.model` | `string` | Robot model (SSH path only) |
+| `robotInfo.robotSn` | `string` | Robot serial number (SSH path only) |
+| `robotInfo.thingsId` | `string` | IoT device ID (manual path: the supplied `deviceId`) |
+| `robotInfo.vendorId` | `string` | Vendor ID (SSH path only) |
+| `robotInfo.productId` | `string` | Product ID (SSH path only) |
+| `robotInfo.mainBoardSn` | `string` | Main board serial number (SSH path only) |
+| `robotInfo.mainBoardId` | `string` | Main board ID (SSH path only) |
+| `robotInfo.mainSomSn` | `string` | SOM serial number (SSH path only) |
+
+### Notes
+
+- Direct subclass of `GetRobotBasicInfoTask`; only `onExec` is overridden to short-circuit on a non-empty `deviceId`.
+- Manual path value is trimmed; whitespace-only input falls back to the SSH path.
+- Used by the `Collect BlackBox Logs` DAG (`fetch_info`); the frontend collects manual device ids one per line and passes them through the flow `input.deviceId`.
+- Mock variant (`MockGetBlackboxDeviceInfoTask`) mirrors the manual short-circuit and otherwise delegates to `MockGetRobotBasicInfoTask`.
+
+---
+
 ## 4. UpdateRobotBasicInfoTask
 
 ### Overview
@@ -828,7 +872,7 @@ Same as `SshFileTransferTask`.
 
 ### Notes
 
-- Hardcoded remote path: `/home/developer/alpha2_map_package.zip`
+- Hardcoded remote path: `/tmp/alpha2_map_package.zip`
 - Uses `artifactService.getArtifactPath(artifactId)` to resolve the local file path directly
 - If `artifactId` or `artifactService` is absent, falls through to `super.onExec()` directly
 - Implementation mirrors `TransferMovebaseTask`
@@ -839,7 +883,7 @@ Same as `SshFileTransferTask`.
 
 ### Overview
 
-Executes the Alpha2 map application commands on the remote robot: clears existing map data, extracts the new map zip, and updates directory ownership.
+Executes the Alpha2 map application commands on the remote robot: clears existing map data, extracts the new map zip, updates directory ownership, removes existing SQLite database files, and restarts the marie service.
 
 ### Input Parameters
 
@@ -855,13 +899,15 @@ Same as `SshCommandTask`.
 
 ### Notes
 
-- Hardcoded 3-step command:
+- Hardcoded 5-step command:
   1. `rm -rf /opt/cosmos/map/ws/*` — clear existing map data
-  2. `unzip -o /home/developer/alpha2_map_package.zip -d /opt/cosmos/map/ws` — extract new map package
+  2. `unzip -o /tmp/alpha2_map_package.zip -d /opt/cosmos/map/ws` — extract new map package
   3. `chown -R pivot:pivot /opt/cosmos/map/` — update directory ownership
+  4. `rm /opt/cosmos/map/sqlite/*` — delete existing SQLite database files
+  5. `systemctl restart marie.service` — restart the marie service
 - Commands are `&&`-chained; any step failure fails the entire task
 - Default 60-second timeout accommodates map extraction
-- The map package is expected at `/home/developer/alpha2_map_package.zip` (transferred by `TransferAlpha2MapTask`)
+- The map package is expected at `/tmp/alpha2_map_package.zip` (transferred by `TransferAlpha2MapTask`)
 - After successful application, marie detects the map directory change within ~20 seconds and loads the new map
 
 ---
@@ -870,7 +916,7 @@ Same as `SshCommandTask`.
 
 ### Overview
 
-Deletes the transferred Alpha2 map package (`/home/developer/alpha2_map_package.zip`) on the remote robot after successful map application.
+Deletes the transferred Alpha2 map package (`/tmp/alpha2_map_package.zip`) on the remote robot after successful map application.
 
 ### Input Parameters
 
@@ -882,7 +928,7 @@ Same as `SshCommandTask`.
 
 ### Notes
 
-- Hardcoded command: `rm -rf /home/developer/alpha2_map_package.zip`
+- Hardcoded command: `rm -rf /tmp/alpha2_map_package.zip`
 - Used as the cleanup step in the Alpha2 map application flow
 - Implementation mirrors `DeleteMovebaseTask`
 
@@ -1337,7 +1383,7 @@ Same as `SshCommandTask`.
 
 Triggers Alpha2 Movebase blackbox log collection for a robot by publishing an MQTT request to the robot's AWS IoT topics (matching the standalone `collect.py` protocol) and waiting for the `taskFinished` response. Produces the S3 download URL and `aws s3` ls/cp commands. The robot uploads the collected log zip to S3 itself; this task never downloads it.
 
-The robot's DeviceID (`--did`) is resolved automatically from the robot's `thingsId`, which is read by the upstream `GetRobotBasicInfoTask` (the DAG chains `fetch_info → collect_logs`).
+The robot's DeviceID (`--did`) is resolved automatically from the robot's `thingsId`, which is produced by the upstream `GetBlackboxDeviceInfoTask` (the DAG chains `fetch_info → collect_logs`). That upstream task reads `thingsId` over SSH from a selected robot, or uses a manually entered device id directly without SSH.
 
 ### Input Parameters
 

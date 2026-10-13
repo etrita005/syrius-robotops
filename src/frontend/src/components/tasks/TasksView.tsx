@@ -289,12 +289,14 @@ export default function TasksView({ solutionId, onBackToSolutions }: TasksViewPr
 
   const handleCreateTask = async (
     robotIds: string[],
+    manualDeviceIds: string[],
     taskType: TaskTypeDefinition,
     params: Record<string, string>
   ) => {
-    const createdTasks = await createTask(robotIds, taskType, params);
+    const createdTasks = await createTask(robotIds, manualDeviceIds, taskType, params);
     setCreateModalOpen(false);
-    showToast("success", "Tasks created", `${createdTasks.length} ${taskType.name} task(s) for ${robotIds.length} robot(s).`);
+    const targetCount = robotIds.length + manualDeviceIds.length;
+    showToast("success", "Tasks created", `${createdTasks.length} ${taskType.name} task(s) for ${targetCount} target(s).`);
   };
 
   const renderStateTag = (state: string) => (

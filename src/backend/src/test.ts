@@ -5496,8 +5496,10 @@ describe("System Maintenance - FixBrokenPackagesTask", () => {
 // Blackbox Log Collection: CollectBlackboxLogTask
 // ============================================================
 
-import { CollectBlackboxLogTask, type CollectBlackboxRunOptions } from "./tasks/real/collectBlackboxLogTask.js";
-import { MockCollectBlackboxLogTask } from "./tasks/mock/mockCollectBlackboxLogTask.js";
+import { CollectBlackboxLogTask, type CollectBlackboxRunOptions } from "./tasks/real/collectBlackBoxLogTask.js";
+import { MockCollectBlackboxLogTask } from "./tasks/mock/mockCollectBlackBoxLogTask.js";
+import { GetBlackboxDeviceInfoTask } from "./tasks/real/getBlackBoxDeviceInfoTask.js";
+import { MockGetBlackboxDeviceInfoTask } from "./tasks/mock/mockGetBlackBoxDeviceInfoTask.js";
 import {
   buildCloudTaskId,
   buildProcessList,
@@ -5680,10 +5682,48 @@ describe("MockCollectBlackboxLogTask", () => {
   });
 });
 
+describe("GetBlackboxDeviceInfoTask", () => {
+  it("TC-BBL-DEV-001: uses manually provided device id without SSH", async () => {
+    const task = new GetBlackboxDeviceInfoTask();
+    const result = await task.exec(
+      { deviceId: "MANUAL-DID-1", robotIp: "", robotPort: 22 },
+      { flowId: "dev-1" }
+    ) as Record<string, unknown>;
+
+    assert.equal(result.success, true);
+    assert.equal(result.source, "manual");
+    assert.deepEqual(result.robotInfo, { thingsId: "MANUAL-DID-1" });
+  });
+
+  it("TC-BBL-DEV-002: trims whitespace around manual device id", async () => {
+    const task = new GetBlackboxDeviceInfoTask();
+    const result = await task.exec(
+      { deviceId: "  MANUAL-DID-1  ", robotIp: "", robotPort: 22 },
+      { flowId: "dev-2" }
+    ) as Record<string, unknown>;
+
+    assert.equal(result.source, "manual");
+    assert.deepEqual(result.robotInfo, { thingsId: "MANUAL-DID-1" });
+  });
+
+  it("TC-BBL-DEV-003: falls back to SSH path when device id is empty (mock)", async () => {
+    const task = new MockGetBlackboxDeviceInfoTask();
+    const result = await task.exec(
+      { deviceId: "", robotIp: "192.168.1.10", robotPort: 22 },
+      { flowId: "dev-3" }
+    ) as Record<string, unknown>;
+
+    assert.equal(result.success, true);
+    assert.equal(result.source, undefined);
+    const robotInfo = result.robotInfo as Record<string, unknown>;
+    assert.equal(robotInfo.thingsId, "M000000000000");
+  });
+});
+
 describe("Blackbox - Flow Integration", () => {
   const buildRegistry = (): ResolverRegistry => {
     const registry = new ResolverRegistry();
-    registry.register("GetRobotBasicInfoTask", MockGetRobotBasicInfoTask as unknown as TaskResolverClass);
+    registry.register("GetBlackboxDeviceInfoTask", MockGetBlackboxDeviceInfoTask as unknown as TaskResolverClass);
     registry.register("CollectBlackboxLogTask", MockCollectBlackboxLogTask as unknown as TaskResolverClass);
     return registry;
   };
@@ -5691,11 +5731,11 @@ describe("Blackbox - Flow Integration", () => {
   const buildDag = (): FlowSpec => ({
     tasks: {
       fetch_info: {
-        requires: ["robotIp", "robotPort"],
+        requires: ["robotIp", "robotPort", "deviceId"],
         provides: ["robotInfo"],
         resolver: {
-          name: "GetRobotBasicInfoTask",
-          params: { robotIp: "robotIp", robotPort: "robotPort" },
+          name: "GetBlackboxDeviceInfoTask",
+          params: { robotIp: "robotIp", robotPort: "robotPort", deviceId: "deviceId" },
           results: { robotInfo: "robotInfo" },
         },
       },
@@ -5734,6 +5774,7 @@ describe("Blackbox - Flow Integration", () => {
       const summary = await testEngine.createFlow("internal", buildDag(), {
         robotIp: "192.168.1.10",
         robotPort: 22,
+        deviceId: "",
         region: "cn",
         procList: ["gadgetman"],
       });
@@ -5773,6 +5814,7 @@ describe("Blackbox - Flow Integration", () => {
       const summary = await testEngine.createFlow("internal", buildDag(), {
         robotIp: "192.168.1.10",
         robotPort: 22,
+        deviceId: "",
         region: "cn",
         procList: ["gadgetman"],
       });
@@ -5787,12 +5829,44 @@ describe("Blackbox - Flow Integration", () => {
       testEngine.destroy();
     }
   });
+
+  it("TC-BBL-FLOW-003: manual device id skips SSH and completes", async () => {
+    const registry = buildRegistry();
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    try {
+      const summary = await testEngine.createFlow("internal", buildDag(), {
+        robotIp: "",
+        robotPort: 22,
+        deviceId: "MANUAL-DID-1",
+        region: "cn",
+        procList: ["gadgetman"],
+      });
+      await waitForFlowComplete(testEngine, summary.id, 15000);
+
+      const flow = testEngine.getFlow(summary.id);
+      assert.ok(flow);
+      assert.equal(flow.state, "COMPLETED");
+      const fetchResult = flow.taskResults?.["fetch_info"] as Record<string, unknown> | undefined;
+      assert.ok(fetchResult, "fetch_info task result should exist");
+      assert.equal((fetchResult.robotInfo as Record<string, unknown>).thingsId, "MANUAL-DID-1");
+      const collectResult = flow.taskResults?.["collect_logs"] as Record<string, unknown> | undefined;
+      assert.ok(collectResult, "collect_logs task result should exist");
+      assert.equal(collectResult.deviceId, "MANUAL-DID-1");
+    } finally {
+      testEngine.destroy();
+    }
+  });
 });
 
 describe("Blackbox resolver registration", () => {
-  it("TC-BBL-REG-001: registers CollectBlackboxLogTask", () => {
+  it("TC-BBL-REG-001: registers CollectBlackboxLogTask and GetBlackboxDeviceInfoTask", () => {
     const registry = new ResolverRegistry();
     registry.register("CollectBlackboxLogTask", CollectBlackboxLogTask as unknown as TaskResolverClass);
+    registry.register("GetBlackboxDeviceInfoTask", GetBlackboxDeviceInfoTask as unknown as TaskResolverClass);
     assert.equal(registry.has("CollectBlackboxLogTask"), true);
+    assert.equal(registry.has("GetBlackboxDeviceInfoTask"), true);
   });
 });

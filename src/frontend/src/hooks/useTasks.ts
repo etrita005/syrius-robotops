@@ -185,6 +185,7 @@ export function useTasks(solutionId: string | null) {
   const createTask = useCallback(
     async (
       robotIds: string[],
+      manualDeviceIds: string[],
       taskType: TaskTypeDescriptor,
       params: Record<string, string>
     ): Promise<TaskDefinition[]> => {
@@ -196,18 +197,40 @@ export function useTasks(solutionId: string | null) {
       const { expectedResults } = definition;
       const errorDag = definition.errorDag as unknown as Record<string, unknown> | undefined;
 
-      const summaries: FlowSummary[] = [];
+      interface CreateTarget {
+        robotId?: string;
+        deviceId?: string;
+        robotIp: string;
+        robotPort: number;
+      }
+
+      const targets: CreateTarget[] = [];
 
       for (const robotId of robotIds) {
         const robotAddr = robotDataRef.current.find((r) => r.id === robotId);
         if (!robotAddr) continue;
-
-        const input: Record<string, unknown> = {
-          solutionId,
-          robotIds: [robotId],
-          taskName: taskType.name,
+        targets.push({
+          robotId,
           robotIp: robotAddr.address,
           robotPort: robotAddr.port ?? 22,
+          deviceId: "",
+        });
+      }
+
+      for (const deviceId of manualDeviceIds) {
+        targets.push({ deviceId, robotIp: "", robotPort: 22 });
+      }
+
+      const summaries: FlowSummary[] = [];
+
+      for (const target of targets) {
+        const input: Record<string, unknown> = {
+          solutionId,
+          robotIds: [target.robotId ?? target.deviceId],
+          taskName: taskType.name,
+          robotIp: target.robotIp,
+          robotPort: target.robotPort,
+          deviceId: target.deviceId ?? "",
           ...params,
         };
 

@@ -37,6 +37,11 @@ export interface TaskTypeDefinition {
   expectedResults: string[];
   errorDag?: DagDefinition;
   params: Record<string, TaskParamDescriptor>;
+  /**
+   * When enabled, the robot selection step also allows entering robot device ids
+   * manually (one per line). Manual device ids are collected without an SSH query.
+   */
+  manualDeviceIdInput?: boolean;
 }
 
 export interface TaskRegistry {
@@ -452,12 +457,13 @@ const UPDATE_IOT_GATEWAY_CONFIG_DAG: DagDefinition = {
 const COLLECT_BLACKBOX_LOGS_DAG: DagDefinition = {
   tasks: {
     fetch_info: {
-      requires: ["robotIp", "robotPort"],
+      requires: ["robotIp", "robotPort", "deviceId"],
       resolver: {
-        name: "GetRobotBasicInfoTask",
+        name: "GetBlackboxDeviceInfoTask",
         params: {
           robotIp: "robotIp",
           robotPort: "robotPort",
+          deviceId: "deviceId",
         },
         results: { robotInfo: "robotInfo" },
       },
@@ -1065,14 +1071,15 @@ export const TASK_REGISTRY: TaskRegistry = {
     },
     {
       type: "collect-blackbox-logs",
-      name: "Collect Blackbox Logs",
+      name: "Collect BlackBox Logs",
       description:
-        "Trigger blackbox log collection for selected robots and obtain the S3 download link.",
+        "Trigger BlackBox log collection for selected robots or manually entered device ids and obtain the S3 download link.",
       robotSelection: {
         mode: "multiple",
         description:
-          "Select one or more target robots to collect their blackbox logs.",
+          "Select one or more target robots (their thingsId is read over SSH), and/or enter robot device ids manually (used directly without SSH).",
       },
+      manualDeviceIdInput: true,
       dag: COLLECT_BLACKBOX_LOGS_DAG,
       expectedResults: [
         "collect_done",

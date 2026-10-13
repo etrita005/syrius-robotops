@@ -129,8 +129,12 @@ export async function clickBreadcrumb(page: Page, label: string): Promise<void> 
 
 export async function openSolutionInWorkspace(page: Page, solutionName: string): Promise<void> {
   await navigateToSolutions(page);
-  const button = page.locator("div").filter({ hasText: solutionName }).filter({ has: page.getByRole("button", { name: "Open" }) }).first().getByRole("button", { name: "Open" }).first();
-  await button.click();
+  const card = page
+    .locator("div")
+    .filter({ has: page.getByRole("heading", { name: solutionName, exact: true }) })
+    .filter({ has: page.getByRole("button", { name: "Open" }) })
+    .last();
+  await card.getByRole("button", { name: "Open" }).first().click();
   await page.waitForTimeout(500);
 }
 

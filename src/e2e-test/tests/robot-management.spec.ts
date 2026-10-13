@@ -11,14 +11,22 @@ test.describe("Robot Management", () => {
   test.describe.configure({ mode: "serial" });
 
   let solutionId: string;
+  let sortSolutionId: string;
 
   test.beforeAll(async ({ apiURL }) => {
     const meta = await createSolutionViaAPI(apiURL, "Robot Test Solution", "E2E robot test");
     solutionId = meta.id;
+
+    const sortMeta = await createSolutionViaAPI(apiURL, "Robot Sort Solution", "E2E sort test");
+    sortSolutionId = sortMeta.id;
+    for (const address of ["10.0.0.20", "10.0.0.10", "10.0.0.30"]) {
+      await addRobotViaAPI(apiURL, sortMeta.id, address);
+    }
   });
 
   test.afterAll(async ({ apiURL }) => {
     await deleteSolutionViaAPI(apiURL, solutionId).catch(() => {});
+    await deleteSolutionViaAPI(apiURL, sortSolutionId).catch(() => {});
   });
 
   test("TC-E2E-ROB-001: Add robot via UI modal", async ({ appPage }) => {
@@ -217,5 +225,52 @@ test.describe("Robot Management", () => {
     await expect(appPage.getByText("10.0.0.99")).toBeVisible({ timeout: 5000 });
 
     expect(sseRequests.length).toBe(1);
+  });
+
+  test("TC-E2E-ROB-012: Alias sort button cycles none/asc/desc in list view", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Robot Sort Solution");
+    await clickSidebarTab(appPage, "Robots");
+
+    await appPage.getByLabel("List view").click();
+    await appPage.waitForTimeout(300);
+
+    const readAliases = async (): Promise<string[]> => {
+      const rows = appPage.locator("table tbody tr");
+      const count = await rows.count();
+      const aliases: string[] = [];
+      for (let i = 0; i < count; i++) {
+        aliases.push((await rows.nth(i).locator("td").nth(1).innerText()).trim());
+      }
+      return aliases;
+    };
+
+    const compare = (a: string, b: string) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+
+    const initial = await readAliases();
+    expect(initial.length).toBe(3);
+
+    // Default state: no sorting, backend order preserved.
+    await expect(appPage.getByRole("button", { name: "Sort", exact: true })).toBeVisible();
+
+    // 1st click -> ascending.
+    await appPage.getByRole("button", { name: "Sort", exact: true }).click();
+    await appPage.waitForTimeout(200);
+    await expect(appPage.getByRole("button", { name: "Alias A-Z", exact: true })).toBeVisible();
+    expect(await readAliases()).toEqual([...initial].sort(compare));
+
+    // 2nd click -> descending.
+    await appPage.getByRole("button", { name: "Alias A-Z", exact: true }).click();
+    await appPage.waitForTimeout(200);
+    await expect(appPage.getByRole("button", { name: "Alias Z-A", exact: true })).toBeVisible();
+    expect(await readAliases()).toEqual([...initial].sort((a, b) => compare(b, a)));
+
+    // 3rd click -> back to unsorted (original backend order).
+    await appPage.getByRole("button", { name: "Alias Z-A", exact: true }).click();
+    await appPage.waitForTimeout(200);
+    await expect(appPage.getByRole("button", { name: "Sort", exact: true })).toBeVisible();
+    expect(await readAliases()).toEqual(initial);
   });
 });

@@ -998,6 +998,8 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
     expectedResults: string[];
     errorDag?: DagDefinition;
     params: Record<string, TaskParamDescriptor>;
+    /** 启用后 Step 2 额外提供逐行手动输入 device id 的多行文本域（不发起 SSH 查询）。 */
+    manualDeviceIdInput?: boolean;
   }
   ```
 - **扩展性**：新增任务类型时，仅需在 `TASK_REGISTRY` 中追加记录，Create Task Modal 会自动渲染新的任务类型卡片、机器人选择界面和参数表单，无需修改组件代码。
@@ -1014,6 +1016,7 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
     - `multiple`：复选框列表，支持 "Select All"，至少选一个。
     - `single`：单选按钮列表，必须且只能选一个。
   - 提供搜索框，按 alias / address 过滤。
+  - 若任务类型声明 `manualDeviceIdInput: true`（如 Collect BlackBox Logs），在机器人列表下方额外渲染 Carbon `TextArea`（"Device IDs"），逐行输入 device id（按行去重、去空白）。手动 device id 与勾选机器人**可并存**，二者合计至少一个即可进入下一步。
 - **Step 3 — 配置参数**：
   - 根据已选任务类型的 `params` 定义自动生成表单：
     - `artifact` → 内嵌 Artifact 列表（搜索 + 单选）。
@@ -1022,8 +1025,11 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
     - `select` → Carbon `Select` + `SelectItem`（选项来自 `options`）。
   - 必填项标红星号，未填完禁止进入下一步。
 - **Step 4 — 确认并创建**：
-  - 展示摘要：任务类型、目标机器人（别名列表）、参数值。
-  - 点击 "Create" 后，前端遍历所选机器人，逐个调用 `POST /api/flows`，DAG 取自 Task Registry。
+  - 展示摘要：任务类型、目标机器人（别名列表）、手动输入的 Device IDs、参数值。
+  - 点击 "Create" 后，前端遍历所选机器人以及手动输入的 device id，逐个调用 `POST /api/flows`：
+    - 勾选机器人：`input` 含 `solutionId`、`robotIds:[robotId]`、`robotIp`、`robotPort`、`deviceId:""` 与参数。
+    - 手动 device id：`input` 含 `solutionId`、`robotIds:[deviceId]`、`deviceId`、`robotIp:""`、`robotPort:22` 与参数；blackbox DAG 的 `fetch_info`（`GetBlackboxDeviceInfoTask`）直接使用该 device id，不发起 SSH 查询。
+    - DAG 取自 Task Registry。
 
 ---
 
