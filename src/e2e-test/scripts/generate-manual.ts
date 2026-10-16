@@ -189,7 +189,7 @@ async function run(browser: Browser) {
   try { await p.getByLabel("Grid view").click({ timeout: 3000 }); } catch { /* already grid */ }
   await p.waitForTimeout(400);
   await capture(p, shot("Robot Grid View",
-    "The Grid View displays each robot as a card showing the robot alias, IP address, model, serial number (SN), and movebase version. A green pulsing dot indicates online status; a gray dot indicates offline. Click a card to open the robot detail modal. Use the toggle buttons to switch between Grid and List views."));
+    "The Grid View displays each robot as a card showing the robot alias, IP address, model, serial number (SN), and movebase version. A green pulsing dot indicates online status; a gray dot indicates offline. Click a card to open the robot detail modal. Each card also exposes Shutdown and Reboot buttons in its lower-right corner. Use the toggle buttons to switch between Grid and List views."));
 
   // 3.2 Add Robot
   await p.getByRole("button", { name: "Add Robot" }).click();
@@ -203,7 +203,7 @@ async function run(browser: Browser) {
   await p.getByLabel("List view").click();
   await p.waitForTimeout(400);
   await capture(p, shot("Robot List View",
-    "The List View presents robots in a table with columns: Select, Alias, Address, Model, Robot SN, Things ID, and Movebase. Use the checkboxes to select robots for batch operations. Click column headers to sort. The header checkbox selects all robots on the current page."));
+    "The List View presents robots in a table with columns: Select, Alias, Address, Model, Robot SN, Things ID, Movebase, and Actions. Each row's Actions column exposes Shutdown and Reboot power buttons alongside Details and Delete. Use the checkboxes to select robots for batch operations. Click column headers to sort. The header checkbox selects all robots on the current page."));
 
   // 3.4 Inline Alias Editing
   const aliasCell = p.getByRole("cell", { name: /192\.168\.1\.100/ }).first();
@@ -252,6 +252,14 @@ async function run(browser: Browser) {
   await capture(p, shot("Delete Robot Confirmation",
     "Click the Delete button on a robot row to show this confirmation dialog. The robot's alias and address are displayed. Click 'Delete' to permanently remove the robot from this solution, or 'Cancel' to keep it."));
   await p.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  await p.waitForTimeout(300);
+
+  // 3.9 Robot Power Control (Shutdown / Reboot)
+  await p.getByRole("button", { name: "Shutdown robot" }).first().click();
+  await p.waitForTimeout(400);
+  await capture(p, shot("Robot Power Control — Shutdown Confirmation",
+    "Each robot row (List View) and each robot card (Grid View) exposes two power buttons: Shutdown and Reboot. Clicking Shutdown opens this confirmation dialog showing the robot alias and address. Click 'Shutdown' to send the D-Bus shutdown command through the bootstrapper service, or 'Cancel' to abort. The Reboot button follows the same flow and issues a restart command. The batch 'Shutdown Robots' and 'Reboot Robots' task types in the Tasks tab send the identical commands."));
+  await p.getByRole("dialog", { name: "Shutdown Robot" }).getByRole("button", { name: "Cancel" }).click();
   await p.waitForTimeout(300);
 
   // =========================================================================

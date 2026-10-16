@@ -14,9 +14,10 @@ import {
   Breadcrumb,
   BreadcrumbItem,
 } from "@carbon/react";
-import { Grid, List, SortAscending, SortDescending, ArrowsVertical } from "@carbon/react/icons";
+import { Grid, List, SortAscending, SortDescending, ArrowsVertical, Power, Restart } from "@carbon/react/icons";
 import { useRobots } from "../../hooks/useRobots.js";
 import { RobotDefinition, formatAddressDisplay, formatInfoValue } from "../../types/robot.js";
+import { sendRobotPowerAction, type RobotPowerAction } from "../../api/robotApi.js";
 import AddRobotModal from "./AddRobotModal.js";
 import RobotDetailModal from "./RobotDetailModal.js";
 import { useActiveSolution } from "../../hooks/useActiveSolution.js";
@@ -74,6 +75,9 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RobotDefinition | null>(null);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [powerConfirmOpen, setPowerConfirmOpen] = useState(false);
+  const [powerTarget, setPowerTarget] = useState<RobotDefinition | null>(null);
+  const [powerAction, setPowerAction] = useState<RobotPowerAction | null>(null);
   const [editingAliasId, setEditingAliasId] = useState<string | null>(null);
   const [editingAliasValue, setEditingAliasValue] = useState("");
   const { showToast } = useToast();
@@ -185,6 +189,48 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
     }
   };
 
+  const openPowerConfirm = (robot: RobotDefinition, action: RobotPowerAction) => {
+    setPowerTarget(robot);
+    setPowerAction(action);
+    setPowerConfirmOpen(true);
+  };
+
+  const closePowerConfirm = () => {
+    setPowerConfirmOpen(false);
+    setPowerTarget(null);
+    setPowerAction(null);
+  };
+
+  const handlePowerConfirm = async () => {
+    if (!powerTarget || !powerAction) return;
+    const action = powerAction;
+    const robot = powerTarget;
+
+    // Dismiss the confirmation dialog immediately on confirm instead of waiting
+    // for the request. A power action may take a while (SSH connect plus the
+    // command timeout) and the robot going down makes the wait unreliable, so
+    // the outcome is surfaced asynchronously through a toast.
+    setPowerConfirmOpen(false);
+    setPowerTarget(null);
+    setPowerAction(null);
+
+    try {
+      await sendRobotPowerAction(solutionId, robot.id, action);
+      showToast(
+        "success",
+        action === "shutdown" ? "Shutdown command sent" : "Reboot command sent",
+        `${robot.alias} will ${action === "shutdown" ? "power off" : "restart"}.`
+      );
+    } catch (err) {
+      showToast(
+        "error",
+        action === "shutdown" ? "Failed to shut down robot" : "Failed to reboot robot",
+        (err as Error).message,
+        0
+      );
+    }
+  };
+
   // Grid view rendering
   const renderGridView = () => {
     return (
@@ -284,6 +330,39 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
             <div style={{ fontSize: "0.8125rem", color: textSecondary }}>
               Movebase: {formatInfoValue(robot.movebaseVersion)}
             </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.25rem",
+                marginTop: "0.75rem",
+              }}
+            >
+              <Button
+                kind="ghost"
+                size="sm"
+                hasIconOnly
+                renderIcon={Power}
+                iconDescription="Shutdown robot"
+                tooltipPosition="top"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openPowerConfirm(robot, "shutdown");
+                }}
+              />
+              <Button
+                kind="ghost"
+                size="sm"
+                hasIconOnly
+                renderIcon={Restart}
+                iconDescription="Reboot robot"
+                tooltipPosition="top"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openPowerConfirm(robot, "reboot");
+                }}
+              />
+            </div>
           </div>
         ))}
       </div>
@@ -366,7 +445,25 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
       thingsId: formatInfoValue(r.thingsId),
       movebaseVersion: formatInfoValue(r.movebaseVersion),
       actions: (
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <Button
+            kind="ghost"
+            size="sm"
+            hasIconOnly
+            renderIcon={Power}
+            iconDescription="Shutdown robot"
+            tooltipPosition="top"
+            onClick={() => openPowerConfirm(r, "shutdown")}
+          />
+          <Button
+            kind="ghost"
+            size="sm"
+            hasIconOnly
+            renderIcon={Restart}
+            iconDescription="Reboot robot"
+            tooltipPosition="top"
+            onClick={() => openPowerConfirm(r, "reboot")}
+          />
           <Button kind="ghost" size="sm" onClick={() => openDetail(r)}>
             Details
           </Button>
@@ -635,6 +732,29 @@ export default function RobotsView({ solutionId, onBackToSolutions }: RobotsView
             This action cannot be undone. The selected robot definitions will be
             permanently removed from this solution.
           </p>
+        </div>
+      </Modal>
+
+      <Modal
+        open={powerConfirmOpen}
+        modalHeading={powerAction === "shutdown" ? "Shutdown Robot" : "Reboot Robot"}
+        primaryButtonText={powerAction === "shutdown" ? "Shutdown" : "Reboot"}
+        secondaryButtonText="Cancel"
+        onRequestClose={closePowerConfirm}
+        onRequestSubmit={handlePowerConfirm}
+        danger={powerAction === "shutdown"}
+      >
+        <div className="modal-content-enter">
+          <p>
+            {powerAction === "shutdown"
+              ? "Send a shutdown command to this robot?"
+              : "Send a reboot command to this robot?"}
+          </p>
+          {powerTarget && (
+            <p style={{ marginTop: "0.5rem", fontWeight: 600 }}>
+              {powerTarget.alias} ({formatAddressDisplay(powerTarget.address, powerTarget.port)})
+            </p>
+          )}
         </div>
       </Modal>
     </div>

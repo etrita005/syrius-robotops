@@ -260,7 +260,7 @@ npx tsx --test --test-name-pattern "SSE" --test-force-exit src/test.ts
 
 ### End-to-End (E2E) Tests
 
-E2E tests use **Playwright** for browser automation against the React frontend, with the backend running in **mock mode** (`--mock` flag). All 25 backend task resolvers use mock variants that return canned responses instead of connecting to real robots via SSH.
+E2E tests use **Playwright** for browser automation against the React frontend, with the backend running in **mock mode** (`--mock` flag). All 49 backend task resolvers use mock variants that return canned responses instead of connecting to real robots via SSH.
 
 #### First-Time Setup
 
@@ -278,7 +278,7 @@ All commands run from the `src/` workspace root:
 ```bash
 cd src
 
-npm run test:e2e           # Run all 74 tests (auto-starts servers)
+npm run test:e2e           # Run all 84 tests (auto-starts servers)
 npm run test:e2e:headed    # Run with browser visible
 npm run test:e2e:debug     # Run in debug mode (step-through)
 ```
@@ -311,8 +311,8 @@ Tests are organized by business module, mapping to `documents/test/` test cases:
 | Test Suite | File | Tests | Test Case IDs |
 |-----------|------|-------|--------------|
 | Solution Management | `tests/solution-management.spec.ts` | 7 | TC-E2E-SOL-001 ~ 007 |
-| Robot Management | `tests/robot-management.spec.ts` | 11 | TC-E2E-ROB-001 ~ 009 + extras |
-| Task Management | `tests/task-management.spec.ts` | 38 | TC-E2E-TASK-001 ~ 020, AE/GGR3/DB3/UAC/BBL suites |
+| Robot Management | `tests/robot-management.spec.ts` | 17 | TC-E2E-ROB-001 ~ 012, power control 013 ~ 017 |
+| Task Management | `tests/task-management.spec.ts` | 42 | TC-E2E-TASK-001 ~ 022, AE/GGR3/DB3/UAC/BBL suites |
 | Artifact Management | `tests/artifact-management.spec.ts` | 5 | TC-E2E-ART-001 ~ 005 |
 | System Logs | `tests/system-logs.spec.ts` | 7 | TC-E2E-SL-001 ~ 007 |
 | Cross-Module | `tests/cross-module.spec.ts` | 6 | TC-E2E-CROSS-001 ~ 006 |
@@ -328,9 +328,10 @@ Shared fixtures and API utility helpers are in `fixtures/test-fixture.ts`.
 | Task Flow Engine | TC-TFE-001 ~ TC-TFE-035 | Flow lifecycle, SSE, persistence, recovery, resolver registry |
 | Cross-Module | TC-CROSS-001 ~ TC-CROSS-005 | Solution delete → refCount decrement, clone → refCount increment |
 | Blackbox Log Collection | TC-BBL-* | Protocol helpers, region config, task validation, mock result, flow integration, registration |
-| E2E (Playwright) | TC-E2E-SOL/ROB/TASK/ART/SL/CROSS/BBL | 74 browser-based tests against mock backend |
+| Robot Power Control | TC-PWR-001 ~ TC-PWR-013 | D-Bus shutdown/reboot command, validation, failure tolerance (all failures ignored), `RobotPowerService`, REST endpoint, batch DAGs |
+| E2E (Playwright) | TC-E2E-SOL/ROB/TASK/ART/SL/CROSS/BBL | 84 browser-based tests against mock backend |
 
-Test case documents: `documents/test/solution_management_test_cases.md`, `documents/test/artifact_management_test_cases.md`, `documents/test/task_flow_engine_test_cases.md`, `documents/test/cross_module_test_cases.md`, `documents/test/blackbox_log_collection_test_cases.md`
+Test case documents: `documents/test/solution_management_test_cases.md`, `documents/test/artifact_management_test_cases.md`, `documents/test/task_flow_engine_test_cases.md`, `documents/test/cross_module_test_cases.md`, `documents/test/blackbox_log_collection_test_cases.md`, `documents/test/robot_power_control_test_cases.md`
 
 ## Generating the User Manual
 
@@ -346,7 +347,7 @@ npm run manual:generate
 This single command:
 1. Starts the mock backend on port 30002
 2. Starts the Vite frontend on port 5174
-3. Navigates the application via headless Chromium, capturing ~30 screenshots
+3. Navigates the application via headless Chromium, capturing ~36 screenshots
 4. Generates `documents/user-manual/robotops-user-manual.md` with all images embedded
 5. Stops both servers and cleans up
 
@@ -358,7 +359,7 @@ The generated manual covers 7 chapters organized by module:
 |---------|--------|---------|
 | 1 | Getting Started | Main interface, header navigation |
 | 2 | Solution Management | Create, search, open, clone, export, import, delete, recent solutions, active banner |
-| 3 | Robot Management | Grid/list views, add robot, detail modal, inline editing, search, batch/delete |
+| 3 | Robot Management | Grid/list views, add robot, detail modal, inline editing, search, power control (shutdown/reboot), batch/delete |
 | 4 | Task Management | Task list, create wizard (4 steps), breadcrumbs, sidebar navigation |
 | 5 | Artifact Management | Artifact table, filtering/sorting, detail modal, unreferenced artifacts, upload, delete |
 | 6 | System Logs | Log viewer, file list, filters (time/level/module/keyword), download |

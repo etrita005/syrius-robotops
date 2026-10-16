@@ -273,4 +273,126 @@ test.describe("Robot Management", () => {
     await expect(appPage.getByRole("button", { name: "Sort", exact: true })).toBeVisible();
     expect(await readAliases()).toEqual(initial);
   });
+
+  test("TC-E2E-ROB-013: Robot list view shows Shutdown and Reboot buttons", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Robot Test Solution");
+    await clickSidebarTab(appPage, "Robots");
+
+    await appPage.getByLabel("List view").click();
+    await appPage.waitForTimeout(300);
+
+    const firstRow = appPage.locator("table tbody tr").first();
+    await expect(firstRow.getByRole("button", { name: "Shutdown robot" })).toBeVisible();
+    await expect(firstRow.getByRole("button", { name: "Reboot robot" })).toBeVisible();
+    await expect(firstRow.getByRole("button", { name: "Details" })).toBeVisible();
+    await expect(firstRow.getByRole("button", { name: "Delete" })).toBeVisible();
+  });
+
+  test("TC-E2E-ROB-014: Shutdown button opens a confirmation dialog and cancel sends no request", async ({
+    appPage,
+  }) => {
+    const powerRequests: string[] = [];
+    appPage.on("request", (req) => {
+      if (req.url().includes("/power")) powerRequests.push(req.url());
+    });
+
+    await openSolutionInWorkspace(appPage, "Robot Test Solution");
+    await clickSidebarTab(appPage, "Robots");
+
+    await appPage.getByLabel("List view").click();
+    await appPage.waitForTimeout(300);
+
+    await appPage
+      .locator("table tbody tr")
+      .first()
+      .getByRole("button", { name: "Shutdown robot" })
+      .click();
+
+    const dialog = appPage.getByRole("dialog", { name: "Shutdown Robot" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Send a shutdown command to this robot?")).toBeVisible();
+
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).not.toBeVisible();
+
+    expect(powerRequests.length).toBe(0);
+  });
+
+  test("TC-E2E-ROB-015: Confirming shutdown sends the power request and shows a success toast", async ({
+    appPage,
+  }) => {
+    const powerRequests: { method: string; url: string }[] = [];
+    appPage.on("request", (req) => {
+      if (req.url().includes("/power")) {
+        powerRequests.push({ method: req.method(), url: req.url() });
+      }
+    });
+
+    await openSolutionInWorkspace(appPage, "Robot Test Solution");
+    await clickSidebarTab(appPage, "Robots");
+
+    await appPage.getByLabel("List view").click();
+    await appPage.waitForTimeout(300);
+
+    await appPage
+      .locator("table tbody tr")
+      .first()
+      .getByRole("button", { name: "Shutdown robot" })
+      .click();
+
+    const dialog = appPage.getByRole("dialog", { name: "Shutdown Robot" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Shutdown" }).click();
+
+    await expect(appPage.getByText("Shutdown command sent")).toBeVisible({ timeout: 10000 });
+    await appPage.waitForTimeout(300);
+
+    expect(powerRequests.length).toBe(1);
+    expect(powerRequests[0].method).toBe("POST");
+    expect(powerRequests[0].url).toContain("/power");
+  });
+
+  test("TC-E2E-ROB-016: Reboot button opens the reboot confirmation dialog", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Robot Test Solution");
+    await clickSidebarTab(appPage, "Robots");
+
+    await appPage.getByLabel("List view").click();
+    await appPage.waitForTimeout(300);
+
+    await appPage
+      .locator("table tbody tr")
+      .first()
+      .getByRole("button", { name: "Reboot robot" })
+      .click();
+
+    const dialog = appPage.getByRole("dialog", { name: "Reboot Robot" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Send a reboot command to this robot?")).toBeVisible();
+
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).not.toBeVisible();
+  });
+
+  test("TC-E2E-ROB-017: Grid view cards expose Shutdown and Reboot buttons", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Robot Test Solution");
+    await clickSidebarTab(appPage, "Robots");
+
+    await appPage.getByLabel("Grid view").click();
+    await appPage.waitForTimeout(300);
+
+    await expect(appPage.getByRole("button", { name: "Shutdown robot" }).first()).toBeVisible();
+    await expect(appPage.getByRole("button", { name: "Reboot robot" }).first()).toBeVisible();
+
+    // Clicking the card body (not the power buttons) still opens the Robot Details dialog
+    await appPage.getByText(/^SN:/).first().click();
+
+    const detailDialog = appPage.getByRole("dialog", { name: /Robot Details/ });
+    await expect(detailDialog).toBeVisible({ timeout: 5000 });
+  });
 });

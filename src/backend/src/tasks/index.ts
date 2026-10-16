@@ -106,3 +106,6 @@ export { FixBrokenPackagesTask } from "./real/fixBrokenPackagesTask.js";
 export { MockFixBrokenPackagesTask } from "./mock/mockFixBrokenPackagesTask.js";
 export { CollectBlackboxLogTask } from "./real/collectBlackBoxLogTask.js";
 export { MockCollectBlackboxLogTask } from "./mock/mockCollectBlackBoxLogTask.js";
+export { DbusPowerTask } from "./real/dbusPowerTask.js";
+export type { PowerAction } from "./real/dbusPowerTask.js";
+export { MockDbusPowerTask } from "./mock/mockDbusPowerTask.js";
