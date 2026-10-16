@@ -524,6 +524,28 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 - 列表支持批量选择（复选框），以便执行批量删除。
 - 空状态时提示用户添加机器人。
 
+**FR-SOL-021**：系统应支持对当前解决方案中的单台机器人执行关机与重启操作（电源操作）。
+
+- 机器人界面（网格视图与列表视图）中每台机器人提供 "Shutdown" 与 "Reboot" 两个操作按钮。
+- 两个操作均在机器人上通过 SSH 执行 bootstrapper D-Bus 方法：
+  - 关机：`dbus-send --system --print-reply --dest=com.syriusrobotics.bootstrapper /com/syriusrobotics/bootstrapper com.syriusrobotics.bootstrapper.system.Shutdown`
+  - 重启：`dbus-send --system --print-reply --dest=com.syriusrobotics.bootstrapper /com/syriusrobotics/bootstrapper com.syriusrobotics.bootstrapper.system.Reboot`
+- 执行前必须弹出确认对话框（说明操作影响并展示目标机器人 alias 与 address），用户确认后才下发；取消则不产生任何请求。
+- 确认后前端调用 `POST /api/solutions/{solutionId}/robots/{robotId}/power`，请求体为 `{ "action": "shutdown" | "reboot" }`。
+- 该操作为**即时动作**，不创建任务（task/flow）记录，也不出现在 Tasks 子界面中；后端在请求处理过程中直接执行 SSH 命令并返回结果。
+- 关机与重启为"即发即忘"操作：机器人一旦收到 D-Bus 调用即断电/重启，结果无法可靠确认（`--print-reply` 的返回通常丢失，SSH 会话随之中断）。因此后端**忽略所有失败**——无论机器人是否可达、SSH 连接是否中断、命令是否返回非 0 退出码——一律视为执行成功，失败原因仅记录为 warning 日志。
+- 仅在请求层面出错（如机器人记录不存在）时，前端才以错误提示展示失败原因。
+- 用户确认后立即关闭确认对话框（不等待请求完成），电源请求在后台执行；执行结果通过成功/失败提示（toast）异步反馈，避免用户停留在对话框等待。
+
+**FR-SOL-021a**：系统应提供两个面向多台机器人的批量电源任务类型（"Shutdown Robots" 与 "Reboot Robots"）。
+
+- 两个任务类型通过 Tasks 子界面的 Create Task 流程创建，`robotSelection.mode = "multiple"`，且不需要额外参数（`params` 为空）。
+- 为每台选中的机器人创建一条独立 flow，DAG 为单节点，调用后端 `DbusPowerTask`，`powerAction` 分别为 `"shutdown"` / `"reboot"`。
+- 批量任务使用的 SSH 命令与列表按钮的关机/重启命令完全一致。
+- 与列表按钮一致，批量任务同样忽略失败（`DbusPowerTask` 对任何失败均返回成功），因此对应 flow 应到达 `COMPLETED`。
+- 预期结果变量分别为 `shutdown_done` / `reboot_done`。
+- 任务执行记录保留在 Tasks 子界面，可由用户查看状态与结果。
+
 **FR-SOL-022**：系统应支持编辑机器人别名和地址。
 
 - 用户在列表中可直接编辑 `alias` 字段（内联编辑或弹窗编辑）。
@@ -809,6 +831,12 @@ graph LR
 **UI-ROB-008**：添加机器人弹窗应支持单台添加（输入 address + alias）。address 输入框格式为 `<IP>:<port>` 或 `<mDNS>:<port>`，port 可选，默认 22。打开弹窗时，系统应默认生成一个别名（如 Robot-1、Robot-2）。
 
 **UI-ROB-009**：空状态时展示提示插图和 "Add your first robot" 按钮。
+
+**UI-ROB-010**：Robots 子界面中每台机器人提供 "Shutdown" 与 "Reboot" 两个电源操作按钮。列表视图在每行 Actions 列展示（位于 "Details" 之前），网格视图在每张卡片底部展示；两者均为图标按钮（Shutdown 使用 Power 图标、Reboot 使用 Restart 图标），图标含义与按钮文案 `Shutdown` / `Reboot` 一致。
+
+**UI-ROB-011**：点击任一电源操作按钮时，先弹出确认对话框，标题分别为 "Shutdown Robot" / "Reboot Robot"，正文说明操作影响并展示目标机器人的 alias 与 address。关机确认对话框使用危险（danger）样式。对话框提供确认与取消两个按钮；取消不发起任何请求。
+
+**UI-ROB-012**：确认对话框提交后，主按钮进入禁用/加载状态直至请求返回；成功时以成功提示告知（如 "Shutdown command sent"），失败时以不自动消失的错误提示展示失败原因。
 
 **UI-TASK-001**：打开解决方案后，左侧导航栏的 "Tasks" 入口点击进入 Tasks 子界面。
 

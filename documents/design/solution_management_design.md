@@ -169,6 +169,9 @@ function buildRobotInfoKey(solutionId: string, robotId: string): string;
 | POST | `/api/solutions/:solutionId/robots` | Create robot |
 | PUT | `/api/solutions/:solutionId/robots/:robotId` | Update robot |
 | DELETE | `/api/solutions/:solutionId/robots/:robotId` | Delete robot |
+| POST | `/api/solutions/:solutionId/robots/:robotId/power` | Execute a robot power action (shutdown / reboot); no task record |
+
+`POST .../power` 请求体为 `{ "action": "shutdown" | "reboot" }`（其他取值返回 `400 INVALID_INPUT`）。该接口为**即时动作**，不创建 flow：路由委托 `RobotPowerService` 解析机器人存储地址后直接执行 `DbusPowerTask`，成功返回 `{ ok: true, robotId, action }`。由于 `DbusPowerTask` 对任何失败（机器人不可达、SSH 连接中断、命令返回非 0 退出码）均忽略并返回成功，电源动作本身不会产生错误响应；仅在请求层面出错时（如机器人记录不存在返回 `ROBOT_NOT_FOUND`，或其余异常返回 `502 POWER_ACTION_FAILED`）才返回错误。
 
 ### 3.5 MemStore 服务接口（MemStore）
 
@@ -401,6 +404,7 @@ interface RobotApiClient {
   createRobot(solutionId: string, input: CreateRobotInput): Promise<StoredRobotData>;
   updateRobot(solutionId: string, robotId: string, patch: Partial<Pick<StoredRobotData, "alias" | "address" | "port">>): Promise<StoredRobotData>;
   deleteRobot(solutionId: string, robotId: string): Promise<void>;
+  sendRobotPowerAction(solutionId: string, robotId: string, action: RobotPowerAction): Promise<void>;
   getMemStoreValue(key: string): Promise<unknown | null>;
   refreshMemStoreKey(key: string): Promise<unknown | null>;
   subscribeMemStoreKey(key: string, onData: (data: { key: string; value: unknown; type: string }) => void): () => void;
@@ -415,6 +419,30 @@ function generateMockRobotInfo(address: string, alias: string): Omit<RobotDefini
 ```
 
 > **Design decision**: 机器人动态信息（model、SN 等）由后端通过 SSH 协议从机器人获取，并通过 mem_store 缓存。前端首次通过 `/robots/info` 获取全量数据，之后通过单条共享 SSE 连接（`GET /api/sse`）订阅 mem_store 事件，按 key（`robot:{solutionId}/{robotId}` 及 `${...}/sw`）过滤接收每台机器人的实时更新推送，SSE 连接数恒为 1，不随机器人数量增长。当后端 SSH 获取失败或缓存尚未就绪时，前端仍使用 `generateMockRobotInfo()` 生成兜底数据。`enrichRobotFromBackend` 函数优先使用后端返回的 basicInfo，缺失字段用 mock 数据补充。仅 `alias`、`address` 和 `port` 可编辑/持久化，所有动态字段只读。
+
+### 3.9 机器人电源操作服务（RobotPowerService）
+
+机器人界面上的关机 / 重启按钮是**即时动作**，不经过任务流引擎，因此后端提供独立的轻量服务而非 DAG：
+
+```typescript
+export type RobotPowerAction = "shutdown" | "reboot";
+
+export interface RobotPowerResult {
+  robotId: string;
+  action: RobotPowerAction;
+}
+
+export class RobotPowerService {
+  constructor(robotService: RobotService, powerTaskClass: TaskResolverClass);
+  execute(solutionId: string, robotId: string, action: RobotPowerAction): Promise<RobotPowerResult>;
+}
+```
+
+- 依赖注入解析器类（而非注册名），由 `src/backend/src/index.ts` 依据 mock 模式注入 `DbusPowerTask` 或 `MockDbusPowerTask`，与 `ResolverRegistry` 的 mock 切换策略保持一致。
+- `execute()` 通过 `RobotService.get()` 解析机器人的持久化 `address` / `port`（机器人在存储中的地址是唯一权威来源，不接受前端传入地址），随后直接 `new powerTaskClass().exec({ robotIp, robotPort, powerAction }, { flowId: \`robot-power-${robotId}\` })`。
+- 由于不创建 flow，`BaseTask` 使用 `<standalone>` 语义的日志上下文，`flowId` 仅用于结构化日志关联。
+- 该服务与批量电源任务（`DbusPowerTask` 的 DAG 调用）共享同一个解析器实现，从而保证列表按钮与批量任务使用完全相同的 SSH 命令。
+- `DbusPowerTask` 为"即发即忘"，忽略所有失败并返回成功，因此 `execute()` 在机器人侧执行失败时仍正常返回，仅记录 warning 日志；只有机器人记录解析失败（如 `ROBOT_NOT_FOUND`）等请求层面错误才会抛出。
 
 ---
 
@@ -959,8 +987,8 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
 
 - **Layout**: Main content area displays data table (Carbon `DataTable`) or grid view after clicking "Robots" in left sidebar.
 - **Breadcrumb**: Navigation breadcrumb showing "Solutions > {Solution Name} > Robots".
-- **Table columns**: `alias` (inline-editable), `address` (displayed as `<host>:<port>`, e.g. `192.168.1.101:22`), `model`, `robotSN`, `thingsId`, `megaCosmOSVersion`, action column (View Details, Delete).
-- **Grid view**: Card layout showing robot alias, address, model, SN, OS version.
+- **Table columns**: `alias` (inline-editable), `address` (displayed as `<host>:<port>`, e.g. `192.168.1.101:22`), `model`, `robotSN`, `thingsId`, `megaCosmOSVersion`, action column (Shutdown, Reboot, View Details, Delete).
+- **Grid view**: Card layout showing robot alias, address, model, SN, OS version, plus Shutdown / Reboot icon buttons at the bottom of each card.
 - **Toolbar**: Search input (filter by alias/address/model/SN substring), "Add Robot" button, view mode toggle (grid/list).
 - **Batch selection**: Checkbox per row; "Batch Delete" danger button appears in toolbar when items selected.
 - **Notifications**: Success/error notifications auto-dismiss after 5 seconds.
@@ -1030,6 +1058,33 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
     - 勾选机器人：`input` 含 `solutionId`、`robotIds:[robotId]`、`robotIp`、`robotPort`、`deviceId:""` 与参数。
     - 手动 device id：`input` 含 `solutionId`、`robotIds:[deviceId]`、`deviceId`、`robotIp:""`、`robotPort:22` 与参数；blackbox DAG 的 `fetch_info`（`GetBlackboxDeviceInfoTask`）直接使用该 device id，不发起 SSH 查询。
     - DAG 取自 Task Registry。
+
+### 9.12 Robot Power Actions（关机 / 重启）
+
+机器人电源操作有两条互不重叠的入口，二者共用同一个后端解析器 `DbusPowerTask`，因此执行的 SSH 命令完全一致：
+
+**入口 A — 机器人界面按钮（即时动作，不产生任务记录）**
+
+- 列表视图每行 Actions 列、网格视图每张卡片底部各渲染两个图标按钮：`Shutdown`（Carbon `Power` 图标）与 `Reboot`（Carbon `Restart` 图标），均使用 `Button` + `hasIconOnly` + `iconDescription` 渲染，`size="sm"`、`kind="ghost"`。
+- 网格卡片整体点击仍打开详情弹窗，因此卡片内按钮容器需阻止事件冒泡（`stopPropagation`），避免误触详情。
+- 点击按钮后先弹出确认对话框（Carbon `Modal`）：
+  - Shutdown：标题 "Shutdown Robot"，`danger` 样式，正文提示机器人将断电并在重新上电前不可达。
+  - Reboot：标题 "Reboot Robot"，正文提示机器人将重启并在重启期间暂时不可达。
+  - 正文展示目标机器人的 `alias` 与 `formatAddressDisplay(address, port)`。
+- 确认后调用 `sendRobotPowerAction(solutionId, robotId, action)` → `POST /api/solutions/:solutionId/robots/:robotId/power`。
+- 点击确认后**立即关闭确认对话框**（不等待请求返回），请求在后台执行并通过 toast 异步反馈结果：成功显示 "Shutdown command sent" / "Reboot command sent"；由于后端忽略所有电源动作失败，正常情况下不会出现失败提示，仅在请求层面出错（如机器人记录不存在）时才显示不自动消失的错误提示。
+
+**入口 B — Tasks 子界面的批量电源任务（产生任务记录）**
+
+- Task Registry 中新增两个任务类型，`params: {}`、`robotSelection.mode = "multiple"`：
+
+| type | name | DAG 节点 | resolver | powerAction | expectedResults |
+|------|------|---------|----------|-------------|-----------------|
+| `shutdown-robots` | Shutdown Robots | `shutdown` | `DbusPowerTask` | `{ value: "shutdown" }` | `["shutdown_done"]` |
+| `reboot-robots` | Reboot Robots | `reboot` | `DbusPowerTask` | `{ value: "reboot" }` | `["reboot_done"]` |
+
+- `powerAction` 以字面量（`{ value: ... }`）形式写入 DAG 参数，而非引用 input 变量，因此创建任务的 Step 3 参数步骤为空（直接进入确认步骤）。
+- 每台选中的机器人创建一条独立 flow，任务记录可在 Tasks 子界面查看状态与结果。
 
 ---
 

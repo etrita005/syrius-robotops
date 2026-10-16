@@ -1,8 +1,19 @@
 import { Hono } from "hono";
 import { RobotService, buildRobotInfoKey } from "../services/robotService.js";
+import { RobotPowerService, type RobotPowerAction } from "../services/robotPowerService.js";
 import { AppError } from "../errors/appErrors.js";
+import { createLogger } from "../logger/index.js";
 
-export function createRobotRoutes(robotService: RobotService): Hono {
+const log = createLogger("RobotRoutes");
+
+function isRobotPowerAction(value: unknown): value is RobotPowerAction {
+  return value === "shutdown" || value === "reboot";
+}
+
+export function createRobotRoutes(
+  robotService: RobotService,
+  robotPowerService: RobotPowerService
+): Hono {
   const router = new Hono();
 
   router.get("/info", async (c) => {
@@ -79,6 +90,37 @@ export function createRobotRoutes(robotService: RobotService): Hono {
         return c.json({ error: err.code, message: err.message }, err.statusCode);
       }
       throw err;
+    }
+  });
+
+  router.post("/:robotId/power", async (c) => {
+    const solutionId = c.req.param("solutionId")!;
+    const robotId = c.req.param("robotId")!;
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "INVALID_INPUT", message: "A JSON body with an action is required." }, 400);
+    }
+
+    const action = (body as { action?: unknown } | null)?.action;
+    if (!isRobotPowerAction(action)) {
+      return c.json({ error: "INVALID_INPUT", message: "action must be 'shutdown' or 'reboot'." }, 400);
+    }
+
+    try {
+      await robotPowerService.execute(solutionId, robotId, action);
+      return c.json({ ok: true, robotId, action });
+    } catch (err) {
+      if (err instanceof AppError) {
+        return c.json({ error: err.code, message: err.message }, err.statusCode);
+      }
+      log.error({ robotId, action, err: (err as Error).message }, "Robot power action failed");
+      return c.json(
+        { error: "POWER_ACTION_FAILED", message: (err as Error).message },
+        502
+      );
     }
   });
 

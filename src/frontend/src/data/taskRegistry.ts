@@ -756,6 +756,42 @@ const SYNC_TIME_DAG: DagDefinition = {
   },
 };
 
+const SHUTDOWN_ROBOTS_DAG: DagDefinition = {
+  tasks: {
+    shutdown: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "DbusPowerTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          powerAction: { value: "shutdown" },
+        },
+        results: { done: "shutdown_done" },
+      },
+      provides: ["shutdown_done"],
+    },
+  },
+};
+
+const REBOOT_ROBOTS_DAG: DagDefinition = {
+  tasks: {
+    reboot: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "DbusPowerTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          powerAction: { value: "reboot" },
+        },
+        results: { done: "reboot_done" },
+      },
+      provides: ["reboot_done"],
+    },
+  },
+};
+
 const UNINSTALL_L4T_DOWNLOADER_DAG: DagDefinition = {
   tasks: {
     uninstall: {
@@ -1228,6 +1264,32 @@ export const TASK_REGISTRY: TaskRegistry = {
       },
       dag: SYNC_TIME_DAG,
       expectedResults: ["sync_done"],
+      params: {},
+    },
+    {
+      type: "shutdown-robots",
+      name: "Shutdown Robots",
+      description:
+        "Send a shutdown command to the selected robots through the bootstrapper D-Bus interface.",
+      robotSelection: {
+        mode: "multiple",
+        description: "Select one or more target robots to shut down.",
+      },
+      dag: SHUTDOWN_ROBOTS_DAG,
+      expectedResults: ["shutdown_done"],
+      params: {},
+    },
+    {
+      type: "reboot-robots",
+      name: "Reboot Robots",
+      description:
+        "Send a reboot command to the selected robots through the bootstrapper D-Bus interface.",
+      robotSelection: {
+        mode: "multiple",
+        description: "Select one or more target robots to reboot.",
+      },
+      dag: REBOOT_ROBOTS_DAG,
+      expectedResults: ["reboot_done"],
       params: {},
     },
     {
