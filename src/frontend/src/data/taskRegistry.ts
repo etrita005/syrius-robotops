@@ -761,7 +761,7 @@ const SHUTDOWN_ROBOTS_DAG: DagDefinition = {
     shutdown: {
       requires: ["robotIp", "robotPort"],
       resolver: {
-        name: "DbusPowerTask",
+        name: "RobotPowerTask",
         params: {
           robotIp: "robotIp",
           robotPort: "robotPort",
@@ -779,7 +779,7 @@ const REBOOT_ROBOTS_DAG: DagDefinition = {
     reboot: {
       requires: ["robotIp", "robotPort"],
       resolver: {
-        name: "DbusPowerTask",
+        name: "RobotPowerTask",
         params: {
           robotIp: "robotIp",
           robotPort: "robotPort",

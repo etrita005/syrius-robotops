@@ -4,15 +4,15 @@
 
 This document defines test cases for the robot power control feature (shutdown / reboot), covering:
 
-- Backend unit tests for `DbusPowerTask`, `MockDbusPowerTask`, `RobotPowerService`, and the `POST /api/solutions/:solutionId/robots/:robotId/power` endpoint.
+- Backend unit tests for `RobotPowerTask`, `MockRobotPowerTask`, `RobotPowerService`, and the `POST /api/solutions/:solutionId/robots/:robotId/power` endpoint.
 - Frontend E2E tests for the robot list power buttons (`TC-E2E-ROB-013` ~ `016`) and for the batch `Shutdown Robots` / `Reboot Robots` task types (`TC-E2E-TASK-021` ~ `022`).
 
 Two entry points share one resolver implementation, so both must be verified to issue the same command:
 
 | Entry point | Path | Task record |
 |-------------|------|-------------|
-| Robot list Shutdown / Reboot buttons | `RobotPowerService` → `DbusPowerTask` (direct exec) | No |
-| Tasks → Shutdown Robots / Reboot Robots | DAG single node → `DbusPowerTask` | Yes |
+| Robot list Shutdown / Reboot buttons | `RobotPowerService` → `RobotPowerTask` (direct exec) | No |
+| Tasks → Shutdown Robots / Reboot Robots | DAG single node → `RobotPowerTask` | Yes |
 
 ---
 
@@ -25,7 +25,7 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 **Precondition**: None
 
 **Test Steps**:
-1. Create a `TestableDbusPowerTask` instance
+1. Create a `TestableRobotPowerTask` instance
 2. Call `getSshCommand({ powerAction: "shutdown" })`
 
 **Expected Result**:
@@ -37,7 +37,7 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 **Precondition**: None
 
 **Test Steps**:
-1. Create a `TestableDbusPowerTask` instance
+1. Create a `TestableRobotPowerTask` instance
 2. Call `getSshCommand({ powerAction: "reboot" })`
 
 **Expected Result**: Command ends with `com.syriusrobotics.bootstrapper.system.Reboot`
@@ -47,7 +47,7 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 **Precondition**: None
 
 **Test Steps**:
-1. Create a `TestableDbusPowerTask` instance
+1. Create a `TestableRobotPowerTask` instance
 2. Call `buildParams({ robotIp: "192.168.1.10", powerAction: "shutdown" })`
 3. Call `buildParams({ robotIp: "192.168.1.10", powerAction: "shutdown", commandTimeout: 5000 })`
 
@@ -62,7 +62,7 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 **Precondition**: None
 
 **Test Steps**:
-1. Create a `TestableDbusPowerTask` instance
+1. Create a `TestableRobotPowerTask` instance
 2. Call `buildParams({ robotIp: "192.168.1.10" })`
 3. Call `buildParams({ robotIp: "192.168.1.10", powerAction: "halt" })`
 
@@ -91,12 +91,12 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 - The call resolves with `{ done: true, success: true, stdout: "", stderr: "", exitCode: 0 }`
 - Shutdown and reboot are fire-and-forget (the host goes down before the reply/SSH session can confirm), so the underlying error is only logged as a warning
 
-### TC-PWR-007: `MockDbusPowerTask` returns a successful body
+### TC-PWR-007: `MockRobotPowerTask` returns a successful body
 
 **Precondition**: None
 
 **Test Steps**:
-1. Create a `MockDbusPowerTask` instance
+1. Create a `MockRobotPowerTask` instance
 2. Call `exec({ powerAction: "reboot" }, { flowId: "test-power" })`
 
 **Expected Result**:
@@ -107,7 +107,7 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 **Precondition**: In-memory object store with a solution and one robot at `192.168.1.10:22`
 
 **Test Steps**:
-1. Register `MockDbusPowerTask` in a `ResolverRegistry` and build a `RobotPowerService`
+1. Register `MockRobotPowerTask` in a `ResolverRegistry` and build a `RobotPowerService`
 2. Call `execute(solutionId, robotId, "shutdown")`
 
 **Expected Result**:
@@ -143,7 +143,7 @@ Test execution command: `npm --workspace backend run test` (from `src/`)
 
 ### TC-PWR-012: Batch DAG `shutdown-robots` completes through the flow engine
 
-**Precondition**: `ResolverRegistry` with `MockDbusPowerTask` registered under `DbusPowerTask`
+**Precondition**: `ResolverRegistry` with `MockRobotPowerTask` registered under `RobotPowerTask`
 
 **Test Steps**:
 1. Create a `user` flow with the single-node `shutdown` DAG (`powerAction: { value: "shutdown" }`) and input `{ robotIp: "192.168.1.10", robotPort: 22 }`
@@ -277,8 +277,8 @@ Test execution command: `npm run test:e2e` (from `src/`)
 | D-Bus interface | `com.syriusrobotics.bootstrapper.system` | Interface owning Shutdown / Reboot |
 | Shutdown method | `com.syriusrobotics.bootstrapper.system.Shutdown` | Powers the robot off |
 | Reboot method | `com.syriusrobotics.bootstrapper.system.Reboot` | Restarts the robot |
-| Default command timeout | `30000` ms | `DbusPowerTask` command timeout |
-| Mock power action delay | `1000` ms | `MockDbusPowerTask` simulation time |
+| Default command timeout | `30000` ms | `RobotPowerTask` command timeout |
+| Mock power action delay | `1000` ms | `MockRobotPowerTask` simulation time |
 | Power endpoint | `POST /api/solutions/{solutionId}/robots/{robotId}/power` | Immediate action, no task record |
 | Batch task types | `shutdown-robots`, `reboot-robots` | Task Registry types |
 | Expected results | `shutdown_done`, `reboot_done` | DAG expected result variables |
@@ -289,8 +289,8 @@ Test execution command: `npm run test:e2e` (from `src/`)
 
 | Module | Coverage Target |
 |--------|----------------|
-| `DbusPowerTask` | `getSshCommand()`, `buildParams()`, `powerAction` validation, failure tolerance (all failures ignored) |
-| `MockDbusPowerTask` | Return value structure |
+| `RobotPowerTask` | `getSshCommand()`, `buildParams()`, `powerAction` validation, failure tolerance (all failures ignored) |
+| `MockRobotPowerTask` | Return value structure |
 | `RobotPowerService` | Address resolution, task execution, not-found propagation |
 | Robot power REST endpoint | Input validation (400) and success response |
 | Batch power DAGs | Flow creation, completion, task state |

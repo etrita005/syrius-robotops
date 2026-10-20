@@ -540,9 +540,9 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 **FR-SOL-021a**：系统应提供两个面向多台机器人的批量电源任务类型（"Shutdown Robots" 与 "Reboot Robots"）。
 
 - 两个任务类型通过 Tasks 子界面的 Create Task 流程创建，`robotSelection.mode = "multiple"`，且不需要额外参数（`params` 为空）。
-- 为每台选中的机器人创建一条独立 flow，DAG 为单节点，调用后端 `DbusPowerTask`，`powerAction` 分别为 `"shutdown"` / `"reboot"`。
+- 为每台选中的机器人创建一条独立 flow，DAG 为单节点，调用后端 `RobotPowerTask`，`powerAction` 分别为 `"shutdown"` / `"reboot"`。
 - 批量任务使用的 SSH 命令与列表按钮的关机/重启命令完全一致。
-- 与列表按钮一致，批量任务同样忽略失败（`DbusPowerTask` 对任何失败均返回成功），因此对应 flow 应到达 `COMPLETED`。
+- 与列表按钮一致，批量任务同样忽略失败（`RobotPowerTask` 对任何失败均返回成功），因此对应 flow 应到达 `COMPLETED`。
 - 预期结果变量分别为 `shutdown_done` / `reboot_done`。
 - 任务执行记录保留在 Tasks 子界面，可由用户查看状态与结果。
 

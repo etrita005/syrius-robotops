@@ -1,11 +1,11 @@
 import type { ValueMap } from "flowed";
-import { DbusPowerTask } from "../real/dbusPowerTask.js";
+import { RobotPowerTask } from "../real/robotPowerTask.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class MockDbusPowerTask extends DbusPowerTask {
+export class MockRobotPowerTask extends RobotPowerTask {
   protected override async onExec(params: ValueMap): Promise<ValueMap> {
     const powerAction = params.powerAction;
 

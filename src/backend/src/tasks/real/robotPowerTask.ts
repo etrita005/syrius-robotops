@@ -26,7 +26,7 @@ function buildPowerCommand(action: PowerAction): string {
   ].join(" ");
 }
 
-export class DbusPowerTask extends SshCommandTask {
+export class RobotPowerTask extends SshCommandTask {
   protected override buildParams(params: ValueMap): SshCommandParams {
     return super.buildParams({
       ...params,

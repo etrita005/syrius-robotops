@@ -171,7 +171,7 @@ function buildRobotInfoKey(solutionId: string, robotId: string): string;
 | DELETE | `/api/solutions/:solutionId/robots/:robotId` | Delete robot |
 | POST | `/api/solutions/:solutionId/robots/:robotId/power` | Execute a robot power action (shutdown / reboot); no task record |
 
-`POST .../power` 请求体为 `{ "action": "shutdown" | "reboot" }`（其他取值返回 `400 INVALID_INPUT`）。该接口为**即时动作**，不创建 flow：路由委托 `RobotPowerService` 解析机器人存储地址后直接执行 `DbusPowerTask`，成功返回 `{ ok: true, robotId, action }`。由于 `DbusPowerTask` 对任何失败（机器人不可达、SSH 连接中断、命令返回非 0 退出码）均忽略并返回成功，电源动作本身不会产生错误响应；仅在请求层面出错时（如机器人记录不存在返回 `ROBOT_NOT_FOUND`，或其余异常返回 `502 POWER_ACTION_FAILED`）才返回错误。
+`POST .../power` 请求体为 `{ "action": "shutdown" | "reboot" }`（其他取值返回 `400 INVALID_INPUT`）。该接口为**即时动作**，不创建 flow：路由委托 `RobotPowerService` 解析机器人存储地址后直接执行 `RobotPowerTask`，成功返回 `{ ok: true, robotId, action }`。由于 `RobotPowerTask` 对任何失败（机器人不可达、SSH 连接中断、命令返回非 0 退出码）均忽略并返回成功，电源动作本身不会产生错误响应；仅在请求层面出错时（如机器人记录不存在返回 `ROBOT_NOT_FOUND`，或其余异常返回 `502 POWER_ACTION_FAILED`）才返回错误。
 
 ### 3.5 MemStore 服务接口（MemStore）
 
@@ -438,11 +438,11 @@ export class RobotPowerService {
 }
 ```
 
-- 依赖注入解析器类（而非注册名），由 `src/backend/src/index.ts` 依据 mock 模式注入 `DbusPowerTask` 或 `MockDbusPowerTask`，与 `ResolverRegistry` 的 mock 切换策略保持一致。
+- 依赖注入解析器类（而非注册名），由 `src/backend/src/index.ts` 依据 mock 模式注入 `RobotPowerTask` 或 `MockRobotPowerTask`，与 `ResolverRegistry` 的 mock 切换策略保持一致。
 - `execute()` 通过 `RobotService.get()` 解析机器人的持久化 `address` / `port`（机器人在存储中的地址是唯一权威来源，不接受前端传入地址），随后直接 `new powerTaskClass().exec({ robotIp, robotPort, powerAction }, { flowId: \`robot-power-${robotId}\` })`。
 - 由于不创建 flow，`BaseTask` 使用 `<standalone>` 语义的日志上下文，`flowId` 仅用于结构化日志关联。
-- 该服务与批量电源任务（`DbusPowerTask` 的 DAG 调用）共享同一个解析器实现，从而保证列表按钮与批量任务使用完全相同的 SSH 命令。
-- `DbusPowerTask` 为"即发即忘"，忽略所有失败并返回成功，因此 `execute()` 在机器人侧执行失败时仍正常返回，仅记录 warning 日志；只有机器人记录解析失败（如 `ROBOT_NOT_FOUND`）等请求层面错误才会抛出。
+- 该服务与批量电源任务（`RobotPowerTask` 的 DAG 调用）共享同一个解析器实现，从而保证列表按钮与批量任务使用完全相同的 SSH 命令。
+- `RobotPowerTask` 为"即发即忘"，忽略所有失败并返回成功，因此 `execute()` 在机器人侧执行失败时仍正常返回，仅记录 warning 日志；只有机器人记录解析失败（如 `ROBOT_NOT_FOUND`）等请求层面错误才会抛出。
 
 ---
 
@@ -1061,7 +1061,7 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
 
 ### 9.12 Robot Power Actions（关机 / 重启）
 
-机器人电源操作有两条互不重叠的入口，二者共用同一个后端解析器 `DbusPowerTask`，因此执行的 SSH 命令完全一致：
+机器人电源操作有两条互不重叠的入口，二者共用同一个后端解析器 `RobotPowerTask`，因此执行的 SSH 命令完全一致：
 
 **入口 A — 机器人界面按钮（即时动作，不产生任务记录）**
 
@@ -1080,8 +1080,8 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
 
 | type | name | DAG 节点 | resolver | powerAction | expectedResults |
 |------|------|---------|----------|-------------|-----------------|
-| `shutdown-robots` | Shutdown Robots | `shutdown` | `DbusPowerTask` | `{ value: "shutdown" }` | `["shutdown_done"]` |
-| `reboot-robots` | Reboot Robots | `reboot` | `DbusPowerTask` | `{ value: "reboot" }` | `["reboot_done"]` |
+| `shutdown-robots` | Shutdown Robots | `shutdown` | `RobotPowerTask` | `{ value: "shutdown" }` | `["shutdown_done"]` |
+| `reboot-robots` | Reboot Robots | `reboot` | `RobotPowerTask` | `{ value: "reboot" }` | `["reboot_done"]` |
 
 - `powerAction` 以字面量（`{ value: ... }`）形式写入 DAG 参数，而非引用 input 变量，因此创建任务的 Step 3 参数步骤为空（直接进入确认步骤）。
 - 每台选中的机器人创建一条独立 flow，任务记录可在 Tasks 子界面查看状态与结果。

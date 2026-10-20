@@ -67,7 +67,7 @@ import {
   UninstallL4TDownloaderTask, MockUninstallL4TDownloaderTask,
   FixBrokenPackagesTask, MockFixBrokenPackagesTask,
   CollectBlackboxLogTask, MockCollectBlackboxLogTask,
-  DbusPowerTask, MockDbusPowerTask,
+  RobotPowerTask, MockRobotPowerTask,
 } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
     { name: "UninstallL4TDownloaderTask", real: UninstallL4TDownloaderTask, mock: MockUninstallL4TDownloaderTask },
     { name: "FixBrokenPackagesTask", real: FixBrokenPackagesTask, mock: MockFixBrokenPackagesTask },
     { name: "CollectBlackboxLogTask", real: CollectBlackboxLogTask, mock: MockCollectBlackboxLogTask },
-    { name: "DbusPowerTask", real: DbusPowerTask, mock: MockDbusPowerTask },
+    { name: "RobotPowerTask", real: RobotPowerTask, mock: MockRobotPowerTask },
   ]);
 
   const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
@@ -211,7 +211,7 @@ async function main(): Promise<void> {
     sshPassword: SSH_PASSWORD,
   });
 
-  const robotPowerTaskClass = config.runtime.mock ? MockDbusPowerTask : DbusPowerTask;
+  const robotPowerTaskClass = config.runtime.mock ? MockRobotPowerTask : RobotPowerTask;
   const robotPowerService = new RobotPowerService(robotService, robotPowerTaskClass);
 
   taskFlowEngine.setFlowContext({ memStore: memStoreInstance, artifactService });

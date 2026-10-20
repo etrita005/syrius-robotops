@@ -50,8 +50,8 @@ import { UninstallL4TDownloaderTask } from "./tasks/real/uninstallL4TDownloaderT
 import { MockUninstallL4TDownloaderTask } from "./tasks/mock/mockUninstallL4TDownloaderTask.js";
 import { FixBrokenPackagesTask } from "./tasks/real/fixBrokenPackagesTask.js";
 import { MockFixBrokenPackagesTask } from "./tasks/mock/mockFixBrokenPackagesTask.js";
-import { DbusPowerTask } from "./tasks/real/dbusPowerTask.js";
-import { MockDbusPowerTask } from "./tasks/mock/mockDbusPowerTask.js";
+import { RobotPowerTask } from "./tasks/real/robotPowerTask.js";
+import { MockRobotPowerTask } from "./tasks/mock/mockRobotPowerTask.js";
 import { RobotPowerService } from "./services/robotPowerService.js";
 
 class InMemoryObjectStore {
@@ -3726,7 +3726,7 @@ describe("Solution Routes - API", () => {
     const robotService = new RobotService(objStore, engine, sseManager, memStore);
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
-    app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService, new RobotPowerService(robotService, MockDbusPowerTask)));
+    app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService, new RobotPowerService(robotService, MockRobotPowerTask)));
     return { app, solutionService, robotService, artifactService };
   }
 
@@ -4471,7 +4471,7 @@ describe("Robot Routes - API", () => {
     robotServiceInstances.push(robotService);
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
-    app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService, new RobotPowerService(robotService, MockDbusPowerTask)));
+    app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService, new RobotPowerService(robotService, MockRobotPowerTask)));
     return { app, solutionService, robotService };
   }
 
@@ -5917,7 +5917,7 @@ describe("Blackbox resolver registration", () => {
 });
 
 // ============================================================
-// Robot Power Control: DbusPowerTask / MockDbusPowerTask / RobotPowerService / Flow
+// Robot Power Control: RobotPowerTask / MockRobotPowerTask / RobotPowerService / Flow
 // ============================================================
 
 const DBUS_SHUTDOWN_COMMAND =
@@ -5925,8 +5925,8 @@ const DBUS_SHUTDOWN_COMMAND =
 const DBUS_REBOOT_COMMAND =
   "dbus-send --system --print-reply --dest=com.syriusrobotics.bootstrapper /com/syriusrobotics/bootstrapper com.syriusrobotics.bootstrapper.system.Reboot";
 
-describe("Robot Power Control - DbusPowerTask", () => {
-  class TestableDbusPowerTask extends DbusPowerTask {
+describe("Robot Power Control - RobotPowerTask", () => {
+  class TestableRobotPowerTask extends RobotPowerTask {
     public testGetSshCommand(params: ValueMap): string {
       return this.getSshCommand(params);
     }
@@ -5936,21 +5936,21 @@ describe("Robot Power Control - DbusPowerTask", () => {
   }
 
   it("TC-PWR-001: shutdown command targets the bootstrapper Shutdown method", () => {
-    const task = new TestableDbusPowerTask();
+    const task = new TestableRobotPowerTask();
     const cmd = task.testGetSshCommand({ powerAction: "shutdown" });
     assert.equal(cmd, DBUS_SHUTDOWN_COMMAND);
     assert.ok(!cmd.includes("&&"), "command must not contain && so sudo is wrapped once");
   });
 
   it("TC-PWR-002: reboot command targets the bootstrapper Reboot method", () => {
-    const task = new TestableDbusPowerTask();
+    const task = new TestableRobotPowerTask();
     const cmd = task.testGetSshCommand({ powerAction: "reboot" });
     assert.equal(cmd, DBUS_REBOOT_COMMAND);
     assert.ok(cmd.endsWith("com.syriusrobotics.bootstrapper.system.Reboot"));
   });
 
   it("TC-PWR-003: buildParams forces sudo, retryCount 1, and the default command timeout", () => {
-    const task = new TestableDbusPowerTask();
+    const task = new TestableRobotPowerTask();
     const params = task.testBuildParams({ robotIp: "192.168.1.10", powerAction: "shutdown" });
     assert.equal(params.sudo, true);
     assert.equal(params.retryCount, 1);
@@ -5966,7 +5966,7 @@ describe("Robot Power Control - DbusPowerTask", () => {
   });
 
   it("TC-PWR-004: missing or unknown powerAction is rejected before connecting", () => {
-    const task = new TestableDbusPowerTask();
+    const task = new TestableRobotPowerTask();
     assert.throws(() => task.testBuildParams({ robotIp: "192.168.1.10" }), /powerAction/);
     assert.throws(
       () => task.testBuildParams({ robotIp: "192.168.1.10", powerAction: "halt" }),
@@ -5975,31 +5975,31 @@ describe("Robot Power Control - DbusPowerTask", () => {
   });
 
   it("TC-PWR-005: connection loss after the D-Bus call is treated as success", async () => {
-    class TimeoutDbusPowerTask extends DbusPowerTask {
+    class TimeoutRobotPowerTask extends RobotPowerTask {
       protected override buildParams(): never {
         throw new Error("SSH connection timed out after 10000ms");
       }
     }
 
-    const task = new TimeoutDbusPowerTask();
+    const task = new TimeoutRobotPowerTask();
     const result = await task.exec({ robotIp: "192.168.1.10", powerAction: "shutdown" });
     assert.deepEqual(result, { done: true, success: true, stdout: "", stderr: "", exitCode: 0 });
   });
 
   it("TC-PWR-006: every power action failure is ignored and reported as success", async () => {
-    class FailingDbusPowerTask extends DbusPowerTask {
+    class FailingRobotPowerTask extends RobotPowerTask {
       protected override buildParams(): never {
         throw new Error("SSH command exited with code 127. Output logged above.");
       }
     }
 
-    const task = new FailingDbusPowerTask();
+    const task = new FailingRobotPowerTask();
     const result = await task.exec({ robotIp: "192.168.1.10", powerAction: "reboot" });
     assert.deepEqual(result, { done: true, success: true, stdout: "", stderr: "", exitCode: 0 });
   });
 
-  it("TC-PWR-007: MockDbusPowerTask returns a successful body", async () => {
-    const task = new MockDbusPowerTask();
+  it("TC-PWR-007: MockRobotPowerTask returns a successful body", async () => {
+    const task = new MockRobotPowerTask();
     const result = await task.exec({ powerAction: "reboot" }, { flowId: "test-power" });
     assert.equal(result.done, true);
     assert.equal(result.success, true);
@@ -6012,15 +6012,15 @@ describe("Robot Power Control - RobotPowerService", () => {
     const registry = new ResolverRegistry();
     const received: ValueMap[] = [];
 
-    class RecordingPowerTask extends MockDbusPowerTask {
+    class RecordingPowerTask extends MockRobotPowerTask {
       protected override async onExec(params: ValueMap): Promise<ValueMap> {
         received.push({ ...params });
         return super.onExec(params);
       }
     }
 
-    registry.register("DbusPowerTask", RecordingPowerTask as unknown as TaskResolverClass);
-    const powerTaskClass = registry.get("DbusPowerTask")!;
+    registry.register("RobotPowerTask", RecordingPowerTask as unknown as TaskResolverClass);
+    const powerTaskClass = registry.get("RobotPowerTask")!;
 
     const services = createEnhancedTestServices();
     try {
@@ -6046,7 +6046,7 @@ describe("Robot Power Control - RobotPowerService", () => {
       const solution = await services.solutionService.create({ name: "Power Test 2" });
       const powerService = new RobotPowerService(
         services.robotService,
-        MockDbusPowerTask as unknown as TaskResolverClass
+        MockRobotPowerTask as unknown as TaskResolverClass
       );
 
       await assert.rejects(
@@ -6065,7 +6065,7 @@ describe("Robot Power Control - RobotPowerService", () => {
 describe("Robot Power Control - Flow Integration", () => {
   const buildRegistry = (): ResolverRegistry => {
     const registry = new ResolverRegistry();
-    registry.register("DbusPowerTask", MockDbusPowerTask as unknown as TaskResolverClass);
+    registry.register("RobotPowerTask", MockRobotPowerTask as unknown as TaskResolverClass);
     return registry;
   };
 
@@ -6081,7 +6081,7 @@ describe("Robot Power Control - Flow Integration", () => {
           requires: ["robotIp", "robotPort"],
           provides: ["shutdown_done"],
           resolver: {
-            name: "DbusPowerTask",
+            name: "RobotPowerTask",
             params: {
               robotIp: "robotIp",
               robotPort: "robotPort",
@@ -6121,7 +6121,7 @@ describe("Robot Power Control - Flow Integration", () => {
           requires: ["robotIp", "robotPort"],
           provides: ["reboot_done"],
           resolver: {
-            name: "DbusPowerTask",
+            name: "RobotPowerTask",
             params: {
               robotIp: "robotIp",
               robotPort: "robotPort",
