@@ -1057,7 +1057,7 @@ Resolves the GGR3 config artifact storage path from the artifact service, then u
 |-----------|------|---------|-------------|
 | `artifactId` | `string` | (optional) | Artifact ID to download |
 
-Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+Inherits all from `SshFileTransferTask`. `sudo` forced to `false` so the zip is uploaded by the SSH user (`developer`) and later removed by the same identity; `remoteFilePath` hardcoded.
 
 ### Context Parameters
 
@@ -1082,11 +1082,11 @@ Same as `SshFileTransferTask`.
 
 ### Overview
 
-Extracts the uploaded GGR3 config zip into `/tmp/ggr3_config` on the robot, uses `adb push` to transfer the extracted files to the Android device target directory, and removes the temporary files.
+Extracts the uploaded GGR3 config zip into `/tmp/ggr3_config` on the robot, uses `adb push` to transfer the extracted files to the Android device target directory, and removes the temporary files. The Android device adb state is checked first and the adb authorization is reset only when the device reports `unauthorized`.
 
 ### Input Parameters
 
-Inherits all from `SshCommandTask`. `sudo` forced to `true`, `commandTimeout` defaults to `60000`, and `retryCount` is forced to `1` because the deploy command mutates remote state and must not be retried without rerunning transfer.
+Inherits all from `SshCommandTask`. `sudo` forced to `false` so every step runs as the SSH user (`developer`); the only privileged step is the adb key reset, wrapped with an explicit `echo "<password>" | sudo -S -p ''` prefix. `commandTimeout` defaults to `120000` (the adb authorization wait alone can take up to 60 seconds), and `retryCount` is forced to `1` because the deploy command mutates remote state and must not be retried without rerunning transfer.
 
 ### Output Parameters
 
@@ -1095,12 +1095,19 @@ Same as `SshCommandTask`.
 ### Notes
 
 - Hardcoded multi-step command:
-  1. Verify `/tmp/ggr3_config.zip` exists (fail with non-zero exit when missing)
-  2. `mkdir -p /tmp/ggr3_config`
-  3. `unzip -o /tmp/ggr3_config.zip -d /tmp/ggr3_config`
-  4. `adb push /tmp/ggr3_config/. /sdcard/Android/data/com.syriusrobotics.platform.launcher/files/ae/`
-  5. `rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip`
-- Uses `rm -rf` (not `rm -f`) because it removes a directory tree.
+  1. Verify `adb` exists on the robot (`command -v adb`), fail otherwise
+  2. Probe the device: `ADB_STATE=$(adb shell echo ok 2>&1)`
+  3. When the output contains `unauthorized`: `sudo rm -rf ~/.android`, `adb kill-server`, `adb start-server`, then poll every 5 seconds for up to 60 seconds. Continue as soon as the device is authorized, fail immediately when the re-probe reports any other state, and fail with `ADB device is still unauthorized after 60 seconds` when the timeout expires
+  4. When the output already contains `ok`: continue directly to the deploy steps
+  5. Any other output (for example `no devices/emulators found`): fail immediately and echo the original output
+  6. Verify `/tmp/ggr3_config.zip` exists (fail with non-zero exit when missing)
+  7. `mkdir -p /tmp/ggr3_config`
+  8. `unzip -o /tmp/ggr3_config.zip -d /tmp/ggr3_config`
+  9. `adb push /tmp/ggr3_config/. /sdcard/Android/data/com.syriusrobotics.platform.launcher/files/ae/`
+  10. `rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip`
+- All steps run as `developer`, so the adb server and key live in `/home/developer/.android`; the `~` in the reset is expanded by the same user shell, so the pre-check, the push, and the key reset all use one adb identity.
+- The reset is conditional: a device that already reports `ok` goes straight to the deploy steps without restarting the adb server.
+- Uses `rm -rf` (not `rm -f`) because it removes a directory tree, and stays idempotent when the directory is absent.
 - `adb push` with `/.` suffix automatically creates the target directory if missing.
 - Used as the `deploy` step of the Deploy GGR3 Config DAG.
 - Prerequisites: `adb` must be installed on the robot; Android device must be connected via USB and authorized.

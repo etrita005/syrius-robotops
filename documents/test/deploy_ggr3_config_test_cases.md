@@ -26,14 +26,14 @@
 
 ## 2. 后端用例
 
-### TC-GGR3-001：DeployGGR3ConfigTask 命令拼装（启用 sudo）
+### TC-GGR3-001：DeployGGR3ConfigTask 命令拼装（先检测 adb 状态）
 
 | 项 | 值 |
 |----|-----|
 | 优先级 | 高 |
 | 前置条件 | 实例化 `DeployGGR3ConfigTask`，参数仅含 `robotIp`、`robotPort` |
 | 输入 | 调用 `getSshCommand({})` 与 `buildParams({ robotIp, robotPort })` |
-| 预期 | `sshCommand` 包含按顺序出现的关键片段：`[ -f /tmp/ggr3_config.zip ]` 存在性检查、`mkdir -p /tmp/ggr3_config`、`unzip -o /tmp/ggr3_config.zip -d /tmp/ggr3_config`、`adb push /tmp/ggr3_config/. /sdcard/Android/data/com.syriusrobotics.platform.launcher/files/ae/`、`rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip`；命令中不包含 `reboot`；`buildParams` 返回的 `sudo === true`，`commandTimeout === 60000`，`retryCount === 1`。 |
+| 预期 | `sshCommand` 包含按顺序出现的关键片段：`command -v adb`、`ADB_STATE=$(adb shell echo ok 2>&1)`、`*unauthorized*)` 分支、`rm -rf ~/.android`、`adb kill-server`、`adb start-server`、`WAITED=0`、`while [ "$WAITED" -lt 60 ]; do`、`sleep 5`、`WAITED=$((WAITED + 5))`、`AUTHORIZED=1; break`、`[ "$AUTHORIZED" -eq 1 ]`、`still unauthorized after 60 seconds`，随后是 `[ -f /tmp/ggr3_config.zip ]` 存在性检查、`mkdir -p /tmp/ggr3_config`、`unzip -o /tmp/ggr3_config.zip -d /tmp/ggr3_config`、`adb push /tmp/ggr3_config/. /sdcard/Android/data/com.syriusrobotics.platform.launcher/files/ae/`、`rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip`；`mkdir`、`unzip`、`adb push`、清理这四行均不含 `sudo`；唯一带 `sudo -S -p` 的行是 `rm -rf ~/.android`；命令中不包含 `reboot`；`buildParams` 返回的 `sudo === false`，`commandTimeout === 120000`，`retryCount === 1`。 |
 
 ### TC-GGR3-002：DeleteGGR3ConfigTask 命令拼装
 
@@ -51,7 +51,7 @@
 | 优先级 | 高 |
 | 前置条件 | 实例化 `TransferGGR3ConfigTask` |
 | 输入 | `buildParams({ robotIp, robotPort, localFilePath: "/tmp/x.zip" })` |
-| 预期 | 返回的 `remoteFilePath === "/tmp/ggr3_config.zip"`，`sudo === true`。 |
+| 预期 | 返回的 `remoteFilePath === "/tmp/ggr3_config.zip"`，`sudo === false`。 |
 
 ### TC-GGR3-004：TransferGGR3ConfigTask 通过 artifactService.getArtifactPath 解析本地路径并传输
 

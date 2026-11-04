@@ -6,7 +6,7 @@ const REMOTE_TARGET_PATH = "/tmp/ggr3_config.zip";
 export class TransferGGR3ConfigTask extends SshFileTransferTask {
   protected override buildParams(params: ValueMap): SshFileTransferParams {
     return {
-      ...super.buildParams({ ...params, sudo: true }),
+      ...super.buildParams({ ...params, sudo: false }),
       remoteFilePath: REMOTE_TARGET_PATH,
     };
   }

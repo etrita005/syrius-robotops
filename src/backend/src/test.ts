@@ -1564,11 +1564,24 @@ describe("Deploy GGR3 Config tasks", () => {
     restoreTransferStub = undefined;
   });
 
-  it("TC-GGR3-001: DeployGGR3ConfigTask builds the multi-step deploy command with sudo", () => {
+  it("TC-GGR3-001: DeployGGR3ConfigTask checks adb state before deploying", () => {
     const task = new TestableDeployGGR3ConfigTask();
     const cmd = task.command({});
 
     const fragments = [
+      "command -v adb",
+      "ADB_STATE=$(adb shell echo ok 2>&1)",
+      "*unauthorized*)",
+      "rm -rf ~/.android",
+      "adb kill-server",
+      "adb start-server",
+      "WAITED=0",
+      'while [ "$WAITED" -lt 60 ]; do',
+      "sleep 5",
+      "WAITED=$((WAITED + 5))",
+      "AUTHORIZED=1; break",
+      '[ "$AUTHORIZED" -eq 1 ]',
+      "still unauthorized after 60 seconds",
       '[ -f /tmp/ggr3_config.zip ] || { echo "GGR3 config zip not found: /tmp/ggr3_config.zip" >&2; exit 1; }',
       "mkdir -p /tmp/ggr3_config",
       "unzip -o /tmp/ggr3_config.zip -d /tmp/ggr3_config",
@@ -1582,15 +1595,28 @@ describe("Deploy GGR3 Config tasks", () => {
       cursor = idx + f.length;
     }
 
+    assert.equal(cmd.includes(" reboot"), false, "Deploy GGR3 Config must not reboot the robot");
+
+    const deploySteps = [
+      "mkdir -p /tmp/ggr3_config",
+      "unzip -o /tmp/ggr3_config.zip -d /tmp/ggr3_config",
+      "adb push /tmp/ggr3_config/. /sdcard/Android/data/com.syriusrobotics.platform.launcher/files/ae/",
+      "rm -rf /tmp/ggr3_config /tmp/ggr3_config.zip",
+    ];
+    for (const step of deploySteps) {
+      const line = cmd.split("\n").find((item) => item.includes(step));
+      assert.ok(line !== undefined, `missing line: ${step}`);
+      assert.equal(line.includes("sudo"), false, `step must run as the SSH user: ${step}`);
+    }
     assert.equal(
-      cmd.includes(" reboot"),
-      false,
-      "Deploy GGR3 Config must not reboot the robot"
+      cmd.split("\n").filter((line) => line.includes("sudo -S -p")).length,
+      1,
+      "only the adb key reset may use sudo"
     );
 
     const built = task.params({ robotIp: "192.168.1.10" });
-    assert.equal(built.sudo, true);
-    assert.equal(built.commandTimeout, 60000);
+    assert.equal(built.sudo, false, "The adb state check must run as the SSH user, not as root");
+    assert.equal(built.commandTimeout, 120000);
     assert.equal(built.retryCount, 1);
   });
 
@@ -1609,7 +1635,7 @@ describe("Deploy GGR3 Config tasks", () => {
       localFilePath: "/tmp/x.zip",
     });
     assert.equal(built.remoteFilePath, "/tmp/ggr3_config.zip");
-    assert.equal(built.sudo, true);
+    assert.equal(built.sudo, false);
   });
 
   it("TC-GGR3-004: TransferGGR3ConfigTask resolves artifact via getArtifactPath and forwards localFilePath", async () => {
