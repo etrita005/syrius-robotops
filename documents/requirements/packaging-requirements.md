@@ -20,7 +20,7 @@
 | **外置配置文件** | 与可执行文件位于同一目录的 `config.json`，用于保存端口、数据库、密钥等可变配置。 |
 | **SPA 兜底路由** | 当前端路由路径无法匹配静态文件或 API 时，后端返回内嵌的 `index.html`，避免浏览器刷新后出现 404。 |
 | **pkg 打包** | 使用 `pkg` 将 Node.js 后端打包为跨平台独立可执行文件的构建方式。 |
-| **目标平台** | 需要交付二进制程序的操作系统与 CPU 架构组合，包括 Windows、macOS Intel、macOS Apple Silicon、Linux amd64、Linux arm64。 |
+| **目标平台** | 需要交付二进制程序的操作系统与 CPU 架构组合，包括 Windows、macOS Intel、macOS Apple Silicon、Linux amd64、Linux arm64，以及兼容旧 glibc 的 Linux amd64 静态产物。 |
 
 ---
 
@@ -64,6 +64,7 @@
 | macOS | amd64（Intel） | `robotops-studio-macos-amd64` |
 | macOS | arm64（Apple Silicon / M 系列） | `robotops-studio-macos-arm64` |
 | Linux | amd64 | `robotops-studio-linux-amd64` |
+| Linux | amd64（静态，兼容 Ubuntu 18.04） | `robotops-studio-linux-amd64-static` |
 | Linux | arm64 | `robotops-studio-linux-arm64` |
 
 ### 5.2 单文件交付（FR-PKG-002）
@@ -100,6 +101,9 @@ release/
 │   ├── robotops-studio
 │   └── config.example.json
 ├── linux-amd64/
+│   ├── robotops-studio
+│   └── config.example.json
+├── linux-amd64-static/
 │   ├── robotops-studio
 │   └── config.example.json
 └── linux-arm64/
@@ -324,7 +328,8 @@ config.json
 - Windows 10 及以上。
 - macOS Intel 机型。
 - macOS Apple Silicon 机型。
-- 主流 Linux amd64 发行版。
+- 主流 Linux amd64 发行版（glibc >= 2.28 使用动态产物）。
+- Ubuntu 18.04 及更高版本（glibc 2.27 使用静态产物）。
 - 主流 Linux arm64 发行版。
 
 ### 9.2 可用性（NFR-PKG-002）
@@ -372,7 +377,7 @@ config.json
 - 前端 Vite 构建成功。
 - 后端 TypeScript 构建成功。
 - `pkg` 打包成功。
-- 生成 Windows amd64、macOS amd64、macOS arm64、Linux amd64、Linux arm64 五类产物。
+- 生成 Windows amd64、macOS amd64、macOS arm64、Linux amd64、Linux arm64 五类产物，并生成兼容 Ubuntu 18.04 的 Linux amd64 静态产物。
 - 每个平台目录中存在单文件可执行程序。
 - 前端 `dist` 目录不是运行必需交付内容。
 - 构建日志中没有静默失败的压缩步骤。

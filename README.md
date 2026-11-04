@@ -186,13 +186,10 @@ release/
 ├── macos-amd64/
 │   ├── robotops-studio
 │   └── config.example.json
-├── macos-arm64/
-│   ├── robotops-studio
-│   └── config.example.json
 ├── linux-amd64/
 │   ├── robotops-studio
 │   └── config.example.json
-└── linux-arm64/
+└── linux-amd64-static/
     ├── robotops-studio
     └── config.example.json
 ```
@@ -203,9 +200,25 @@ release/
 - Runtime delivery does not require `src/frontend/dist`; assets are embedded into the backend binary through `src/backend/dist-static` and `pkg` assets.
 - External runtime configuration is provided by an optional `config.json` placed next to the executable. Use `config.example.json` as the template.
 - The default local URL is `http://127.0.0.1:30001`.
-- Current `pkg` targets are Node 18 based: Windows amd64, macOS amd64, macOS arm64, Linux amd64, and Linux arm64.
+- Current `pkg` targets are Node 24 x64: Windows amd64, macOS amd64, Linux amd64 (glibc), and Linux amd64 static. Add the corresponding arm64 targets if arm64 artifacts are required.
+- `linux-amd64` requires glibc >= 2.28 (for example Ubuntu 20.04+, Debian 10+).
+- `linux-amd64-static` is fully static and supports Ubuntu 18.04 (glibc 2.27) and other older-glibc distributions. It cannot load native addons, and `.local` mDNS names that depend on glibc NSS may not resolve; use IP addresses or add an application-level mDNS resolver.
+- macOS artifacts should be ad-hoc signed before distribution. `pkg` signs automatically on macOS; on Linux, put `ldid` in `PATH` or sign the artifact with `ldid -Cadhoc -S` before delivery.
 - First-time `pkg` execution may take a long time if base binaries are not available in the local cache. In that case `pkg` may try to build Node.js from source. CI should pre-cache pkg base binaries or use platform-specific runners.
 - The `compress` step uses UPX only when available. Set `PACKAGE_COMPRESS=off` to skip compression or `PACKAGE_COMPRESS=on` to fail if compression is unavailable.
+
+### Ubuntu 18.04 Verification
+
+Use `release/linux-amd64-static/robotops-studio` on Ubuntu 18.04. Do not upgrade the system glibc; the static artifact does not depend on it.
+
+```bash
+cd release/linux-amd64-static
+chmod +x robotops-studio
+./robotops-studio --health-check
+./robotops-studio --port 30001
+```
+
+`--health-check` should exit with code `0`, and the service should listen on `http://127.0.0.1:30001`. When testing robot connectivity, prefer IP addresses; `.local` mDNS resolution may be unavailable in the static runtime.
 
 ### Runtime Health Check
 
