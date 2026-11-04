@@ -20,6 +20,7 @@ const targets: TargetBinary[] = [
   { raw: "robotops-studio-win.exe", finalDir: "windows-amd64", finalName: "robotops-studio.exe", executable: false },
   { raw: "robotops-studio-macos", finalDir: "macos-amd64", finalName: "robotops-studio", executable: true },
   { raw: "robotops-studio-linux", finalDir: "linux-amd64", finalName: "robotops-studio", executable: true },
+  { raw: "robotops-studio-linuxstatic", finalDir: "linux-amd64-static", finalName: "robotops-studio", executable: true },
 ];
 
 async function main(): Promise<void> {

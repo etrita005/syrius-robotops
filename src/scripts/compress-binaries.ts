@@ -19,6 +19,7 @@ const targets: TargetBinary[] = [
   { raw: "robotops-studio-win.exe", finalDir: "windows-amd64", finalName: "robotops-studio.exe" },
   { raw: "robotops-studio-macos", finalDir: "macos-amd64", finalName: "robotops-studio" },
   { raw: "robotops-studio-linux", finalDir: "linux-amd64", finalName: "robotops-studio" },
+  { raw: "robotops-studio-linuxstatic", finalDir: "linux-amd64-static", finalName: "robotops-studio" },
 ];
 
 function run(command: string, args: string[]): Promise<boolean> {

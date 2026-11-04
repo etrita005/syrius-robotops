@@ -28,7 +28,7 @@ http://127.0.0.1:<port>
 - 默认固定端口策略；端口被占用时启动失败，不自动递增。
 - 所有后端运行日志必须通过 Pino 记录，不使用 `console.log`、`console.error`、`console.warn`。
 - 构建脚本不得依赖系统级包安装，不使用 `apt install`、`npm install -g` 等方式。
-- 设计需兼容 Windows / macOS Intel / macOS arm64 / Linux amd64 / Linux arm64。
+- 设计需兼容 Windows / macOS Intel / macOS arm64 / Linux amd64 / Linux arm64；Linux amd64 需同时提供 glibc 动态产物和兼容 Ubuntu 18.04 的静态产物。
 
 ---
 
@@ -195,7 +195,7 @@ src/package.json package:all
   │     └─ 输出 src/backend/dist
   │
   ├─ 4. npm --workspace backend run package:pkg
-  │     └─ pkg --config pkg.config.json --targets ...
+  │     └─ pkg dist/index.js --config pkg.config.json
   │
   ├─ 5. tsx scripts/compress-binaries.ts
   │     └─ 按配置压缩 release/_raw 中的各平台二进制
@@ -203,9 +203,8 @@ src/package.json package:all
   └─ 6. tsx scripts/verify-release.ts
         ├─ release/windows-amd64/robotops-studio.exe
         ├─ release/macos-amd64/robotops-studio
-        ├─ release/macos-arm64/robotops-studio
         ├─ release/linux-amd64/robotops-studio
-        └─ release/linux-arm64/robotops-studio
+        ├─ release/linux-amd64-static/robotops-studio
         ├─ 校验产物存在
         ├─ 校验可执行位
         └─ 当前宿主平台执行基础启动或 health check
@@ -213,37 +212,38 @@ src/package.json package:all
 
 ### 5.3 pkg 目标配置
 
-当前实现固定使用 `pkg@5.8.1` 与 Node 18 目标，避免 Node 20/22 目标在部分环境下触发 base binary 源码构建。
+当前实现使用 `@yao-pkg/pkg` 6.20.0 与 Node 24 目标。Linux 同时产出 glibc 动态版本和完全静态版本：
 
 ```text
-node18-win-x64
-node18-macos-x64
-node18-macos-arm64
-node18-linux-x64
-node18-linux-arm64
+node24-win-x64
+node24-macos-x64
+node24-linux-x64
+node24-linuxstatic-x64
 ```
 
-若后续升级 `pkg` 或切换到 `@yao-pkg/pkg`，必须先验证对应目标平台 base binary 可稳定下载或缓存，避免构建机长时间源码编译 Node.js。
+`node24-linux-x64` 依赖 glibc >= 2.28，适用于 Ubuntu 20.04+、Debian 10+ 等较新发行版。`node24-linuxstatic-x64` 不依赖系统 glibc，适用于 Ubuntu 18.04（glibc 2.27）及其他旧 glibc 发行版。
+
+当前未配置 macOS arm64 / Linux arm64 目标；如需 arm64 产物，增加 `node24-macos-arm64` / `node24-linux-arm64`（或对应的 linuxstatic target），并先验证 base binary 可稳定下载或缓存，避免构建机长时间源码编译 Node.js。
 
 ### 5.4 pkg 配置草案
 
 ```json
 {
-  "scripts": [
-    "dist/**/*.js"
-  ],
-  "assets": [
-    "dist-static/**/*",
-    "package.json"
-  ],
-  "targets": [
-    "node18-win-x64",
-    "node18-macos-x64",
-    "node18-macos-arm64",
-    "node18-linux-x64",
-    "node18-linux-arm64"
-  ],
-  "outputPath": "../../release/_raw"
+  "name": "robotops-studio",
+  "pkg": {
+    "assets": [
+      "dist-static/**/*",
+      "res/**/*",
+      "package.json"
+    ],
+    "targets": [
+      "node24-win-x64",
+      "node24-macos-x64",
+      "node24-linux-x64",
+      "node24-linuxstatic-x64"
+    ],
+    "outputPath": "../../release/_raw"
+  }
 }
 ```
 
@@ -251,7 +251,9 @@ node18-linux-arm64
 
 - `dist/**/*.js` 为后端 TypeScript 编译后的 JavaScript。
 - `dist-static/**/*` 为从前端 `dist` 复制来的静态资源目录，作为 pkg asset 进入二进制快照文件系统。
+- `res/**/*` 为后端运行时需要访问的脚本和配置文件，同样作为 pkg asset 内嵌。
 - 入口文件由打包命令显式指定，例如 `pkg dist/index.js --config pkg.config.json`。
+- 多目标构建时，pkg 自动追加平台后缀；Linux 动态产物为 `robotops-studio-linux`，Linux 静态产物为 `robotops-studio-linuxstatic`。
 - 若使用生成的 `embeddedAssets.ts` 将资源转成 TypeScript 常量，则 `assets` 可减少，仅保留必要运行资产。
 
 ---
@@ -723,13 +725,10 @@ release/
 ├── macos-amd64/
 │   ├── robotops-studio
 │   └── config.example.json
-├── macos-arm64/
-│   ├── robotops-studio
-│   └── config.example.json
 ├── linux-amd64/
 │   ├── robotops-studio
 │   └── config.example.json
-└── linux-arm64/
+└── linux-amd64-static/
     ├── robotops-studio
     └── config.example.json
 ```
@@ -764,20 +763,23 @@ release/
 
 ### 12.3 文件命名
 
-pkg 原始输出可使用平台完整名称：
+pkg 原始输出使用目标平台后缀：
 
 ```text
-robotops-studio-windows-amd64.exe
-robotops-studio-macos-amd64
-robotops-studio-macos-arm64
-robotops-studio-linux-amd64
-robotops-studio-linux-arm64
+robotops-studio-win.exe
+robotops-studio-macos
+robotops-studio-linux
+robotops-studio-linuxstatic
 ```
 
 整理到平台目录后统一命名为：
 
 - Windows：`robotops-studio.exe`
-- macOS / Linux：`robotops-studio`
+- macOS：`robotops-studio`
+- Linux 动态：`linux-amd64/robotops-studio`
+- Linux 静态：`linux-amd64-static/robotops-studio`
+
+macOS 产物发布前应完成 ad-hoc 签名。macOS 构建机使用 `codesign -f --sign - <executable>`；Linux 构建机可使用 `ldid -Cadhoc -S <executable>`。
 
 ---
 
@@ -825,6 +827,8 @@ fs.readFile(path.join(base, dynamicName)); // 未纳入 assets 时
 - 是否需要外置 `.node` 文件。
 
 若需要外置原生模块，则会破坏单文件交付目标，应优先替换为纯 JavaScript/TypeScript 依赖。
+
+`linuxstatic` 目标使用完全静态的 Node.js 运行时，无法加载 `.node` 原生模块。当前 `ssh2` 的 `cpu-features` / `sshcrypto` 为可选依赖且在 `try/catch` 中加载，静态产物会回退到纯 JavaScript 实现；若后续新增必需原生依赖，不能使用 `linuxstatic` 目标。
 
 ---
 
@@ -880,6 +884,13 @@ robotops-studio --port <free-test-port> --health-check
 - 前端子路由刷新。
 - `/api/health` 响应。
 - 删除外部 `dist` 后仍能访问静态资源。
+
+Ubuntu 18.04 额外验收：
+
+- 运行 `linux-amd64-static/robotops-studio --health-check`，期望退出码为 `0`。
+- 使用 `readelf -d` 确认静态产物没有 dynamic section。
+- 不使用系统 glibc 升级，直接启动服务并通过浏览器访问。
+- 优先使用 IP 地址测试 SSH 连接；如必须使用 `.local` 主机名，确认现场解析方式。
 
 ---
 
@@ -961,7 +972,7 @@ robotops-studio --port <free-test-port> --health-check
 - 增加后端 TypeScript build 配置。
 - 增加 `src/package.json` 编排入口与本地 `pkg` 依赖。
 - 增加后端 `pkg.config.json`。
-- 通过 `src/package.json` 的 `package:all` 生成五个平台原始二进制。
+- 通过 `src/package.json` 的 `package:all` 生成配置中定义的目标平台原始二进制（当前为 Windows x64、macOS x64、Linux x64 动态、Linux x64 静态）。
 
 ### 阶段四：压缩与发布目录
 
@@ -972,7 +983,7 @@ robotops-studio --port <free-test-port> --health-check
 
 ### 阶段五：跨平台验收
 
-- 在 Windows、macOS Intel、macOS Apple Silicon、Linux amd64、Linux arm64 上执行手工验收。
+- 在 Windows、macOS Intel、Linux amd64（glibc >= 2.28）、Linux amd64 static（Ubuntu 18.04）上执行手工验收；如启用 arm64 目标，再补充对应平台。
 - 修复 pkg assets、权限、路径分隔符、压缩兼容性问题。
 - 固化 CI 或本地发布流程。
 
@@ -982,7 +993,7 @@ robotops-studio --port <free-test-port> --health-check
 
 以下事项在编码阶段需要结合实际依赖验证后最终固化：
 
-1. 是否需要长期固定 `pkg@5.8.1` 与 Node 18 目标，或后续升级到可稳定下载 base binary 的新版 pkg。
+1. 是否需要长期固定当前 `@yao-pkg/pkg` 与 Node 24 目标，或后续升级到可稳定下载 base binary 的新版 pkg。
 2. 是否需要引入 bundler 适配 ESM 与 pkg。
 3. 压缩工具选型及是否默认开启。
 4. `database.path` 与当前对象存储 `dataDir` 的最终字段命名是否统一。
