@@ -739,6 +739,36 @@ const INSTALL_DRAGONBALL3_ERROR_DAG: DagDefinition = {
   },
 };
 
+const INSTALL_BOOSTER_DAG: DagDefinition = {
+  tasks: {
+    transfer: {
+      requires: ["robotIp", "robotPort", "artifactId"],
+      resolver: {
+        name: "TransferBoosterTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    install: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "InstallBoosterTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "install_done" },
+      },
+      provides: ["install_done"],
+    },
+  },
+};
+
 const SYNC_TIME_DAG: DagDefinition = {
   tasks: {
     sync: {
@@ -1213,6 +1243,26 @@ export const TASK_REGISTRY: TaskRegistry = {
         artifactId: {
           type: "artifact",
           label: "Dragonball3 firmware package (.deb)",
+          required: true,
+        },
+      },
+    },
+    {
+      type: "install-booster",
+      name: "Install Minimal System (Booster)",
+      description:
+        "Install the Booster minimal system on selected robots: upload the zip package, unzip it into /tmp/ota and run install_booster.sh with sudo.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to install the Booster minimal system.",
+      },
+      dag: INSTALL_BOOSTER_DAG,
+      expectedResults: ["install_done"],
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "Booster package (.zip)",
           required: true,
         },
       },
