@@ -118,8 +118,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 15 multi-robot task types should show "Multiple robots" (after Update Algorithm Config and Collect BlackBox Logs were added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(15);
+    // All 17 multi-robot task types should show "Multiple robots" (after Shutdown Robots and Reboot Robots were added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(17);
 
     // Verify the single-robot task type is present
     await expect(modal.getByText("Robot selection: Single robot")).toBeVisible();
@@ -257,8 +257,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 15 task types should show "Multiple robots" (after Update Algorithm Config and Collect BlackBox Logs were added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(15);
+    // All 17 task types should show "Multiple robots" (after Shutdown Robots and Reboot Robots were added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(17);
   });
 
   test("TC-E2E-TASK-013: Update IoT Gateway Config leads to multi-robot step 2", async ({
@@ -621,7 +621,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Install App")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(15);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(17);
   });
 
   test("TC-E2E-TASK-020: Install App leads to multi-robot step 2 then params step", async ({
@@ -677,7 +677,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Install Dragonball3 firmware")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(15);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(17);
   });
 
   test("TC-E2E-DB3-003: Install Dragonball3 firmware leads to multi-robot step 2", async ({
@@ -735,7 +735,7 @@ test.describe("Update Algorithm Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Update Algorithm Config", { exact: true })).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(15);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(17);
   });
 
   test("TC-E2E-UAC-002: Update Algorithm Config selection leads to multi-robot step 2", async ({
@@ -839,7 +839,7 @@ test.describe("Blackbox Log Collection", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Collect BlackBox Logs")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(15);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(17);
   });
 
   test("TC-E2E-BBL-002: full wizard flow completes and result details show the S3 link", async ({
@@ -1086,5 +1086,103 @@ test.describe("Blackbox Log Collection", () => {
 
     await modal.getByRole("button", { name: "Alias Z-A", exact: true }).click();
     await expect(modal.getByRole("button", { name: "Sort", exact: true })).toBeVisible();
+  });
+});
+
+test.describe("Robot Power Tasks", () => {
+  test.describe.configure({ mode: "serial" });
+
+  let solutionId: string;
+
+  test.beforeAll(async ({ apiURL }) => {
+    const meta = await createSolutionViaAPI(apiURL, "Power Task Solution", "E2E robot power task test");
+    solutionId = meta.id;
+    await addRobotViaAPI(apiURL, solutionId, "192.168.1.10");
+    await addRobotViaAPI(apiURL, solutionId, "192.168.1.11");
+  });
+
+  test.afterAll(async ({ apiURL }) => {
+    await deleteSolutionViaAPI(apiURL, solutionId).catch(() => {});
+  });
+
+  test("TC-E2E-TASK-021: Shutdown Robots task type appears and completes", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Power Task Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Shutdown Robots", { exact: true })).toBeVisible();
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(17);
+
+    await modal.getByText("Shutdown Robots", { exact: true }).click();
+    await appPage.waitForTimeout(300);
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await modal.getByLabel("Select all robots").check();
+    await expect(modal.getByText("2 robots selected")).toBeVisible();
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    // Shutdown Robots has no parameters, so advance past the params step.
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await modal.getByRole("button", { name: "Create" }).click();
+    await appPage.waitForTimeout(1000);
+
+    // One flow is created per selected robot.
+    await expect(
+      appPage.locator("tr").filter({ hasText: "Shutdown Robots" })
+    ).toHaveCount(2, { timeout: 15000 });
+    await expect(appPage.getByText("Success", { exact: true }).first()).toBeVisible({
+      timeout: 30000,
+    });
+  });
+
+  test("TC-E2E-TASK-022: Reboot Robots task type appears and completes", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Power Task Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    // A task already exists from the previous test, so the header button reads "Create Task".
+    await appPage.getByRole("button", { name: "Create Task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Reboot Robots", { exact: true })).toBeVisible();
+
+    await modal.getByText("Reboot Robots", { exact: true }).click();
+    await appPage.waitForTimeout(300);
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await modal.getByLabel("Select 192.168.1.10").check();
+    await expect(modal.getByText("1 robot selected")).toBeVisible();
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    // Reboot Robots has no parameters, so advance past the params step.
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await modal.getByRole("button", { name: "Create" }).click();
+    await appPage.waitForTimeout(1000);
+
+    await expect(
+      appPage.locator("tr").filter({ hasText: "Reboot Robots" })
+    ).toHaveCount(1, { timeout: 15000 });
+    await expect(
+      appPage.locator("tr").filter({ hasText: "Reboot Robots" }).first()
+    ).toContainText("Success", { timeout: 30000 });
   });
 });

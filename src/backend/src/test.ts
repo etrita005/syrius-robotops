@@ -50,6 +50,9 @@ import { UninstallL4TDownloaderTask } from "./tasks/real/uninstallL4TDownloaderT
 import { MockUninstallL4TDownloaderTask } from "./tasks/mock/mockUninstallL4TDownloaderTask.js";
 import { FixBrokenPackagesTask } from "./tasks/real/fixBrokenPackagesTask.js";
 import { MockFixBrokenPackagesTask } from "./tasks/mock/mockFixBrokenPackagesTask.js";
+import { RobotPowerTask } from "./tasks/real/robotPowerTask.js";
+import { MockRobotPowerTask } from "./tasks/mock/mockRobotPowerTask.js";
+import { RobotPowerService } from "./services/robotPowerService.js";
 
 class InMemoryObjectStore {
   private store = new Map<string, unknown>();
@@ -3749,7 +3752,7 @@ describe("Solution Routes - API", () => {
     const robotService = new RobotService(objStore, engine, sseManager, memStore);
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
-    app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
+    app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService, new RobotPowerService(robotService, MockRobotPowerTask)));
     return { app, solutionService, robotService, artifactService };
   }
 
@@ -4494,7 +4497,7 @@ describe("Robot Routes - API", () => {
     robotServiceInstances.push(robotService);
     const app = new Hono();
     app.route("/api/solutions", createSolutionRoutes(solutionService));
-    app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
+    app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService, new RobotPowerService(robotService, MockRobotPowerTask)));
     return { app, solutionService, robotService };
   }
 
@@ -4634,6 +4637,48 @@ describe("Robot Routes - API", () => {
     });
     assert.equal(createRes.status, 404);
   });
+
+  it("TC-PWR-010: POST /api/solutions/:id/robots/:robotId/power should reject an invalid action with 400", async () => {
+    const { app } = setupRobotApp();
+    const sol = await createSolution(app);
+    const createRes = await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "10.0.0.1" }),
+    });
+    const robot = await createRes.json() as StoredRobotData;
+
+    const res = await app.request(`/api/solutions/${sol.id}/robots/${robot.id}/power`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "halt" }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as { error: string };
+    assert.equal(body.error, "INVALID_INPUT");
+  });
+
+  it("TC-PWR-011: POST /api/solutions/:id/robots/:robotId/power should execute a valid action", async () => {
+    const { app } = setupRobotApp();
+    const sol = await createSolution(app);
+    const createRes = await app.request(`/api/solutions/${sol.id}/robots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: "10.0.0.1" }),
+    });
+    const robot = await createRes.json() as StoredRobotData;
+
+    const res = await app.request(`/api/solutions/${sol.id}/robots/${robot.id}/power`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "shutdown" }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as { ok: boolean; robotId: string; action: string };
+    assert.equal(body.ok, true);
+    assert.equal(body.robotId, robot.id);
+    assert.equal(body.action, "shutdown");
+  });
 });
 
 class TestableUpdateIotGatewayConfigTask extends UpdateIotGatewayConfigTask {
@@ -4751,7 +4796,7 @@ describe("SshFileDownloadTask", () => {
     assert.equal(result.done, true);
     assert.equal(result.success, true);
     assert.equal(result.bytesTransferred, 0);
-    assert.equal(result.localFilePath, "/tmp/sketch.zip");
+    assert.equal(result.localFilePath, pathJoin("/tmp", "sketch.zip"));
     assert.equal(result.localChecksum, "");
     assert.equal(result.remoteChecksum, "");
     assert.equal(result.integrityVerified, true);
@@ -4765,7 +4810,7 @@ describe("SshFileDownloadTask", () => {
       localTargetDir: "/home/user/logs",
     }) as Record<string, unknown>;
 
-    assert.equal(result.localFilePath, "/home/user/logs/robot.log");
+    assert.equal(result.localFilePath, pathJoin("/home/user/logs", "robot.log"));
   });
 
   it("TC-DOWNLOAD-006: mock task execution should take approximately 5 seconds", async () => {
@@ -5894,5 +5939,241 @@ describe("Blackbox resolver registration", () => {
     registry.register("GetBlackboxDeviceInfoTask", GetBlackboxDeviceInfoTask as unknown as TaskResolverClass);
     assert.equal(registry.has("CollectBlackboxLogTask"), true);
     assert.equal(registry.has("GetBlackboxDeviceInfoTask"), true);
+  });
+});
+
+// ============================================================
+// Robot Power Control: RobotPowerTask / MockRobotPowerTask / RobotPowerService / Flow
+// ============================================================
+
+const DBUS_SHUTDOWN_COMMAND =
+  "dbus-send --system --print-reply --dest=com.syriusrobotics.bootstrapper /com/syriusrobotics/bootstrapper com.syriusrobotics.bootstrapper.system.Shutdown";
+const REBOOT_COMMAND = "reboot";
+
+describe("Robot Power Control - RobotPowerTask", () => {
+  class TestableRobotPowerTask extends RobotPowerTask {
+    public testGetSshCommand(params: ValueMap): string {
+      return this.getSshCommand(params);
+    }
+    public testBuildParams(params: ValueMap) {
+      return this.buildParams(params);
+    }
+  }
+
+  it("TC-PWR-001: shutdown command targets the bootstrapper Shutdown method", () => {
+    const task = new TestableRobotPowerTask();
+    const cmd = task.testGetSshCommand({ powerAction: "shutdown" });
+    assert.equal(cmd, DBUS_SHUTDOWN_COMMAND);
+    assert.ok(!cmd.includes("&&"), "command must not contain && so sudo is wrapped once");
+  });
+
+  it("TC-PWR-002: reboot command uses the reboot binary and is wrapped with sudo", () => {
+    const task = new TestableRobotPowerTask();
+    const cmd = task.testGetSshCommand({ powerAction: "reboot" });
+    assert.equal(cmd, REBOOT_COMMAND);
+    assert.ok(!cmd.includes("dbus-send"));
+
+    const params = task.testBuildParams({ robotIp: "192.168.1.10", powerAction: "reboot" });
+    assert.ok(params.sshCommand.startsWith(`echo "developer" | sudo -S -p '' reboot`));
+  });
+
+  it("TC-PWR-003: buildParams forces sudo, retryCount 1, and the default command timeout", () => {
+    const task = new TestableRobotPowerTask();
+    const params = task.testBuildParams({ robotIp: "192.168.1.10", powerAction: "shutdown" });
+    assert.equal(params.sudo, true);
+    assert.equal(params.retryCount, 1);
+    assert.equal(params.commandTimeout, 30000);
+    assert.ok(params.sshCommand.startsWith(`echo "developer" | sudo -S -p '' dbus-send --system`));
+
+    const custom = task.testBuildParams({
+      robotIp: "192.168.1.10",
+      powerAction: "shutdown",
+      commandTimeout: 5000,
+    });
+    assert.equal(custom.commandTimeout, 5000);
+  });
+
+  it("TC-PWR-004: missing or unknown powerAction is rejected before connecting", () => {
+    const task = new TestableRobotPowerTask();
+    assert.throws(() => task.testBuildParams({ robotIp: "192.168.1.10" }), /powerAction/);
+    assert.throws(
+      () => task.testBuildParams({ robotIp: "192.168.1.10", powerAction: "halt" }),
+      /powerAction/
+    );
+  });
+
+  it("TC-PWR-005: connection loss after the power command is treated as success", async () => {
+    class TimeoutRobotPowerTask extends RobotPowerTask {
+      protected override buildParams(): never {
+        throw new Error("SSH connection timed out after 10000ms");
+      }
+    }
+
+    const task = new TimeoutRobotPowerTask();
+    const result = await task.exec({ robotIp: "192.168.1.10", powerAction: "shutdown" });
+    assert.deepEqual(result, { done: true, success: true, stdout: "", stderr: "", exitCode: 0 });
+  });
+
+  it("TC-PWR-006: every power action failure is ignored and reported as success", async () => {
+    class FailingRobotPowerTask extends RobotPowerTask {
+      protected override buildParams(): never {
+        throw new Error("SSH command exited with code 127. Output logged above.");
+      }
+    }
+
+    const task = new FailingRobotPowerTask();
+    const result = await task.exec({ robotIp: "192.168.1.10", powerAction: "reboot" });
+    assert.deepEqual(result, { done: true, success: true, stdout: "", stderr: "", exitCode: 0 });
+  });
+
+  it("TC-PWR-007: MockRobotPowerTask returns a successful body", async () => {
+    const task = new MockRobotPowerTask();
+    const result = await task.exec({ powerAction: "reboot" }, { flowId: "test-power" });
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.exitCode, 0);
+  });
+});
+
+describe("Robot Power Control - RobotPowerService", () => {
+  it("TC-PWR-008: resolves the stored address and executes the action", async () => {
+    const registry = new ResolverRegistry();
+    const received: ValueMap[] = [];
+
+    class RecordingPowerTask extends MockRobotPowerTask {
+      protected override async onExec(params: ValueMap): Promise<ValueMap> {
+        received.push({ ...params });
+        return super.onExec(params);
+      }
+    }
+
+    registry.register("RobotPowerTask", RecordingPowerTask as unknown as TaskResolverClass);
+    const powerTaskClass = registry.get("RobotPowerTask")!;
+
+    const services = createEnhancedTestServices();
+    try {
+      const solution = await services.solutionService.create({ name: "Power Test" });
+      const robot = await services.robotService.create(solution.id, { address: "192.168.1.10:22" });
+      const powerService = new RobotPowerService(services.robotService, powerTaskClass);
+
+      const result = await powerService.execute(solution.id, robot.id, "shutdown");
+
+      assert.deepEqual(result, { robotId: robot.id, action: "shutdown" });
+      assert.equal(received.length, 1);
+      assert.equal(received[0].robotIp, "192.168.1.10");
+      assert.equal(received[0].robotPort, 22);
+      assert.equal(received[0].powerAction, "shutdown");
+    } finally {
+      services.memStore.destroy();
+    }
+  });
+
+  it("TC-PWR-009: throws for an unknown robot", async () => {
+    const services = createEnhancedTestServices();
+    try {
+      const solution = await services.solutionService.create({ name: "Power Test 2" });
+      const powerService = new RobotPowerService(
+        services.robotService,
+        MockRobotPowerTask as unknown as TaskResolverClass
+      );
+
+      await assert.rejects(
+        powerService.execute(solution.id, "robot-missing", "reboot"),
+        (err: Error & { code?: string }) => {
+          assert.equal(err.code, "ROBOT_NOT_FOUND");
+          return true;
+        }
+      );
+    } finally {
+      services.memStore.destroy();
+    }
+  });
+});
+
+describe("Robot Power Control - Flow Integration", () => {
+  const buildRegistry = (): ResolverRegistry => {
+    const registry = new ResolverRegistry();
+    registry.register("RobotPowerTask", MockRobotPowerTask as unknown as TaskResolverClass);
+    return registry;
+  };
+
+  it("TC-PWR-012: batch DAG shutdown-robots completes through the flow engine", async () => {
+    const registry = buildRegistry();
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const shutdownDag: FlowSpec = {
+      tasks: {
+        shutdown: {
+          requires: ["robotIp", "robotPort"],
+          provides: ["shutdown_done"],
+          resolver: {
+            name: "RobotPowerTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+              powerAction: { value: "shutdown" },
+            },
+            results: { done: "shutdown_done" },
+          },
+        },
+      },
+    };
+
+    try {
+      const summary = await testEngine.createFlow("internal", shutdownDag, {
+        robotIp: "192.168.1.10",
+        robotPort: 22,
+      });
+      await waitForFlowComplete(testEngine, summary.id, 15000);
+
+      const flow = testEngine.getFlow(summary.id);
+      assert.ok(flow);
+      assert.equal(flow.state, "COMPLETED");
+      assert.equal(flow.taskStates["shutdown"], "COMPLETED");
+    } finally {
+      testEngine.destroy();
+    }
+  });
+
+  it("TC-PWR-013: batch DAG reboot-robots completes through the flow engine", async () => {
+    const registry = buildRegistry();
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const rebootDag: FlowSpec = {
+      tasks: {
+        reboot: {
+          requires: ["robotIp", "robotPort"],
+          provides: ["reboot_done"],
+          resolver: {
+            name: "RobotPowerTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+              powerAction: { value: "reboot" },
+            },
+            results: { done: "reboot_done" },
+          },
+        },
+      },
+    };
+
+    try {
+      const summary = await testEngine.createFlow("internal", rebootDag, {
+        robotIp: "192.168.1.10",
+        robotPort: 22,
+      });
+      await waitForFlowComplete(testEngine, summary.id, 15000);
+
+      const flow = testEngine.getFlow(summary.id);
+      assert.ok(flow);
+      assert.equal(flow.state, "COMPLETED");
+      assert.equal(flow.taskStates["reboot"], "COMPLETED");
+    } finally {
+      testEngine.destroy();
+    }
   });
 });

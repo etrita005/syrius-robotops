@@ -228,7 +228,7 @@ def page_robots_grid_view():
         ("AGV-04", "192.168.1.104:22", "X100", "SN123458", "2.3.2"),
         ("AGV-05", "192.168.1.105:22", "X300", "SN999001", "2.5.0"),
     ]
-    card_w, card_h = 280, 180
+    card_w, card_h = 280, 210
     gap = 20
     cols = 3
     for i, (alias, address, model, sn, osver) in enumerate(cards):
@@ -248,6 +248,9 @@ def page_robots_grid_view():
         draw.text((cx+12, cy+114), f"{address}  |  {model}", fill="#525252", font=FONT_SM)
         draw.text((cx+12, cy+134), f"SN: {sn}", fill="#525252", font=FONT_SM)
         draw.text((cx+12, cy+154), f"megacosmOS: {osver}", fill="#525252", font=FONT_SM)
+        # Power actions: Shutdown / Reboot (icon buttons in the real UI)
+        draw_button(draw, (cx+card_w-146, cy+card_h-34, cx+card_w-78, cy+card_h-8), "Shutdown", font=FONT_SM)
+        draw_button(draw, (cx+card_w-74, cy+card_h-34, cx+card_w-8, cy+card_h-8), "Reboot", font=FONT_SM)
 
     path = os.path.join(ROBOTS_DIR, "01_grid_view.png")
     img.save(path)
@@ -278,8 +281,8 @@ def page_robots_list_view():
     y = 240
     draw.rectangle([260, y, W-40, y+36], fill="#e0e0e0")
     cols = [
-        ("", 270), ("Alias", 320), ("Address", 440), ("Model", 580),
-        ("Robot SN", 660), ("Things ID", 780), ("megacosmOS", 900), ("Actions", 1020)
+        ("", 268), ("Alias", 298), ("Address", 396), ("Model", 524),
+        ("Robot SN", 604), ("Things ID", 692), ("megacosmOS", 800), ("Actions", 900)
     ]
     for text, cx in cols:
         draw.text((cx, y+8), text, fill="#161616", font=FONT_MD)
@@ -297,14 +300,17 @@ def page_robots_list_view():
         draw.rectangle([cb_x, cb_y, cb_x+16, cb_y+16], outline="#555", width=1)
         if checked:
             draw.line([(cb_x+3, cb_y+8), (cb_x+7, cb_y+12), (cb_x+13, cb_y+4)], fill="#0f62fe", width=2)
-        draw.text((320, y+10), alias, fill="#161616", font=FONT_SM)
-        draw.text((440, y+10), address, fill="#525252", font=FONT_SM)
-        draw.text((580, y+10), model, fill="#525252", font=FONT_SM)
-        draw.text((660, y+10), sn, fill="#525252", font=FONT_SM)
-        draw.text((780, y+10), things, fill="#525252", font=FONT_SM)
-        draw.text((900, y+10), osver, fill="#525252", font=FONT_SM)
-        draw_button(draw, (1020, y+6, 1090, y+34), "Details")
-        draw_button(draw, (1100, y+6, 1160, y+34), "Delete", bg="#fa4d56", fg="white")
+        draw.text((298, y+10), alias, fill="#161616", font=FONT_SM)
+        draw.text((396, y+10), address, fill="#525252", font=FONT_SM)
+        draw.text((524, y+10), model, fill="#525252", font=FONT_SM)
+        draw.text((604, y+10), sn, fill="#525252", font=FONT_SM)
+        draw.text((692, y+10), things, fill="#525252", font=FONT_SM)
+        draw.text((800, y+10), osver, fill="#525252", font=FONT_SM)
+        # Power actions: Shutdown / Reboot (icon buttons in the real UI)
+        draw_button(draw, (900, y+6, 974, y+34), "Shutdown", font=FONT_SM)
+        draw_button(draw, (978, y+6, 1040, y+34), "Reboot", font=FONT_SM)
+        draw_button(draw, (1044, y+6, 1106, y+34), "Details", font=FONT_SM)
+        draw_button(draw, (1110, y+6, 1160, y+34), "Delete", bg="#fa4d56", fg="white", font=FONT_SM)
 
     path = os.path.join(ROBOTS_DIR, "02_list_view.png")
     img.save(path)
@@ -422,6 +428,29 @@ def page_robot_detail_modal():
     draw_button(draw, (mx+mw-130, my+mh-60, mx+mw-36, my+mh-28), "Save", bg="#0f62fe", fg="white")
 
     path = os.path.join(ROBOTS_DIR, "04_robot_detail_modal.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Robots: 05 — Shutdown / Reboot Confirm Modal
+# ---------------------------------------------------------------------------
+def page_robot_power_confirm_modal():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_robots_list_view()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 350, 250, 500, 240
+    draw.rectangle([mx, my, mx+mw, my+mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx+24, my+20), "Shutdown Robot", fill="#161616", font=FONT_LG)
+    draw.text((mx+24, my+70), "Send a shutdown command to this robot?", fill="#525252", font=FONT_MD)
+    draw.text((mx+24, my+100), "Alias:   AGV-01", fill="#161616", font=FONT_SM)
+    draw.text((mx+24, my+124), "Address: 192.168.1.101:22", fill="#161616", font=FONT_SM)
+    draw.text((mx+24, my+156), "The robot will power off immediately.", fill="#525252", font=FONT_SM)
+    draw_button(draw, (mx+mw-220, my+mh-60, mx+mw-120, my+mh-28), "Cancel")
+    draw_button(draw, (mx+mw-110, my+mh-60, mx+mw-24, my+mh-28), "Shutdown", bg="#fa4d56", fg="white")
+
+    path = os.path.join(ROBOTS_DIR, "05_power_confirm_modal.png")
     img.save(path)
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
@@ -2044,6 +2073,7 @@ if __name__ == "__main__":
     page_robots_list_view()
     page_add_robot_modal()
     page_robot_detail_modal()
+    page_robot_power_confirm_modal()
 
     # Tasks (sub-module of Solution Management)
     page_tasks_list()
