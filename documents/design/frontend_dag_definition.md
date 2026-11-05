@@ -148,6 +148,22 @@ input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot] ─�
 - 预期结果：`cleanup_done`
 - 异常 DAG：清理残留安装包
 
+#### install-booster（安装最小系统 Booster）
+
+两步流程：
+
+```
+input variables ──→ [transfer] ──→ [install] ──→ install_done
+                        │              │
+                        └── transfer_done ──┘
+```
+- 解析器：`TransferBoosterTask`, `InstallBoosterTask`
+- 输入依赖：`robotIp`, `robotPort`, `artifactId`
+- 预期结果：`install_done`
+- `transfer` 节点将 Booster zip 包上传到机器人 `/tmp/booster.zip`（无需 sudo）
+- `install` 节点执行三步操作：清理解压目录 (`rm -rf /tmp/ota`)、解压 (`unzip -o /tmp/booster.zip -d /tmp/ota`)、以 sudo 运行安装脚本（`sh -c 'cd /tmp/ota; ./install_booster.sh'`）
+- 无异常 DAG：安装脚本由包内提供，失败时保留 `/tmp/ota` 便于现场排查
+
 #### upgrade-bup（BUP 固件升级）
 
 六步流程，含异常处理（upgrade 前先传输 upgrade_bup.sh 脚本，upgrade 后等待 SSH 断开并在 3 分钟内重连成功）：

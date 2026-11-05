@@ -1,4 +1,4 @@
-# Backend Task Resolver Technical Design
+﻿# Backend Task Resolver Technical Design
 
 > **Update**: All task resolver classes now derive from `BaseTask` (directly or via secondary base classes such as `SshCommandTask` / `SshFileTransferTask`). `BaseTask` implements `ITaskResolver` from `flowed`, orchestrates the `onInitialize → onExec → onDestroy` lifecycle, owns `ignoreFailure` translation, and injects structured logging fields (`flowId`, `name`, `taskCode`, `flowPhase`). See:
 > - Requirements: `documents/requirements/backend_base_task_requirements.md`
@@ -1428,3 +1428,63 @@ None.
 - Connect failures retry up to 3 attempts with exponential backoff inside `blackboxClient`.
 - Throws on missing `thingsId`, empty process list, unsupported region, missing cert files, or timeout; `BaseTask` translates the thrown failure when `ignoreFailure` is set.
 - Mock variant (`MockCollectBlackboxLogTask`) simulates success (~1.5 s) and returns a deterministic S3 URL/profile command so flows and E2E can run without a broker.
+
+---
+
+## 43. TransferBoosterTask
+
+### Overview
+
+Resolves the Booster zip artifact storage path from the artifact service and uploads it to the robot via SFTP. Used as the `transfer` step of the Install Minimal System (Booster) flow.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID of the Booster zip package |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `false`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ getArtifactPath(id): Promise<string> }` | Service to resolve artifact storage path |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/tmp/booster.zip`
+- Uses `artifactService.getArtifactPath(artifactId)` to resolve the local file path directly
+- If `artifactId` or `artifactService` is absent, falls through to `super.onExec()` directly
+- Implementation mirrors `TransferDragonball3Task`
+
+---
+
+## 44. InstallBoosterTask
+
+### Overview
+
+Installs the Booster minimal system on the remote robot: cleans `/tmp/ota`, unzips the uploaded package into it and runs the bundled `install_booster.sh` with sudo. Used as the `install` step of the Install Minimal System (Booster) flow.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `900000` (15 min) | Override for long-running installation |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -rf /tmp/ota && unzip -o /tmp/booster.zip -d /tmp/ota && sh -c 'cd /tmp/ota; ./install_booster.sh'`
+- `cd` stays inside `sh -c` because `SshCommandTask` prefixes every `&&` segment with sudo, and `sudo cd` is invalid; the inner separator is `;` so the command is not split into a separate sudo segment
+- 15-minute default timeout accommodates the minimal system installation
+- Does not clean up `/tmp/booster.zip` or `/tmp/ota` on success so that on-site troubleshooting remains possible; reruns are idempotent because `/tmp/ota` is removed first

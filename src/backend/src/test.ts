@@ -42,6 +42,10 @@ import { MockTransferDragonball3Task } from "./tasks/mock/mockTransferDragonball
 import { MockInstallDragonball3Task } from "./tasks/mock/mockInstallDragonball3Task.js";
 import { DeleteDragonball3Task } from "./tasks/real/deleteDragonball3Task.js";
 import { MockDeleteDragonball3Task } from "./tasks/mock/mockDeleteDragonball3Task.js";
+import { TransferBoosterTask } from "./tasks/real/transferBoosterTask.js";
+import { InstallBoosterTask } from "./tasks/real/installBoosterTask.js";
+import { MockTransferBoosterTask } from "./tasks/mock/mockTransferBoosterTask.js";
+import { MockInstallBoosterTask } from "./tasks/mock/mockInstallBoosterTask.js";
 import { MockWaitSshReconnectTask } from "./tasks/mock/mockWaitSshReconnectTask.js";
 import { MockRebootRobotTask } from "./tasks/mock/mockRebootRobotTask.js";
 import { SyncTimeTask } from "./tasks/real/syncTimeTask.js";
@@ -4751,7 +4755,7 @@ describe("SshFileDownloadTask", () => {
     assert.equal(result.done, true);
     assert.equal(result.success, true);
     assert.equal(result.bytesTransferred, 0);
-    assert.equal(result.localFilePath, "/tmp/sketch.zip");
+    assert.equal(result.localFilePath, pathJoin("/tmp", "sketch.zip"));
     assert.equal(result.localChecksum, "");
     assert.equal(result.remoteChecksum, "");
     assert.equal(result.integrityVerified, true);
@@ -4765,7 +4769,7 @@ describe("SshFileDownloadTask", () => {
       localTargetDir: "/home/user/logs",
     }) as Record<string, unknown>;
 
-    assert.equal(result.localFilePath, "/home/user/logs/robot.log");
+    assert.equal(result.localFilePath, pathJoin("/home/user/logs", "robot.log"));
   });
 
   it("TC-DOWNLOAD-006: mock task execution should take approximately 5 seconds", async () => {
@@ -5894,5 +5898,169 @@ describe("Blackbox resolver registration", () => {
     registry.register("GetBlackboxDeviceInfoTask", GetBlackboxDeviceInfoTask as unknown as TaskResolverClass);
     assert.equal(registry.has("CollectBlackboxLogTask"), true);
     assert.equal(registry.has("GetBlackboxDeviceInfoTask"), true);
+  });
+});
+
+class TestableTransferBoosterTask extends TransferBoosterTask {
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableInstallBoosterTask extends InstallBoosterTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("TransferBooster task", () => {
+  it("TC-BST-001: should upload the booster package to /tmp/booster.zip without sudo", () => {
+    const task = new TestableTransferBoosterTask();
+    const params = task.params({
+      robotIp: "192.168.1.10",
+      artifactId: "test-booster-id",
+    });
+
+    assert.equal(params.remoteFilePath, "/tmp/booster.zip");
+    assert.equal(params.sudo, false);
+  });
+
+  it("TC-BST-002: should resolve artifact path via artifactService on exec", async () => {
+    const task = new TransferBoosterTask();
+    let receivedArtifactId: string | undefined;
+    const context = {
+      artifactService: {
+        async getArtifactPath(id: string): Promise<string> {
+          receivedArtifactId = id;
+          return "/local/path/to/booster.zip";
+        },
+      },
+    };
+
+    // Override parent onExec to short-circuit the SFTP call.
+    const parentProto = Object.getPrototypeOf(Object.getPrototypeOf(task)) as {
+      onExec: (...args: unknown[]) => unknown;
+    };
+    const originalOnExec = parentProto.onExec;
+    let observedLocalFilePath: string | undefined;
+    parentProto.onExec = async function (params: ValueMap) {
+      observedLocalFilePath = params.localFilePath as string;
+      return { done: true, success: true };
+    };
+
+    try {
+      await task.exec(
+        { robotIp: "192.168.1.10", artifactId: "test-booster-id" },
+        context as unknown as ValueMap,
+      );
+    } finally {
+      parentProto.onExec = originalOnExec;
+    }
+
+    assert.equal(receivedArtifactId, "test-booster-id");
+    assert.equal(observedLocalFilePath, "/local/path/to/booster.zip");
+  });
+});
+
+describe("InstallBooster task", () => {
+  it("TC-BST-003: should unzip into /tmp/ota and run install_booster.sh", () => {
+    const task = new TestableInstallBoosterTask();
+    const cmd = task.command();
+
+    assert.ok(cmd.includes("rm -rf /tmp/ota"));
+    assert.ok(cmd.includes("unzip -o /tmp/booster.zip -d /tmp/ota"));
+    assert.ok(cmd.includes("sh -c 'cd /tmp/ota; ./install_booster.sh'"));
+    // The cd must stay inside sh -c, otherwise sudo would receive a `cd` segment.
+    assert.doesNotMatch(cmd, /&& cd \/tmp\/ota/);
+  });
+
+  it("TC-BST-004: should use sudo for the install task", () => {
+    const task = new TestableInstallBoosterTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+
+    assert.equal(params.sudo, true);
+  });
+
+  it("TC-BST-005: should default commandTimeout to 900000ms", () => {
+    const task = new TestableInstallBoosterTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+
+    assert.equal(params.commandTimeout, 900000);
+  });
+});
+
+describe("Mock Booster tasks", () => {
+  it("TC-BST-006: MockTransferBoosterTask returns simulated success", async () => {
+    const task = new MockTransferBoosterTask();
+    const startedAt = Date.now();
+    const result = await task.exec({ robotIp: "192.168.1.10", artifactId: "id" });
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.integrityVerified, true);
+    assert.ok(elapsedMs >= 900, `expected ~1s delay, got ${elapsedMs}ms`);
+  });
+
+  it("TC-BST-007: MockInstallBoosterTask returns simulated success", async () => {
+    const task = new MockInstallBoosterTask();
+    const startedAt = Date.now();
+    const result = await task.exec({ robotIp: "192.168.1.10" });
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.exitCode, 0);
+    assert.ok(elapsedMs >= 4900, `expected ~5s delay, got ${elapsedMs}ms`);
+  });
+});
+
+describe("Install Booster - Flow Integration", () => {
+  it("TC-BST-008: should execute the transfer/install DAG and complete", async () => {
+    const registry = new ResolverRegistry();
+    registry.register("TransferBoosterTask", MockTransferBoosterTask as unknown as TaskResolverClass);
+    registry.register("InstallBoosterTask", MockInstallBoosterTask as unknown as TaskResolverClass);
+
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const installDag: FlowSpec = {
+      tasks: {
+        transfer: {
+          requires: ["robotIp", "robotPort", "artifactId"],
+          provides: ["transfer_done"],
+          resolver: {
+            name: "TransferBoosterTask",
+            params: { robotIp: "robotIp", robotPort: "robotPort", artifactId: "artifactId" },
+            results: { done: "transfer_done" },
+          },
+        },
+        install: {
+          requires: ["robotIp", "robotPort", "transfer_done"],
+          provides: ["install_done"],
+          resolver: {
+            name: "InstallBoosterTask",
+            params: { robotIp: "robotIp", robotPort: "robotPort" },
+            results: { done: "install_done" },
+          },
+        },
+      },
+    };
+
+    const summary = await testEngine.createFlow("internal", installDag, {
+      robotIp: "192.168.1.10",
+      robotPort: 22,
+      artifactId: "test-booster",
+    });
+    await waitForFlowComplete(testEngine, summary.id, 20000);
+
+    const flow = testEngine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "COMPLETED");
   });
 });
