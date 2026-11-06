@@ -6,6 +6,7 @@ import { ChecksumService } from "./services/checksumService.js";
 import { ArtifactService } from "./services/artifactService.js";
 import { SolutionService } from "./services/solutionService.js";
 import { RobotService } from "./services/robotService.js";
+import { RobotPowerService } from "./services/robotPowerService.js";
 import { createObjectStoreRoutes } from "./routes/objectStoreRoutes.js";
 import { createArtifactRoutes } from "./routes/artifactRoutes.js";
 import { createSolutionRoutes } from "./routes/solutionRoutes.js";
@@ -68,6 +69,7 @@ import {
   UninstallL4TDownloaderTask, MockUninstallL4TDownloaderTask,
   FixBrokenPackagesTask, MockFixBrokenPackagesTask,
   CollectBlackboxLogTask, MockCollectBlackboxLogTask,
+  RobotPowerTask, MockRobotPowerTask,
 } from "./tasks/index.js";
 import { MemStore } from "./memStore/index.js";
 import { SystemLogService } from "./services/systemLogService.js";
@@ -201,6 +203,7 @@ async function main(): Promise<void> {
     { name: "UninstallL4TDownloaderTask", real: UninstallL4TDownloaderTask, mock: MockUninstallL4TDownloaderTask },
     { name: "FixBrokenPackagesTask", real: FixBrokenPackagesTask, mock: MockFixBrokenPackagesTask },
     { name: "CollectBlackboxLogTask", real: CollectBlackboxLogTask, mock: MockCollectBlackboxLogTask },
+    { name: "RobotPowerTask", real: RobotPowerTask, mock: MockRobotPowerTask },
   ]);
 
   const taskFlowEngine = new TaskFlowEngine(objectStore, sseManager, resolverRegistry);
@@ -211,6 +214,9 @@ async function main(): Promise<void> {
     sshUsername: SSH_USERNAME,
     sshPassword: SSH_PASSWORD,
   });
+
+  const robotPowerTaskClass = config.runtime.mock ? MockRobotPowerTask : RobotPowerTask;
+  const robotPowerService = new RobotPowerService(robotService, robotPowerTaskClass);
 
   taskFlowEngine.setFlowContext({ memStore: memStoreInstance, artifactService });
 
@@ -254,7 +260,7 @@ async function main(): Promise<void> {
   app.route("/api/objects", createObjectStoreRoutes(objectStore, config.database.path));
   app.route("/api/artifacts", createArtifactRoutes(artifactService));
   app.route("/api/solutions", createSolutionRoutes(solutionService));
-  app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService));
+  app.route("/api/solutions/:solutionId/robots", createRobotRoutes(robotService, robotPowerService));
   app.route("/api/memstore", createMemStoreRoutes(memStoreInstance));
   app.route("/api/sse", createSseRoutes(sseManager));
 

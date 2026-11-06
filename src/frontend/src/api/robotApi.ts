@@ -52,6 +52,16 @@ export async function deleteRobot(solutionId: string, robotId: string): Promise<
   await del<{ ok: boolean }>(`/solutions/${solutionId}/robots/${robotId}`);
 }
 
+export type RobotPowerAction = "shutdown" | "reboot";
+
+export async function sendRobotPowerAction(
+  solutionId: string,
+  robotId: string,
+  action: RobotPowerAction
+): Promise<void> {
+  await post<{ ok: boolean }>(`/solutions/${solutionId}/robots/${robotId}/power`, { action });
+}
+
 export interface MemStoreCacheDetail {
   key: string;
   value: unknown;
