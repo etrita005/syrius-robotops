@@ -128,7 +128,7 @@
 | 优先级 | 中 |
 | 前置条件 | 同 TC-E2E-UAC-001 |
 | 步骤 | 打开 CreateTaskModal，留在 Type 步骤 |
-| 预期 | `Update Algorithm Config` 与既有任务类型（Upgrade BUP / Movebase Disk Cleanup / Upgrade Movebase / Apply Alpha2 Map / Update IoT Gateway Config / Download Alpha2 Map / Deploy AppletEngine Config / Install App / Deploy GGR3 Config）均可见；`Robot selection: Multiple robots` 计数为 14。 |
+| 预期 | `Update Algorithm Config` 与既有任务类型（Upgrade BUP / Movebase Disk Cleanup / Upgrade Movebase / Apply Alpha2 Map / Update IoT Gateway Config / Download Alpha2 Map / Deploy AppletEngine Config / Install App / Deploy GGR3 Config）均可见；`Robot selection: Multiple robots` 计数为 19。 |
 
 ---
 

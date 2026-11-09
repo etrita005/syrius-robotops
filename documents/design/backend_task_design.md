@@ -1519,3 +1519,75 @@ Same as `SshCommandTask`.
 - `powerAction` is required and validated; a missing or unknown value throws before any SSH connection is opened.
 - Batch DAGs pass the action as a literal (`params: { powerAction: { value: "shutdown" } }`), so the task types require no user parameters.
 - Mock variant (`MockRobotPowerTask`) logs the requested action, sleeps ~1 s, and returns success so flows, direct power actions, and E2E can run without a robot.
+
+---
+
+## 46. TransferAlpha19MovebaseTask
+
+### Overview
+
+Resolves the Alpha1.9 Movebase offline package artifact and uploads it to the robot via SFTP. No intermediate temp directory is used.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID to resolve and transfer |
+| `timeout` | `number` | `120000` (2 min) | SSH connect/mkdir/checksum timeout; raised for the large package checksum |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `true`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ getArtifactPath(id): Promise<string> }` | Service to resolve artifact storage path |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/mnt/sdcard/offlineota/alpha1_9_movebase_offline_package.zip`
+- Uses a different remote filename from `TransferMovebaseTask` so the Alpha1.9 and Alpha2 packages cannot overwrite each other
+- The Alpha1.9 package is about 856 MB (125 files); the remote SHA-256 calculation during integrity verification can exceed the generic 30 s timeout, so `timeout` defaults to 120 s
+- Checksum verification stays enabled; the default retry count (3) is unchanged
+- Uses `artifactService.getArtifactPath(artifactId)` to resolve the local file path directly
+- If `artifactId` or `artifactService` is absent, falls through to `super.onExec()` directly
+- Implementation mirrors `TransferMovebaseTask`
+
+---
+
+## 47. UpgradeAlpha19MovebaseTask
+
+### Overview
+
+Extracts the Alpha1.9 Movebase offline package on the remote robot and runs its bundled `install_offline.sh` installer.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `1800000` (30 min) | Override for the long-running offline installation |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded 3-step command:
+  1. `rm -rf /mnt/sdcard/offlineota/alpha1_9_movebase_offline_package-*` — remove the previously extracted package
+  2. `unzip -o /mnt/sdcard/offlineota/alpha1_9_movebase_offline_package.zip -d /mnt/sdcard/offlineota` — extract the package (top-level directory is `alpha1_9_movebase_offline_package-5.3.2148`)
+  3. `bash /mnt/sdcard/offlineota/alpha1_9_movebase_offline_package-*/install_offline.sh` — run the bundled installer
+- The bundled `install_offline.sh` needs no modification for RobotOps Studio:
+  - It is a Bash script (`set -euo pipefail`, `local`) and must be started with `bash`; invoking it explicitly also avoids depending on the executable bit restored by `unzip`
+  - It resolves its own directory through `BASH_SOURCE`, so no `cd` is needed (unlike `InstallBoosterTask`, which must keep `cd` inside `sh -c` to avoid `sudo cd`)
+  - It calls `sudo` internally; because the task already runs under sudo, those nested calls execute as root and never prompt for a password
+  - It installs `cosmos-manifests` and `update-bionic` version `5.3.2148`, which writes `/opt/cosmos/etc/ota/version`; `MatchMovebaseVersionTask` can therefore verify the result with expected version `5.3.2148`
+- The command is `&&`-chained; any step failure fails the entire task
+- The 30-minute timeout accommodates installing 125 deb packages, including large navigation and perception packages
+- Cleanup after a successful upgrade is handled by `DeleteMovebaseTask`, which removes the whole `/mnt/sdcard/offlineota` directory

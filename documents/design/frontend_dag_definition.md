@@ -85,7 +85,8 @@ params: {
 
 ```typescript
 const TASK_DAG_MAP: Record<string, DagConfig> = {
-  "upgrade-movebase":        { /* 五步 DAG: transfer → upgrade → reboot → verify_version → cleanup */ },
+  "upgrade-movebase":        { /* 六步 DAG: transfer → upgrade → reboot → wait_reconnect → verify_version → cleanup */ },
+  "upgrade-alpha19-movebase":{ /* 六步 DAG: transfer → upgrade → reboot → wait_reconnect → verify_version → cleanup */ },
   "upgrade-bup":             { /* 六步 DAG: transfer → script_transfer → upgrade → wait_reconnect → verify_version → cleanup */ },
   "movebase-disk-cleanup":   { /* 单步 DAG: cleanup */ },
   "apply-alpha2-map":        { /* 四步 DAG: transfer → apply → delete_package → wait */ },
@@ -129,9 +130,9 @@ input variables ──→ [transfer] ──→ [apply] ──→ [delete_package
 - `wait` 节点等待 30 秒让 marie 检测并加载新地图 (marie 每 10 秒检查 `/opt/cosmos/map/ws/` 目录更新)
 - 异常 DAG：清理残留地图包
 
-#### upgrade-movebase（Movebase 升级）
+#### upgrade-movebase（Alpha2 Movebase 升级）
 
-五步流程，含异常处理：
+六步流程，含异常处理：
 
 ```
 input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot] ──→ [verify_version] ──→ [cleanup] ──→ cleanup_done
@@ -146,7 +147,26 @@ input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot] ─�
 - 解析器：`TransferMovebaseTask`, `UpgradeMovebaseTask`, `RebootRobotTask`, `MatchMovebaseVersionTask`, `DeleteMovebaseTask`
 - 输入依赖：`robotIp`, `robotPort`, `artifactId`, `expectedVersion`
 - 预期结果：`cleanup_done`
+- `transfer` 节点将 Alpha2 Movebase 离线包传输到机器人 `/mnt/sdcard/offlineota/alpha2_movebase_offline_package.zip`
+- `upgrade` 节点解压离线包并执行包内 `install_offline.sh`
 - 异常 DAG：清理残留安装包
+
+#### upgrade-alpha19-movebase（Alpha1.9 Movebase 升级）
+
+六步流程，与 `upgrade-movebase` 相同，仅传输与安装解析器不同：
+
+```
+input variables ──→ [transfer] ──→ [upgrade] ──→ [reboot] ──→ [wait_reconnect] ──→ [verify_version] ──→ [cleanup] ──→ cleanup_done
+如果主流程任一任务失败：
+[error_cleanup] ──→ error_cleanup_done
+```
+- 解析器：`TransferAlpha19MovebaseTask`, `UpgradeAlpha19MovebaseTask`, `RebootRobotTask`, `WaitSshReconnectTask`, `MatchMovebaseVersionTask`, `DeleteMovebaseTask`
+- 输入依赖：`robotIp`, `robotPort`, `artifactId`, `expectedVersion`
+- 预期结果：`cleanup_done`
+- `transfer` 节点将 Alpha1.9 Movebase 离线包（约 856 MB）传输到机器人 `/mnt/sdcard/offlineota/alpha1_9_movebase_offline_package.zip`；传输超时默认 120 秒以覆盖大文件校验
+- `upgrade` 节点清理旧解压目录、解压离线包，并通过 `bash` 执行包内 `install_offline.sh`；安装超时默认 30 分钟
+- 离线包脚本无需修改即可运行，安装后 `/opt/cosmos/etc/ota/version` 写入 `5.3.2148`，供 `MatchMovebaseVersionTask` 校验
+- 异常 DAG：`UPGRADE_MOVEBASE_ERROR_DAG`（清理残留安装包）
 
 #### install-booster（安装最小系统 Booster）
 

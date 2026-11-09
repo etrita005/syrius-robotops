@@ -118,8 +118,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 18 multi-robot task types should show "Multiple robots" (after Install Minimal System (Booster), Shutdown Robots and Reboot Robots were added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(18);
+    // All 19 multi-robot task types should show "Multiple robots" (after Install Minimal System (Booster), Shutdown Robots, Reboot Robots and Upgrade Alpha1.9 Movebase were added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
 
     // Verify the single-robot task type is present
     await expect(modal.getByText("Robot selection: Single robot")).toBeVisible();
@@ -258,8 +258,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 18 task types should show "Multiple robots" (after Install Minimal System (Booster), Shutdown Robots and Reboot Robots were added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(18);
+    // All 19 task types should show "Multiple robots" (after Install Minimal System (Booster), Shutdown Robots, Reboot Robots and Upgrade Alpha1.9 Movebase were added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
   });
 
   test("TC-E2E-TASK-013: Update IoT Gateway Config leads to multi-robot step 2", async ({
@@ -622,7 +622,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Install App")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(18);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
   });
 
   test("TC-E2E-TASK-020: Install App leads to multi-robot step 2 then params step", async ({
@@ -674,6 +674,45 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal.getByText("2 robots selected")).toBeVisible();
   });
 
+  test("TC-E2E-A19MB-001: Upgrade Alpha1.9 Movebase task type is visible in the create modal", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Upgrade Alpha1.9 Movebase")).toBeVisible();
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
+  });
+
+  test("TC-E2E-A19MB-002: Upgrade Alpha1.9 Movebase shows multi-robot selection", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "GGR3 Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await modal.getByText("Upgrade Alpha1.9 Movebase", { exact: true }).first().click();
+    await appPage.waitForTimeout(300);
+
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await expect(modal.getByLabel("Select all robots")).toBeVisible();
+    await modal.getByLabel("Select all robots").check();
+    await expect(modal.getByText("2 robots selected")).toBeVisible();
+  });
+
   test("TC-E2E-DB3-001: Install Dragonball3 firmware task type appears in task creation modal", async ({
     appPage,
   }) => {
@@ -702,7 +741,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Install Dragonball3 firmware")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(18);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
   });
 
   test("TC-E2E-DB3-003: Install Dragonball3 firmware leads to multi-robot step 2", async ({
@@ -760,7 +799,7 @@ test.describe("Update Algorithm Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Update Algorithm Config", { exact: true })).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(18);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
   });
 
   test("TC-E2E-UAC-002: Update Algorithm Config selection leads to multi-robot step 2", async ({
@@ -864,7 +903,7 @@ test.describe("Blackbox Log Collection", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Collect BlackBox Logs")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(18);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
   });
 
   test("TC-E2E-BBL-002: full wizard flow completes and result details show the S3 link", async ({
@@ -1143,7 +1182,7 @@ test.describe("Robot Power Tasks", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Shutdown Robots", { exact: true })).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(18);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
 
     await modal.getByText("Shutdown Robots", { exact: true }).click();
     await appPage.waitForTimeout(300);

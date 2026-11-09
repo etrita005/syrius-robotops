@@ -29,6 +29,8 @@ BLACKBOX_DIR = os.path.join(BASE_DIR, "blackbox-log-collection")
 os.makedirs(BLACKBOX_DIR, exist_ok=True)
 UPDATE_ALGORITHM_CONFIG_DIR = os.path.join(BASE_DIR, "update-algorithm-config")
 os.makedirs(UPDATE_ALGORITHM_CONFIG_DIR, exist_ok=True)
+UPGRADE_ALPHA19_MOVEBASE_DIR = os.path.join(BASE_DIR, "upgrade-alpha19-movebase")
+os.makedirs(UPGRADE_ALPHA19_MOVEBASE_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1840,6 +1842,162 @@ def page_update_algorithm_config_step4():
     img.save(path)
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
+# ---------------------------------------------------------------------------
+# Upgrade Alpha1.9 Movebase: 01 --- Step 1: Select Task Type (Multi-robot)
+# ---------------------------------------------------------------------------
+def page_upgrade_alpha19_movebase_step1():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 1)
+    draw.text((mx + 24, my + 110), "Step 1: Select Task Type", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "The task type determines robot selection mode and parameters.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 158, mx + mw - 24, my + 192), placeholder="Search task types...")
+    types = [
+        ("Upgrade Movebase", "Upgrade the Alpha2 Movebase software on selected robots.", "Multiple robots"),
+        ("Upgrade Alpha1.9 Movebase", "Upgrade the Alpha1.9 Movebase software on selected robots.", "Multiple robots", True),
+        ("Upgrade BUP", "Upgrade the BUP firmware on selected robots.", "Multiple robots"),
+        ("Apply Alpha2 Map", "Apply an Alpha2 format map package.", "Multiple robots"),
+        ("Update IoT Gateway Config", "Update iot-gateway configuration.", "Multiple robots"),
+    ]
+    for i, type_info in enumerate(types):
+        name, desc, mode_label = type_info[0], type_info[1], type_info[2]
+        selected = len(type_info) > 3 and type_info[3]
+        y = my + 208 + i * 68
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 56], fill="white", outline="#0f62fe" if selected else "#c6c6c6", width=2 if selected else 1)
+        if selected:
+            draw.ellipse([mx + 40, y + 16, mx + 56, y + 32], fill="#0f62fe")
+        else:
+            draw.ellipse([mx + 40, y + 16, mx + 56, y + 32], outline="#8d8d8d", width=1)
+        draw.text((mx + 70, y + 8), name, fill="#161616", font=FONT_MD)
+        draw.text((mx + 70, y + 26), desc[:76], fill="#525252", font=FONT_SM)
+        draw.text((mx + 70, y + 40), f"Robot selection: {mode_label}", fill="#8d8d8d", font=FONT_SM)
+    draw_button(draw, (mx + mw - 220, my + mh - 60, mx + mw - 120, my + mh - 28), "Cancel")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+    path = os.path.join(UPGRADE_ALPHA19_MOVEBASE_DIR, "01_create_task_step1_type.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Upgrade Alpha1.9 Movebase: 02 --- Step 2: Select Robots (Multi, checkboxes)
+# ---------------------------------------------------------------------------
+def page_upgrade_alpha19_movebase_step2():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 2)
+    draw.text((mx + 24, my + 110), "Step 2: Select Robots", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "Task type: Upgrade Alpha1.9 Movebase (Multiple robots)", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 148), "Select one or more Alpha1.9 target robots to upgrade Movebase software.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 174, mx + mw - 140, my + 208), placeholder="Search robots...")
+    draw_button(draw, (mx + mw - 130, my + 174, mx + mw - 24, my + 208), "Sort")
+    draw.rectangle([mx + 24, my + 228, mx + mw - 24, my + 260], fill="#f4f4f4", outline="#e0e0e0", width=1)
+    draw.rectangle([mx + 40, my + 236, mx + 52, my + 248], fill="#0f62fe")
+    draw.text((mx + 62, my + 234), "Select all robots", fill="#161616", font=FONT_SM)
+    robots = [(True, "AGV-01", "192.168.1.101:22", "X100"), (True, "AGV-02", "192.168.1.102:22", "X100"), (False, "AGV-03", "robot-03.local:22", "X200")]
+    for i, (checked, alias, address, model) in enumerate(robots):
+        y = my + 268 + i * 44
+        fill = "white" if i % 2 == 0 else "#fafafa"
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 40], fill=fill, outline="#e0e0e0", width=1)
+        cb_x, cb_y = mx + 44, y + 10
+        draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], outline="#555", width=1)
+        if checked:
+            draw.line([cb_x + 3, cb_y + 8, cb_x + 7, cb_y + 12, cb_x + 13, cb_y + 4], fill="#0f62fe", width=2)
+        draw.text((mx + 100, y + 10), alias, fill="#161616", font=FONT_SM)
+        draw.text((mx + 220, y + 10), address, fill="#525252", font=FONT_SM)
+        draw.text((mx + 380, y + 10), model, fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + mh - 80), "2 robots selected", fill="#525252", font=FONT_SM)
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+    path = os.path.join(UPGRADE_ALPHA19_MOVEBASE_DIR, "02_create_task_step2_robots.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Upgrade Alpha1.9 Movebase: 03 --- Step 3: Configure Parameters
+# ---------------------------------------------------------------------------
+def page_upgrade_alpha19_movebase_step3():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 3)
+    draw.text((mx + 24, my + 110), "Step 3: Configure Parameters", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 132), "Task: Upgrade Alpha1.9 Movebase", fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + 148), "Parameters are rendered dynamically based on task type.", fill="#8d8d8d", font=FONT_SM)
+    y = my + 180
+    draw.text((mx + 44, y), "Alpha1.9 Movebase package (.zip) *", fill="#161616", font=FONT_MD)
+    draw.text((mx + 44, y + 22), "Select the Alpha1.9 offline package artifact to install.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 44, y + 46, mx + mw - 44, y + 74), placeholder="Search artifacts...")
+    list_y = y + 88
+    rows = [
+        ("alpha1_9_movebase_offline_package-5.3.2148.zip", "856 MB", True),
+        ("alpha1_9_movebase_offline_package-5.3.2000.zip", "842 MB", False),
+    ]
+    for name, size, selected in rows:
+        bg = "#e5f0ff" if selected else "white"
+        draw.rectangle([mx + 44, list_y, mx + mw - 44, list_y + 28], fill=bg, outline="#e0e0e0", width=1)
+        draw.text((mx + 56, list_y + 6), name, fill="#161616", font=FONT_SM)
+        draw.text((mx + mw - 110, list_y + 6), size, fill="#525252", font=FONT_SM)
+        list_y += 30
+    y2 = list_y + 12
+    draw.text((mx + 44, y2), "Expected version *", fill="#161616", font=FONT_MD)
+    draw.text((mx + 44, y2 + 22), "Compared with /opt/cosmos/etc/ota/version after reboot.", fill="#525252", font=FONT_SM)
+    draw.rectangle([mx + 44, y2 + 46, mx + 240, y2 + 74], fill="white", outline="#8d8d8d", width=1)
+    draw.text((mx + 54, y2 + 52), "5.3.2148", fill="#161616", font=FONT_SM)
+    draw.text((mx + 44, y2 + 88), "Package is uploaded to /mnt/sdcard/offlineota; the robot reboots after installation.", fill="#a8a8a8", font=FONT_SM)
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+    path = os.path.join(UPGRADE_ALPHA19_MOVEBASE_DIR, "03_create_task_step3_params.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Upgrade Alpha1.9 Movebase: 04 --- Step 4: Confirm and Create
+# ---------------------------------------------------------------------------
+def page_upgrade_alpha19_movebase_step4():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 4)
+    draw.text((mx + 24, my + 110), "Step 4: Confirm", fill="#161616", font=FONT_MD)
+    fields = [
+        ("Task Type", "Upgrade Alpha1.9 Movebase"),
+        ("Target Robots", "AGV-01, AGV-02"),
+        ("Alpha1.9 Movebase package", "alpha1_9_movebase_offline_package-5.3.2148.zip (856 MB)"),
+        ("Expected version", "5.3.2148"),
+    ]
+    fy = my + 160
+    for label, value in fields:
+        draw.text((mx + 24, fy), label + ":", fill="#525252", font=FONT_MD)
+        draw.text((mx + 250, fy), value, fill="#161616", font=FONT_MD)
+        fy += 40
+    draw.text((mx + 24, fy + 10), "Each robot will install the offline package, reboot, and verify the version.", fill="#161616", font=FONT_SM)
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Create", bg="#0f62fe", fg="white")
+    path = os.path.join(UPGRADE_ALPHA19_MOVEBASE_DIR, "04_create_task_step4_confirm.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
 def page_blackbox_step1():
     W, H = 1200, 800
     img = Image.new("RGB", (W, H), "#f4f4f4")
@@ -2106,6 +2264,12 @@ if __name__ == "__main__":
     page_update_algorithm_config_step2()
     page_update_algorithm_config_step3()
     page_update_algorithm_config_step4()
+
+    # Upgrade Alpha1.9 Movebase (sub-module, special task)
+    page_upgrade_alpha19_movebase_step1()
+    page_upgrade_alpha19_movebase_step2()
+    page_upgrade_alpha19_movebase_step3()
+    page_upgrade_alpha19_movebase_step4()
 
     # Artifact Management
     page_artifact_manager()

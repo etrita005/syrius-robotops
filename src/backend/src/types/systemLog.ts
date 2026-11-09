@@ -85,6 +85,8 @@ export const KNOWN_MODULES = [
   "UpdateRobotBasicInfoTask",
   "UpdateRobotSoftwareInfoTask",
   "UpgradeMovebaseTask",
+  "TransferAlpha19MovebaseTask",
+  "UpgradeAlpha19MovebaseTask",
   "TransferMovebaseTask",
   "DeleteMovebaseTask",
   "DeleteRemotePathTask",
