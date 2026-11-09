@@ -123,7 +123,7 @@
 2. 查看任务类型列表
 
 **预期结果**：
-- `Robot selection: Multiple robots` 数量为 16
+- `Robot selection: Multiple robots` 数量为 19
 - "Install Minimal System (Booster)" 在任务类型列表中可见
 
 ### TC-E2E-TASK-021: Install Minimal System (Booster) 显示多机器人选择

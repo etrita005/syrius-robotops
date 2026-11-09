@@ -20,6 +20,10 @@ export { UpdateRobotSoftwareInfoTask } from "./real/updateRobotSoftwareInfoTask.
 export { MockUpdateRobotSoftwareInfoTask } from "./mock/mockUpdateRobotSoftwareInfoTask.js";
 export { UpgradeMovebaseTask } from "./real/upgradeMovebaseTask.js";
 export { MockUpgradeMovebaseTask } from "./mock/mockUpgradeMovebaseTask.js";
+export { TransferAlpha19MovebaseTask } from "./real/transferAlpha19MovebaseTask.js";
+export { MockTransferAlpha19MovebaseTask } from "./mock/mockTransferAlpha19MovebaseTask.js";
+export { UpgradeAlpha19MovebaseTask } from "./real/upgradeAlpha19MovebaseTask.js";
+export { MockUpgradeAlpha19MovebaseTask } from "./mock/mockUpgradeAlpha19MovebaseTask.js";
 export { DeleteRemotePathTask } from "./real/deleteRemotePathTask.js";
 export type { DeleteRemotePathParams } from "./real/deleteRemotePathTask.js";
 export { TransferMovebaseTask } from "./real/transferMovebaseTask.js";

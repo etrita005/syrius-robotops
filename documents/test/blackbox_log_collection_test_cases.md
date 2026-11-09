@@ -239,13 +239,13 @@
 
 **预期结果**：类型可见，显示 "Robot selection: Multiple robots"
 
-### TC-E2E-BBL-002: 多机器人任务计数为 15
+### TC-E2E-BBL-002: 多机器人任务计数为 19
 
 **前置条件**：同 TC-E2E-BBL-001
 
 **测试步骤**：在任务类型步骤统计 "Robot selection: Multiple robots"
 
-**预期结果**：共 15 项（Update Algorithm Config 与 Collect BlackBox Logs 加入后由 13 → 15）
+**预期结果**：共 19 项（含 Install Minimal System (Booster)、Shutdown Robots、Reboot Robots 与 Upgrade Alpha1.9 Movebase）
 
 ### TC-E2E-BBL-003: 选择类型进入机器人选择步骤
 

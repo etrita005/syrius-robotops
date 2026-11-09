@@ -382,6 +382,8 @@ interface LogBundleRequest {
 - GetRobotBasicInfo
 - UpdateRobotBasicInfo
 - UpgradeMovebase
+- TransferAlpha19Movebase
+- UpgradeAlpha19Movebase
 - TransferMovebase
 - DeleteMovebase
 - TransferAlpha2Map

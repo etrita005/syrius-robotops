@@ -46,6 +46,10 @@ import { TransferBoosterTask } from "./tasks/real/transferBoosterTask.js";
 import { InstallBoosterTask } from "./tasks/real/installBoosterTask.js";
 import { MockTransferBoosterTask } from "./tasks/mock/mockTransferBoosterTask.js";
 import { MockInstallBoosterTask } from "./tasks/mock/mockInstallBoosterTask.js";
+import { TransferAlpha19MovebaseTask } from "./tasks/real/transferAlpha19MovebaseTask.js";
+import { UpgradeAlpha19MovebaseTask } from "./tasks/real/upgradeAlpha19MovebaseTask.js";
+import { MockTransferAlpha19MovebaseTask } from "./tasks/mock/mockTransferAlpha19MovebaseTask.js";
+import { MockUpgradeAlpha19MovebaseTask } from "./tasks/mock/mockUpgradeAlpha19MovebaseTask.js";
 import { MockWaitSshReconnectTask } from "./tasks/mock/mockWaitSshReconnectTask.js";
 import { MockRebootRobotTask } from "./tasks/mock/mockRebootRobotTask.js";
 import { SyncTimeTask } from "./tasks/real/syncTimeTask.js";
@@ -6101,6 +6105,194 @@ describe("Install Booster - Flow Integration", () => {
       robotIp: "192.168.1.10",
       robotPort: 22,
       artifactId: "test-booster",
+    });
+    await waitForFlowComplete(testEngine, summary.id, 20000);
+
+    const flow = testEngine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "COMPLETED");
+  });
+});
+
+// ============================================================
+// Upgrade Alpha1.9 Movebase: TransferAlpha19MovebaseTask / UpgradeAlpha19MovebaseTask
+// ============================================================
+
+class TestableTransferAlpha19MovebaseTask extends TransferAlpha19MovebaseTask {
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableUpgradeAlpha19MovebaseTask extends UpgradeAlpha19MovebaseTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("TransferAlpha19Movebase task", () => {
+  it("TC-A19MB-001: should upload the alpha1.9 package to /mnt/sdcard/offlineota with sudo", () => {
+    const task = new TestableTransferAlpha19MovebaseTask();
+    const params = task.params({
+      robotIp: "192.168.1.10",
+      artifactId: "test-alpha19-id",
+    });
+
+    assert.equal(
+      params.remoteFilePath,
+      "/mnt/sdcard/offlineota/alpha1_9_movebase_offline_package.zip"
+    );
+    assert.equal(params.sudo, true);
+  });
+
+  it("TC-A19MB-002: should resolve artifact path via artifactService on exec", async () => {
+    const task = new TransferAlpha19MovebaseTask();
+    let receivedArtifactId: string | undefined;
+    const context = {
+      artifactService: {
+        async getArtifactPath(id: string): Promise<string> {
+          receivedArtifactId = id;
+          return "/local/path/to/alpha1_9_movebase_offline_package.zip";
+        },
+      },
+    };
+
+    const parentProto = Object.getPrototypeOf(Object.getPrototypeOf(task)) as {
+      onExec: (...args: unknown[]) => unknown;
+    };
+    const originalOnExec = parentProto.onExec;
+    let observedLocalFilePath: string | undefined;
+    parentProto.onExec = async function (params: ValueMap) {
+      observedLocalFilePath = params.localFilePath as string;
+      return { done: true, success: true };
+    };
+
+    try {
+      await task.exec(
+        { robotIp: "192.168.1.10", artifactId: "test-alpha19-id" },
+        context as unknown as ValueMap,
+      );
+    } finally {
+      parentProto.onExec = originalOnExec;
+    }
+
+    assert.equal(receivedArtifactId, "test-alpha19-id");
+    assert.equal(
+      observedLocalFilePath,
+      "/local/path/to/alpha1_9_movebase_offline_package.zip"
+    );
+  });
+
+  it("TC-A19MB-003: should default timeout to 120000ms for the large package checksum", () => {
+    const task = new TestableTransferAlpha19MovebaseTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+
+    assert.equal(params.timeout, 120000);
+  });
+});
+
+describe("UpgradeAlpha19Movebase task", () => {
+  it("TC-A19MB-004: should unzip the alpha1.9 package and run install_offline.sh with bash", () => {
+    const task = new TestableUpgradeAlpha19MovebaseTask();
+    const cmd = task.command();
+
+    assert.ok(
+      cmd.includes("rm -rf /mnt/sdcard/offlineota/alpha1_9_movebase_offline_package-*")
+    );
+    assert.ok(
+      cmd.includes(
+        "unzip -o /mnt/sdcard/offlineota/alpha1_9_movebase_offline_package.zip -d /mnt/sdcard/offlineota"
+      )
+    );
+    assert.ok(
+      cmd.includes(
+        "bash /mnt/sdcard/offlineota/alpha1_9_movebase_offline_package-*/install_offline.sh"
+      )
+    );
+  });
+
+  it("TC-A19MB-005: should use sudo for the upgrade task", () => {
+    const task = new TestableUpgradeAlpha19MovebaseTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+
+    assert.equal(params.sudo, true);
+  });
+
+  it("TC-A19MB-006: should default commandTimeout to 1800000ms", () => {
+    const task = new TestableUpgradeAlpha19MovebaseTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+
+    assert.equal(params.commandTimeout, 1800000);
+  });
+});
+
+describe("Mock Alpha1.9 Movebase tasks", () => {
+  it("TC-A19MB-007: MockTransferAlpha19MovebaseTask returns simulated success", async () => {
+    const task = new MockTransferAlpha19MovebaseTask();
+    const startedAt = Date.now();
+    const result = await task.exec({ robotIp: "192.168.1.10", artifactId: "id" });
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.integrityVerified, true);
+    assert.ok(elapsedMs >= 900, `expected ~1s delay, got ${elapsedMs}ms`);
+  });
+
+  it("TC-A19MB-008: MockUpgradeAlpha19MovebaseTask returns simulated success", async () => {
+    const task = new MockUpgradeAlpha19MovebaseTask();
+    const startedAt = Date.now();
+    const result = await task.exec({ robotIp: "192.168.1.10" });
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(result.done, true);
+    assert.equal(result.success, true);
+    assert.equal(result.exitCode, 0);
+    assert.ok(elapsedMs >= 4900, `expected ~5s delay, got ${elapsedMs}ms`);
+  });
+});
+
+describe("Upgrade Alpha1.9 Movebase - Flow Integration", () => {
+  it("TC-A19MB-009: should execute the transfer/upgrade DAG and complete", async () => {
+    const registry = new ResolverRegistry();
+    registry.register("TransferAlpha19MovebaseTask", MockTransferAlpha19MovebaseTask as unknown as TaskResolverClass);
+    registry.register("UpgradeAlpha19MovebaseTask", MockUpgradeAlpha19MovebaseTask as unknown as TaskResolverClass);
+
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const upgradeDag: FlowSpec = {
+      tasks: {
+        transfer: {
+          requires: ["robotIp", "robotPort", "artifactId"],
+          provides: ["transfer_done"],
+          resolver: {
+            name: "TransferAlpha19MovebaseTask",
+            params: { robotIp: "robotIp", robotPort: "robotPort", artifactId: "artifactId" },
+            results: { done: "transfer_done" },
+          },
+        },
+        upgrade: {
+          requires: ["robotIp", "robotPort", "transfer_done"],
+          provides: ["upgrade_done"],
+          resolver: {
+            name: "UpgradeAlpha19MovebaseTask",
+            params: { robotIp: "robotIp", robotPort: "robotPort" },
+            results: { done: "upgrade_done" },
+          },
+        },
+      },
+    };
+
+    const summary = await testEngine.createFlow("internal", upgradeDag, {
+      robotIp: "192.168.1.10",
+      robotPort: 22,
+      artifactId: "test-alpha19-movebase",
     });
     await waitForFlowComplete(testEngine, summary.id, 20000);
 

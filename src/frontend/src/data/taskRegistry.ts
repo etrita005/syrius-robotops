@@ -49,87 +49,102 @@ export interface TaskRegistry {
   taskTypes: TaskTypeDefinition[];
 }
 
-const UPGRADE_MOVEBASE_DAG: DagDefinition = {
-  tasks: {
-    transfer: {
-      requires: ["robotIp", "robotPort", "artifactId"],
-      resolver: {
-        name: "TransferMovebaseTask",
-        params: {
-          robotIp: "robotIp",
-          robotPort: "robotPort",
-          artifactId: "artifactId",
+function buildUpgradeMovebaseDag(
+  transferTaskName: string,
+  upgradeTaskName: string
+): DagDefinition {
+  return {
+    tasks: {
+      transfer: {
+        requires: ["robotIp", "robotPort", "artifactId"],
+        resolver: {
+          name: transferTaskName,
+          params: {
+            robotIp: "robotIp",
+            robotPort: "robotPort",
+            artifactId: "artifactId",
+          },
+          results: { done: "transfer_done" },
         },
-        results: { done: "transfer_done" },
+        provides: ["transfer_done"],
       },
-      provides: ["transfer_done"],
-    },
-    upgrade: {
-      requires: ["robotIp", "robotPort", "transfer_done"],
-      resolver: {
-        name: "UpgradeMovebaseTask",
-        params: {
-          robotIp: "robotIp",
-          robotPort: "robotPort",
+      upgrade: {
+        requires: ["robotIp", "robotPort", "transfer_done"],
+        resolver: {
+          name: upgradeTaskName,
+          params: {
+            robotIp: "robotIp",
+            robotPort: "robotPort",
+          },
+          results: { done: "upgrade_done" },
         },
-        results: { done: "upgrade_done" },
+        provides: ["upgrade_done"],
       },
-      provides: ["upgrade_done"],
-    },
-    reboot: {
-      requires: ["robotIp", "robotPort", "upgrade_done"],
-      resolver: {
-        name: "RebootRobotTask",
-        params: {
-          robotIp: "robotIp",
-          robotPort: "robotPort",
-          ignoreFailure: { value: true },
-          retryCount: { value: 1 },
+      reboot: {
+        requires: ["robotIp", "robotPort", "upgrade_done"],
+        resolver: {
+          name: "RebootRobotTask",
+          params: {
+            robotIp: "robotIp",
+            robotPort: "robotPort",
+            ignoreFailure: { value: true },
+            retryCount: { value: 1 },
+          },
+          results: { done: "reboot_done" },
         },
-        results: { done: "reboot_done" },
+        provides: ["reboot_done"],
       },
-      provides: ["reboot_done"],
-    },
-    wait_reconnect: {
-      requires: ["robotIp", "robotPort", "reboot_done"],
-      resolver: {
-        name: "WaitSshReconnectTask",
-        params: {
-          robotIp: "robotIp",
-          robotPort: "robotPort",
-          timeout: { value: 360000 },
+      wait_reconnect: {
+        requires: ["robotIp", "robotPort", "reboot_done"],
+        resolver: {
+          name: "WaitSshReconnectTask",
+          params: {
+            robotIp: "robotIp",
+            robotPort: "robotPort",
+            timeout: { value: 360000 },
+          },
+          results: { done: "reconnect_done" },
         },
-        results: { done: "reconnect_done" },
+        provides: ["reconnect_done"],
       },
-      provides: ["reconnect_done"],
-    },
-    verify_version: {
-      requires: ["robotIp", "robotPort", "reconnect_done", "expectedVersion"],
-      resolver: {
-        name: "MatchMovebaseVersionTask",
-        params: {
-          robotIp: "robotIp",
-          robotPort: "robotPort",
-          expectedContent: "expectedVersion",
+      verify_version: {
+        requires: ["robotIp", "robotPort", "reconnect_done", "expectedVersion"],
+        resolver: {
+          name: "MatchMovebaseVersionTask",
+          params: {
+            robotIp: "robotIp",
+            robotPort: "robotPort",
+            expectedContent: "expectedVersion",
+          },
+          results: { done: "verify_done" },
         },
-        results: { done: "verify_done" },
+        provides: ["verify_done"],
       },
-      provides: ["verify_done"],
-    },
-    cleanup: {
-      requires: ["robotIp", "robotPort", "verify_done"],
-      resolver: {
-        name: "DeleteMovebaseTask",
-        params: {
-          robotIp: "robotIp",
-          robotPort: "robotPort",
+      cleanup: {
+        requires: ["robotIp", "robotPort", "verify_done"],
+        resolver: {
+          name: "DeleteMovebaseTask",
+          params: {
+            robotIp: "robotIp",
+            robotPort: "robotPort",
+          },
+          results: { done: "cleanup_done" },
         },
-        results: { done: "cleanup_done" },
+        provides: ["cleanup_done"],
       },
-      provides: ["cleanup_done"],
     },
-  },
-};
+  };
+}
+
+const UPGRADE_MOVEBASE_DAG = buildUpgradeMovebaseDag(
+  "TransferMovebaseTask",
+  "UpgradeMovebaseTask"
+);
+
+const UPGRADE_ALPHA19_MOVEBASE_DAG = buildUpgradeMovebaseDag(
+  "TransferAlpha19MovebaseTask",
+  "UpgradeAlpha19MovebaseTask"
+);
 
 const UPGRADE_MOVEBASE_ERROR_DAG: DagDefinition = {
   tasks: {
@@ -1093,6 +1108,31 @@ export const TASK_REGISTRY: TaskRegistry = {
         artifactId: {
           type: "artifact",
           label: "Artifact file",
+          required: true,
+        },
+        expectedVersion: {
+          type: "text",
+          label: "Expected version",
+          required: true,
+        },
+      },
+    },
+    {
+      type: "upgrade-alpha19-movebase",
+      name: "Upgrade Alpha1.9 Movebase",
+      description: "Upgrade the Alpha1.9 Movebase software on selected robots.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more Alpha1.9 target robots to upgrade Movebase software.",
+      },
+      dag: UPGRADE_ALPHA19_MOVEBASE_DAG,
+      expectedResults: ["cleanup_done"],
+      errorDag: UPGRADE_MOVEBASE_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "Alpha1.9 Movebase package (.zip)",
           required: true,
         },
         expectedVersion: {
