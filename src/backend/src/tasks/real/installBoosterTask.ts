@@ -8,6 +8,8 @@ import { SshCommandTask, type SshCommandParams } from "./sshCommandTask.js";
  * split into a separate sudo segment.
  */
 const INSTALL_COMMAND = [
+  "systemctl stop cosmos-update-engine.service",
+  "sleep 6",
   "rm -rf /tmp/ota",
   "unzip -o /tmp/booster.zip -d /tmp/ota",
   "sh -c 'cd /tmp/ota; ./install_booster.sh'",

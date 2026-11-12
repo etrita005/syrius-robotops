@@ -1468,7 +1468,7 @@ Same as `SshFileTransferTask`.
 
 ### Overview
 
-Installs the Booster minimal system on the remote robot: cleans `/tmp/ota`, unzips the uploaded package into it and runs the bundled `install_booster.sh` with sudo. Used as the `install` step of the Install Minimal System (Booster) flow.
+Installs the Booster minimal system on the remote robot: stops `cosmos-update-engine.service`, waits 6 seconds, cleans `/tmp/ota`, unzips the uploaded package into it and runs the bundled `install_booster.sh` with sudo. Used as the `install` step of the Install Minimal System (Booster) flow.
 
 ### Input Parameters
 
@@ -1484,7 +1484,8 @@ Same as `SshCommandTask`.
 
 ### Notes
 
-- Hardcoded command: `rm -rf /tmp/ota && unzip -o /tmp/booster.zip -d /tmp/ota && sh -c 'cd /tmp/ota; ./install_booster.sh'`
+- Hardcoded command: `systemctl stop cosmos-update-engine.service && sleep 6 && rm -rf /tmp/ota && unzip -o /tmp/booster.zip -d /tmp/ota && sh -c 'cd /tmp/ota; ./install_booster.sh'`
+- `cosmos-update-engine.service` is stopped and installation waits 6 seconds before touching `/tmp/ota` so the update engine releases the package files
 - `cd` stays inside `sh -c` because `SshCommandTask` prefixes every `&&` segment with sudo, and `sudo cd` is invalid; the inner separator is `;` so the command is not split into a separate sudo segment
 - 15-minute default timeout accommodates the minimal system installation
 - Does not clean up `/tmp/booster.zip` or `/tmp/ota` on success so that on-site troubleshooting remains possible; reruns are idempotent because `/tmp/ota` is removed first
