@@ -45,6 +45,8 @@
 2. 调用 `getSshCommand({})`
 
 **预期结果**：
+- 命令包含 `systemctl stop cosmos-update-engine.service`
+- 命令包含 `sleep 6`
 - 命令包含 `rm -rf /tmp/ota`
 - 命令包含 `unzip -o /tmp/booster.zip -d /tmp/ota`
 - 命令包含 `sh -c 'cd /tmp/ota; ./install_booster.sh'`
@@ -71,6 +73,17 @@
 
 **预期结果**：
 - `commandTimeout` 等于 `900000`
+
+### TC-BST-009: InstallBooster 在安装前停止更新引擎并等待 6 秒
+
+**前置条件**：无
+
+**测试步骤**：
+1. 创建 `TestableInstallBoosterTask` 实例
+2. 调用 `getSshCommand({})`
+
+**预期结果**：
+- 命令依次包含 `systemctl stop cosmos-update-engine.service`、`sleep 6`，且均位于 `rm -rf /tmp/ota` 之前
 
 ### TC-BST-006: MockTransferBooster 返回模拟结果
 

@@ -6040,6 +6040,20 @@ describe("InstallBooster task", () => {
 
     assert.equal(params.commandTimeout, 900000);
   });
+
+  it("TC-BST-009: should stop cosmos-update-engine and sleep 6s before installing", () => {
+    const task = new TestableInstallBoosterTask();
+    const cmd = task.command();
+
+    const stopIndex = cmd.indexOf("systemctl stop cosmos-update-engine.service");
+    const sleepIndex = cmd.indexOf("sleep 6");
+    const installIndex = cmd.indexOf("rm -rf /tmp/ota");
+
+    assert.ok(stopIndex >= 0);
+    assert.ok(sleepIndex >= 0);
+    assert.ok(stopIndex < sleepIndex, "stop must run before sleep");
+    assert.ok(sleepIndex < installIndex, "sleep must run before install steps");
+  });
 });
 
 describe("Mock Booster tasks", () => {
