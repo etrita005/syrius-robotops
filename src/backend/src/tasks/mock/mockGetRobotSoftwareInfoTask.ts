@@ -4,6 +4,7 @@ import { GetRobotSoftwareInfoTask, type RobotSoftwareInfo } from "../real/getRob
 const MOCK_SOFTWARE_INFO: RobotSoftwareInfo = {
   movebaseVersion: "3.0.0",
   minimalSystemVersion: "1.2.3",
+  ggrVersion: "buzzard-v1.945",
   l4tVersion: "R35.4.1",
 };
 

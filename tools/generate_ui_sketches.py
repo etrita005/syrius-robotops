@@ -403,11 +403,11 @@ def page_robot_detail_modal():
     # Section 2: Software Versions
     def draw_software_versions(bx, by):
         y = by
-        for name, ver in [("megacosmOS", "2.3.1"), ("Movebase", "3.0.0"), ("GGR", "R35.4.1")]:
+        for name, ver in [("megacosmOS", "2.3.1"), ("Movebase", "3.0.0"), ("GGR", "buzzard-v1.945"), ("L4T", "R35.4.1")]:
             draw.text((bx, y), name + ":", fill="#525252", font=FONT_SM)
             draw.text((bx + 140, y), ver, fill="#161616", font=FONT_SM)
             y += 23
-    draw_section_card("Software Versions", 80, draw_body_fn=draw_software_versions)
+    draw_section_card("Software Versions", 105, draw_body_fn=draw_software_versions)
 
     # Section 3: Hardware Versions
     def draw_hardware_versions(bx, by):
