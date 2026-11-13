@@ -345,7 +345,7 @@
 | TC-SOL-SVC-022 | Clone a solution | New ID, correct name and version |
 | TC-SOL-SVC-023 | Throw when cloning non-existent solution | Throws `SOLUTION_NOT_FOUND` |
 
-### TC-ROB-SVC-001 ~ TC-ROB-SVC-025: RobotService Core Tests
+### TC-ROB-SVC-001 ~ TC-ROB-SVC-027: RobotService Core Tests
 
 | Test Case | Description | Key Assertion |
 |-----------|-------------|---------------|
@@ -374,3 +374,15 @@
 | TC-ROB-SVC-023 | Update in-memory cache after remove | List returns correct count |
 | TC-ROB-SVC-024 | Throw when removing non-existent robot | Throws `ROBOT_NOT_FOUND` |
 | TC-ROB-SVC-025 | Clear cached robots for a solution | Cache is invalidated and reloaded |
+| TC-ROB-SVC-026 | Update host-only address with explicit port | Explicit `port` is preserved instead of defaulting to 22 |
+| TC-ROB-SVC-027 | Update address that already embeds a port | Port embedded in `address` takes precedence over patch `port` |
+
+### TC-SW-001 ~ TC-SW-005: GetRobotSoftwareInfoTask Tests
+
+| Test Case | Description | Key Assertion |
+|-----------|-------------|---------------|
+| TC-SW-001 | Read Movebase and minimal system versions from robot files | Command contains `/opt/cosmos/etc/ota/version` and `/mnt/cosmos/boot/etc/ota/minimal_system_version` |
+| TC-SW-002 | Read GGR version through adb dumpsys | Command contains `adb shell dumpsys package com.syriusrobotics.platform.launcher`, `grep versionName`, `sed 's/ *versionName=//'`, and outputs `ggrVersion` |
+| TC-SW-003 | Read L4T version with fallback | Command contains `/etc/l4t_jurassic_release` and `/etc/jurassic_release`, and outputs `l4tVersion` |
+| TC-SW-004 | Parse all four software version fields | Parsed object contains movebase, minimal system, GGR, and L4T versions |
+| TC-SW-005 | Mock task returns GGR and L4T versions | Mock returns `ggrVersion` and `l4tVersion` |

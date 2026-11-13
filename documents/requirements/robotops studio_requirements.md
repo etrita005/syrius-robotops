@@ -142,7 +142,8 @@ Robot Commissioning & Operations Studio
 软件版本信息包括：
 - megacosmOS 版本（机器人操作系统）
 - Movebase 版本（机器人操作系统中下位机版本）
-- GGR 版本（机器人操作系统中上位机版本）
+- GGR 版本（机器人操作系统中上位机版本，通过 `adb shell dumpsys package com.syriusrobotics.platform.launcher` 获取）
+- L4T 版本（读取 `/etc/l4t_jurassic_release`，回退 `/etc/jurassic_release`）
 - 各 MCU 板卡固件版本
 - 各执行器与传感器固件版本
 
@@ -426,6 +427,7 @@ project/solution 的目标是把现场环境、机器人清单、包版本、配
 - megacosmOS 版本
 - Movebase 版本
 - GGR 版本
+- L4T 版本
 - MCU 板卡固件版本
 - 执行器固件版本
 - 传感器固件版本

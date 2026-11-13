@@ -202,6 +202,7 @@ export default function RobotDetailModal({ open, robot, onClose, onSave }: Robot
             <TextInput id="sw-megacosmos" labelText="megacosmOS" value={formatInfoValue(robot.megaCosmOSVersion)} readOnly />
             <TextInput id="sw-movebase" labelText="Movebase" value={formatInfoValue(robot.movebaseVersion)} readOnly />
             <TextInput id="sw-ggr" labelText="GGR" value={formatInfoValue(robot.ggrVersion)} readOnly />
+            <TextInput id="sw-l4t" labelText="L4T" value={formatInfoValue(robot.l4tVersion)} readOnly />
           </div>
         </section>
 

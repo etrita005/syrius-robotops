@@ -21,7 +21,7 @@ import { MockGetRobotSoftwareInfoTask } from "./tasks/mock/mockGetRobotSoftwareI
 import { UpdateRobotBasicInfoTask } from "./tasks/real/updateRobotBasicInfoTask.js";
 import { UpdateRobotSoftwareInfoTask } from "./tasks/real/updateRobotSoftwareInfoTask.js";
 import type { RobotBasicInfo } from "./tasks/real/getRobotBasicInfoTask.js";
-import type { RobotSoftwareInfo } from "./tasks/real/getRobotSoftwareInfoTask.js";
+import { GetRobotSoftwareInfoTask, type RobotSoftwareInfo } from "./tasks/real/getRobotSoftwareInfoTask.js";
 import { WaitSshConnectedTask } from "./tasks/real/waitSshConnectedTask.js";
 import { WaitSshDisconnectedTask } from "./tasks/real/waitSshDisconnectedTask.js";
 import { WaitSshReconnectTask } from "./tasks/real/waitSshReconnectTask.js";
@@ -3680,6 +3680,28 @@ describe("RobotService - Core", () => {
       assert.equal(updated.port, 22);
     });
 
+    it("TC-ROB-SVC-026: should keep explicit port when updating a host-only address", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const created = await robotService.create(solution.id, { address: "10.0.0.1" });
+      const updated = await robotService.update(solution.id, created.id, {
+        address: "10.0.0.2",
+        port: 2222,
+      });
+      assert.equal(updated.address, "10.0.0.2");
+      assert.equal(updated.port, 2222);
+    });
+
+    it("TC-ROB-SVC-027: should prefer the port embedded in the address", async () => {
+      const { robotService, solution } = await createSolutionWithService();
+      const created = await robotService.create(solution.id, { address: "10.0.0.1" });
+      const updated = await robotService.update(solution.id, created.id, {
+        address: "10.0.0.2:2200",
+        port: 2222,
+      });
+      assert.equal(updated.address, "10.0.0.2");
+      assert.equal(updated.port, 2200);
+    });
+
     it("TC-ROB-SVC-019: should update in-memory cache after update", async () => {
       const { robotService, solution } = await createSolutionWithService();
       const created = await robotService.create(solution.id, { address: "10.0.0.1" });
@@ -6549,5 +6571,69 @@ describe("Robot Power Control - Flow Integration", () => {
     } finally {
       testEngine.destroy();
     }
+  });
+});
+
+class TestableGetRobotSoftwareInfoTask extends GetRobotSoftwareInfoTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public parse(output: string): RobotSoftwareInfo {
+    return (this as unknown as { parseSoftwareInfo(o: string): RobotSoftwareInfo }).parseSoftwareInfo(output);
+  }
+}
+
+describe("GetRobotSoftwareInfo task", () => {
+  it("TC-SW-001: should read movebase and minimal system versions from robot files", () => {
+    const task = new TestableGetRobotSoftwareInfoTask();
+    const cmd = task.command();
+
+    assert.ok(cmd.includes("/opt/cosmos/etc/ota/version"));
+    assert.ok(cmd.includes("/mnt/cosmos/boot/etc/ota/minimal_system_version"));
+    assert.ok(cmd.includes("movebaseVersion"));
+    assert.ok(cmd.includes("minimalSystemVersion"));
+  });
+
+  it("TC-SW-002: should read GGR version through adb dumpsys versionName", () => {
+    const task = new TestableGetRobotSoftwareInfoTask();
+    const cmd = task.command();
+
+    assert.ok(cmd.includes("adb shell dumpsys package com.syriusrobotics.platform.launcher"));
+    assert.ok(cmd.includes("grep versionName"));
+    assert.ok(cmd.includes("sed 's/ *versionName=//'"));
+    assert.ok(cmd.includes("ggrVersion"));
+  });
+
+  it("TC-SW-003: should read L4T version with jurassic_release fallback", () => {
+    const task = new TestableGetRobotSoftwareInfoTask();
+    const cmd = task.command();
+
+    assert.ok(cmd.includes("/etc/l4t_jurassic_release"));
+    assert.ok(cmd.includes("/etc/jurassic_release"));
+    assert.ok(cmd.includes("l4tVersion"));
+  });
+
+  it("TC-SW-004: should parse all four software version fields", () => {
+    const task = new TestableGetRobotSoftwareInfoTask();
+
+    const parsed = task.parse(
+      '{"movebaseVersion":"3.0.0","minimalSystemVersion":"1.2.3","ggrVersion":"2.4.8084","l4tVersion":"buzzard-v1.945"}'
+    );
+
+    assert.equal(parsed.movebaseVersion, "3.0.0");
+    assert.equal(parsed.minimalSystemVersion, "1.2.3");
+    assert.equal(parsed.ggrVersion, "2.4.8084");
+    assert.equal(parsed.l4tVersion, "buzzard-v1.945");
+  });
+
+  it("TC-SW-005: MockGetRobotSoftwareInfoTask returns ggr and l4t versions", async () => {
+    const task = new MockGetRobotSoftwareInfoTask();
+    const result = await task.exec({ robotIp: "192.168.1.10" });
+    const softwareInfo = result.softwareInfo as RobotSoftwareInfo;
+
+    assert.equal(result.success, true);
+    assert.equal(softwareInfo.ggrVersion, "2.4.8084");
+    assert.equal(softwareInfo.l4tVersion, "buzzard-v1.945");
   });
 });
