@@ -69,7 +69,8 @@ export function useRobots(solutionId: string | null) {
               ...r,
               movebaseVersion: updatedSoftwareInfo.movebaseVersion ?? r.movebaseVersion,
               megaCosmOSVersion: updatedSoftwareInfo.minimalSystemVersion ?? r.megaCosmOSVersion,
-              ggrVersion: updatedSoftwareInfo.l4tVersion ?? r.ggrVersion,
+              ggrVersion: updatedSoftwareInfo.ggrVersion ?? r.ggrVersion,
+              l4tVersion: updatedSoftwareInfo.l4tVersion ?? r.l4tVersion,
             };
           })
         );
