@@ -31,6 +31,7 @@ export interface RobotDefinition extends StoredRobotData {
   megaCosmOSVersion: string;
   movebaseVersion: string;
   ggrVersion: string;
+  l4tVersion: string;
   mcuFirmwareVersions: Record<string, string>;
   actuatorFirmwareVersions: Record<string, string>;
   sensorFirmwareVersions: Record<string, string>;
@@ -60,6 +61,7 @@ export interface RobotBasicInfoResponse {
 export interface RobotSoftwareInfoResponse {
   movebaseVersion: string;
   minimalSystemVersion: string;
+  ggrVersion: string;
   l4tVersion: string;
 }
 
@@ -132,6 +134,7 @@ export function enrichRobot(stored: StoredRobotData): RobotDefinition {
     megaCosmOSVersion: PLACEHOLDER,
     movebaseVersion: PLACEHOLDER,
     ggrVersion: PLACEHOLDER,
+    l4tVersion: PLACEHOLDER,
     mcuFirmwareVersions: EMPTY_VERSION_MAP,
     actuatorFirmwareVersions: EMPTY_VERSION_MAP,
     sensorFirmwareVersions: EMPTY_VERSION_MAP,
@@ -157,7 +160,8 @@ export function enrichRobotFromBackend(robot: RobotWithBasicInfoResponse): Robot
     mainSOMSN: robot.basicInfo?.mainSomSn ?? PLACEHOLDER,
     movebaseVersion: robot.softwareInfo?.movebaseVersion ?? PLACEHOLDER,
     megaCosmOSVersion: robot.softwareInfo?.minimalSystemVersion ?? PLACEHOLDER,
-    ggrVersion: robot.softwareInfo?.l4tVersion ?? PLACEHOLDER,
+    ggrVersion: robot.softwareInfo?.ggrVersion ?? PLACEHOLDER,
+    l4tVersion: robot.softwareInfo?.l4tVersion ?? PLACEHOLDER,
     mcuFirmwareVersions: EMPTY_VERSION_MAP,
     actuatorFirmwareVersions: EMPTY_VERSION_MAP,
     sensorFirmwareVersions: EMPTY_VERSION_MAP,

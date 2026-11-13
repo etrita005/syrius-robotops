@@ -228,7 +228,7 @@ Writes robot basic info into the in-memory LRU cache (`MemStore`). No SSH or net
 
 ### Overview
 
-Reads robot software version information from `/opt/cosmos/etc/ota/version`, `/mnt/cosmos/boot/etc/ota/minimal_system_version`, and `/etc/l4t_jurassic_release` via a shell script, parses the JSON output, and returns a structured `RobotSoftwareInfo` object.
+Reads robot software version information from `/opt/cosmos/etc/ota/version`, `/mnt/cosmos/boot/etc/ota/minimal_system_version`, the GGR package via `adb shell dumpsys package com.syriusrobotics.platform.launcher`, and `/etc/l4t_jurassic_release` (falling back to `/etc/jurassic_release`) via a shell script, parses the JSON output, and returns a structured `RobotSoftwareInfo` object.
 
 ### Input Parameters
 
@@ -245,11 +245,13 @@ No additional parameters (command is hardcoded).
 | `softwareInfo` | `RobotSoftwareInfo` | Parsed software info object |
 | `softwareInfo.movebaseVersion` | `string` | Movebase version from `/opt/cosmos/etc/ota/version` |
 | `softwareInfo.minimalSystemVersion` | `string` | Minimal system version from `/mnt/cosmos/boot/etc/ota/minimal_system_version` |
-| `softwareInfo.l4tVersion` | `string` | L4T release version from `/etc/l4t_jurassic_release` |
+| `softwareInfo.ggrVersion` | `string` | GGR version from `adb shell dumpsys package com.syriusrobotics.platform.launcher` (first `versionName`) |
+| `softwareInfo.l4tVersion` | `string` | L4T release version from `/etc/l4t_jurassic_release` (fallback `/etc/jurassic_release`) |
 
 ### Notes
 
-- Executes a multi-command shell script that reads from `cat` on three separate files
+- Executes a multi-command shell script that reads the version files with `cat` and queries the GGR Android package through `adb shell dumpsys`
+- GGR version uses `grep versionName` and strips the `versionName=` prefix, keeping only the first match
 - The robotService DAG chains this task after `GetRobotBasicInfoTask` (requires `robotInfo` for sequential execution)
 - Expects a JSON line in stdout; parses the first JSON line found
 

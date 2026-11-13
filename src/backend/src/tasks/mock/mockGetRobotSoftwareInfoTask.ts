@@ -4,7 +4,8 @@ import { GetRobotSoftwareInfoTask, type RobotSoftwareInfo } from "../real/getRob
 const MOCK_SOFTWARE_INFO: RobotSoftwareInfo = {
   movebaseVersion: "3.0.0",
   minimalSystemVersion: "1.2.3",
-  l4tVersion: "R35.4.1",
+  ggrVersion: "2.4.8084",
+  l4tVersion: "buzzard-v1.945",
 };
 
 function sleep(ms: number): Promise<void> {

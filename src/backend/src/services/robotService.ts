@@ -476,7 +476,12 @@ export class RobotService {
     }
 
     if (patch.address !== undefined) {
-      const parsed = parseAddressInput(patch.address);
+      const hasExplicitPort = patch.address.lastIndexOf(":") > 0;
+      const addressInput =
+        !hasExplicitPort && patch.port !== undefined
+          ? `${patch.address}:${patch.port}`
+          : patch.address;
+      const parsed = parseAddressInput(addressInput);
       if (!parsed) {
         throw new InvalidRobotAddressError();
       }

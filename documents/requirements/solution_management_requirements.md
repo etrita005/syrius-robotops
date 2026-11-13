@@ -217,7 +217,7 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 
 - `model`、`robotSN`、`thingsId`、`vendorId`、`productId`
 - `mainboardSN`、`mainboardId`、`mainSOMSN`
-- `megaCosmOSVersion`、`movebaseVersion`、`ggrVersion`
+- `megaCosmOSVersion`、`movebaseVersion`、`ggrVersion`、`l4tVersion`
 - `mcuFirmwareVersions`、`actuatorFirmwareVersions`、`sensorFirmwareVersions`
 - `mainControlHardwareVersion`、`mcuHardwareVersions`、`actuatorHardwareVersions`、`sensorHardwareVersions`
 - `hardwareDeviceTree`
@@ -558,7 +558,7 @@ TaskFlowEngine 持久化的 `user` 类型任务（Flow）数据 Schema：
 - 对话框分区域展示：
   - **基础信息**：`alias`（可编辑）、`address`（可编辑，格式为 `<host>:<port>`，port 可选，默认 22）、`model`（只读）、`robotSN`（只读）、`thingsId`（只读）、`vendorId`（只读）、`productId`（只读）、`mainboardSN`（只读）、`mainboardId`（只读）、`mainSOMSN`（只读）。
   - **其他信息**：`hardwareDeviceTree`（硬件设备树表格）。
-  - **软件版本信息**：`megaCosmOSVersion`、`movebaseVersion`、`ggrVersion`、`mcuFirmwareVersions`、`actuatorFirmwareVersions`、`sensorFirmwareVersions`（均为只读）。
+  - **软件版本信息**：`megaCosmOSVersion`、`movebaseVersion`、`ggrVersion`、`l4tVersion`、`mcuFirmwareVersions`、`actuatorFirmwareVersions`、`sensorFirmwareVersions`（均为只读）。
   - **硬件版本信息**：`mainControlHardwareVersion`、`mcuHardwareVersions`、`actuatorHardwareVersions`、`sensorHardwareVersions`（均为只读）。
 - 对话框提供"保存"按钮，保存 `alias` 和 `address` 的修改（address 中包含端口信息）。
 - 对话框提供"关闭"按钮。
