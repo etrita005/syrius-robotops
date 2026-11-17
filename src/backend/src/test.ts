@@ -36,6 +36,12 @@ import { CleanupAppTask } from "./tasks/real/cleanupAppTask.js";
 import { MockTransferAppTask } from "./tasks/mock/mockTransferAppTask.js";
 import { MockInstallAppTask } from "./tasks/mock/mockInstallAppTask.js";
 import { MockCleanupAppTask } from "./tasks/mock/mockCleanupAppTask.js";
+import { TransferDebPackageTask } from "./tasks/real/transferDebPackageTask.js";
+import { InstallDebPackageTask } from "./tasks/real/installDebPackageTask.js";
+import { CleanupDebPackageTask } from "./tasks/real/cleanupDebPackageTask.js";
+import { MockTransferDebPackageTask } from "./tasks/mock/mockTransferDebPackageTask.js";
+import { MockInstallDebPackageTask } from "./tasks/mock/mockInstallDebPackageTask.js";
+import { MockCleanupDebPackageTask } from "./tasks/mock/mockCleanupDebPackageTask.js";
 import { TransferDragonball3Task } from "./tasks/real/transferDragonball3Task.js";
 import { InstallDragonball3Task } from "./tasks/real/installDragonball3Task.js";
 import { MockTransferDragonball3Task } from "./tasks/mock/mockTransferDragonball3Task.js";
@@ -5142,6 +5148,325 @@ describe("App install - Flow Integration", () => {
       artifactId: "test-apk",
     }, undefined, cleanupDag);
     await waitForFlowComplete(testEngine, summary.id, 15000);
+
+    const flow = testEngine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "FAILED");
+    assert.equal(flow.phase, "error");
+    assert.ok(sse.hasEvent("task-flow-engine/error-handling-completed"));
+    testEngine.destroy();
+  });
+});
+
+class TestableTransferDebPackageTask extends TransferDebPackageTask {
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableInstallDebPackageTask extends InstallDebPackageTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+class TestableCleanupDebPackageTask extends CleanupDebPackageTask {
+  public command(): string {
+    return this.getSshCommand({});
+  }
+
+  public params(params: ValueMap): ValueMap {
+    return this.buildParams(params) as unknown as ValueMap;
+  }
+}
+
+describe("TransferDebPackage task", () => {
+  it("TC-DEB-001: should upload the deb package to /tmp/install_deb_package.deb without sudo", () => {
+    const task = new TestableTransferDebPackageTask();
+    const params = task.params({
+      robotIp: "192.168.1.10",
+      artifactId: "test-deb-id",
+    });
+
+    assert.equal(params.remoteFilePath, "/tmp/install_deb_package.deb");
+    assert.equal(params.sudo, false);
+    assert.equal(params.timeout, 120000);
+  });
+
+  it("TC-DEB-002: should resolve artifact path via artifactService on exec", async () => {
+    const task = new TransferDebPackageTask();
+    let receivedArtifactId: string | undefined;
+    const context = {
+      artifactService: {
+        async getArtifactPath(id: string): Promise<string> {
+          receivedArtifactId = id;
+          return "/local/path/to/cosmos-manifests.deb";
+        },
+      },
+    };
+
+    const parentProto = Object.getPrototypeOf(Object.getPrototypeOf(task)) as {
+      onExec: (...args: unknown[]) => unknown;
+    };
+    const originalOnExec = parentProto.onExec;
+    let observedLocalFilePath: string | undefined;
+    parentProto.onExec = async function (params: ValueMap) {
+      observedLocalFilePath = params.localFilePath as string;
+      return { done: true, success: true };
+    };
+
+    try {
+      await task.exec(
+        { robotIp: "192.168.1.10", artifactId: "test-deb-id" },
+        context as unknown as ValueMap,
+      );
+    } finally {
+      parentProto.onExec = originalOnExec;
+    }
+
+    assert.equal(receivedArtifactId, "test-deb-id");
+    assert.equal(observedLocalFilePath, "/local/path/to/cosmos-manifests.deb");
+  });
+});
+
+describe("InstallDebPackage task", () => {
+  it("TC-DEB-003: should resolve package name from the deb and not from the remote file name", () => {
+    const task = new TestableInstallDebPackageTask();
+    const cmd = task.command();
+
+    assert.ok(cmd.includes("dpkg-deb -f /tmp/install_deb_package.deb Package"));
+    assert.ok(cmd.includes('apt-mark manual "$PACKAGE_NAME"'));
+    assert.ok(!cmd.includes("apt-mark manual install_deb_package.deb"));
+    assert.ok(!cmd.includes("apt-mark manual /tmp/install_deb_package.deb"));
+  });
+
+  it("TC-DEB-004: should run apt-mark before dpkg", () => {
+    const task = new TestableInstallDebPackageTask();
+    const cmd = task.command();
+
+    const aptMarkBefore = cmd.indexOf('apt-mark manual "$PACKAGE_NAME"');
+    const dpkgIndex = cmd.indexOf("dpkg -i --force-confold /tmp/install_deb_package.deb");
+
+    assert.ok(aptMarkBefore >= 0);
+    assert.ok(dpkgIndex >= 0);
+    assert.ok(aptMarkBefore < dpkgIndex, "apt-mark must run before dpkg");
+  });
+
+  it("TC-DEB-005: should run apt-mark again after a successful dpkg", () => {
+    const task = new TestableInstallDebPackageTask();
+    const cmd = task.command();
+
+    const dpkgIndex = cmd.indexOf("dpkg -i --force-confold /tmp/install_deb_package.deb");
+    const aptMarkAfter = cmd.indexOf('apt-mark manual "$PACKAGE_NAME"', dpkgIndex);
+
+    assert.ok(dpkgIndex >= 0);
+    assert.ok(aptMarkAfter > dpkgIndex, "apt-mark must run again after dpkg");
+  });
+
+  it("TC-DEB-006: should use noninteractive dpkg and avoid shell &&", () => {
+    const task = new TestableInstallDebPackageTask();
+    const cmd = task.command();
+
+    assert.ok(cmd.includes("DEBIAN_FRONTEND=noninteractive"));
+    assert.ok(cmd.includes("--force-confold"));
+    assert.ok(!cmd.includes("&&"), "command must not contain &&");
+    assert.ok(!cmd.includes("systemctl stop"));
+    assert.ok(!cmd.includes("/var/lib/dpkg/lock"));
+    assert.ok(!cmd.includes("reboot"));
+  });
+
+  it("TC-DEB-007: should propagate the dpkg exit code and not swallow it", () => {
+    const task = new TestableInstallDebPackageTask();
+    const cmd = task.command();
+
+    assert.ok(cmd.includes("INSTALL_RC=$?"));
+    assert.ok(cmd.includes('exit "$INSTALL_RC"'));
+    assert.ok(!cmd.includes("dpkg -i --force-confold /tmp/install_deb_package.deb ||"));
+  });
+
+  it("TC-DEB-008: should use sudo, one retry and a 5 minute command timeout", () => {
+    const task = new TestableInstallDebPackageTask();
+    const params = task.params({ robotIp: "192.168.1.10" });
+
+    assert.equal(params.sudo, true);
+    assert.equal(params.retryCount, 1);
+    assert.equal(params.commandTimeout, 300000);
+  });
+});
+
+describe("CleanupDebPackage task", () => {
+  it("TC-DEB-009: should remove /tmp/install_deb_package.deb with sudo", () => {
+    const task = new TestableCleanupDebPackageTask();
+    const cmd = task.command();
+    const params = task.params({ robotIp: "192.168.1.10" });
+
+    assert.equal(cmd, "rm -f /tmp/install_deb_package.deb");
+    assert.equal(params.sudo, true);
+  });
+});
+
+describe("Mock deb package tasks", () => {
+  it("TC-DEB-010: should return simulated success results", async () => {
+    const transfer = new MockTransferDebPackageTask();
+    const transferStarted = Date.now();
+    const transferResult = await transfer.exec({
+      robotIp: "192.168.1.10",
+      artifactId: "test-deb-id",
+    });
+    const transferElapsed = Date.now() - transferStarted;
+
+    assert.equal(transferResult.done, true);
+    assert.equal(transferResult.success, true);
+    assert.equal(transferResult.integrityVerified, true);
+    assert.ok(transferElapsed >= 900, `expected ~1s delay, got ${transferElapsed}ms`);
+
+    const install = new MockInstallDebPackageTask();
+    const installStarted = Date.now();
+    const installResult = await install.exec({ robotIp: "192.168.1.10" });
+    const installElapsed = Date.now() - installStarted;
+
+    assert.equal(installResult.done, true);
+    assert.equal(installResult.success, true);
+    assert.equal(installResult.exitCode, 0);
+    assert.ok(installElapsed >= 2900, `expected ~3s delay, got ${installElapsed}ms`);
+
+    const cleanup = new MockCleanupDebPackageTask();
+    const cleanupResult = await cleanup.exec({ robotIp: "192.168.1.10" });
+
+    assert.equal(cleanupResult.done, true);
+    assert.equal(cleanupResult.success, true);
+    assert.equal(cleanupResult.exitCode, 0);
+  });
+});
+
+describe("Install Deb Package - Flow Integration", () => {
+  it("TC-DEB-011: should execute the transfer/install DAG and complete", async () => {
+    const registry = new ResolverRegistry();
+    registry.register("TransferDebPackageTask", MockTransferDebPackageTask as unknown as TaskResolverClass);
+    registry.register("InstallDebPackageTask", MockInstallDebPackageTask as unknown as TaskResolverClass);
+    registry.register("CleanupDebPackageTask", MockCleanupDebPackageTask as unknown as TaskResolverClass);
+
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const installDag: FlowSpec = {
+      tasks: {
+        transfer: {
+          requires: ["robotIp", "robotPort", "artifactId"],
+          provides: ["transfer_done"],
+          resolver: {
+            name: "TransferDebPackageTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+              artifactId: "artifactId",
+            },
+            results: { done: "transfer_done" },
+          },
+        },
+        install: {
+          requires: ["robotIp", "robotPort", "transfer_done"],
+          provides: ["install_done"],
+          resolver: {
+            name: "InstallDebPackageTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+            },
+            results: { done: "install_done" },
+          },
+        },
+      },
+    };
+
+    const summary = await testEngine.createFlow("internal", installDag, {
+      robotIp: "192.168.1.10",
+      robotPort: 22,
+      artifactId: "test-deb",
+    });
+    await waitForFlowComplete(testEngine, summary.id, 20000);
+
+    const flow = testEngine.getFlow(summary.id);
+    assert.ok(flow);
+    assert.equal(flow.state, "COMPLETED");
+    assert.equal(flow.taskStates["transfer"], "COMPLETED");
+    assert.equal(flow.taskStates["install"], "COMPLETED");
+    testEngine.destroy();
+  });
+
+  it("TC-DEB-012: error DAG cleanup should run when install fails", async () => {
+    class FailingMockInstallDebPackageTask extends MockInstallDebPackageTask {
+      protected override async onExec(_params: ValueMap): Promise<ValueMap> {
+        throw new Error("Simulated deb package install failure");
+      }
+    }
+
+    const registry = new ResolverRegistry();
+    registry.register("TransferDebPackageTask", MockTransferDebPackageTask as unknown as TaskResolverClass);
+    registry.register("InstallDebPackageTask", FailingMockInstallDebPackageTask as unknown as TaskResolverClass);
+    registry.register("CleanupDebPackageTask", MockCleanupDebPackageTask as unknown as TaskResolverClass);
+
+    const objStore = new InMemoryObjectStore() as unknown as import("./services/objectStore.js").ObjectStore;
+    const sse = new SpySseManager() as unknown as SseManager;
+    const testEngine = new TaskFlowEngine(objStore, sse, registry);
+
+    const installDag: FlowSpec = {
+      tasks: {
+        transfer: {
+          requires: ["robotIp", "robotPort", "artifactId"],
+          provides: ["transfer_done"],
+          resolver: {
+            name: "TransferDebPackageTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+              artifactId: "artifactId",
+            },
+            results: { done: "transfer_done" },
+          },
+        },
+        install: {
+          requires: ["robotIp", "robotPort", "transfer_done"],
+          provides: ["install_done"],
+          resolver: {
+            name: "InstallDebPackageTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+            },
+            results: { done: "install_done" },
+          },
+        },
+      },
+    };
+
+    const cleanupDag: FlowSpec = {
+      tasks: {
+        error_cleanup: {
+          provides: ["error_cleanup_done"],
+          resolver: {
+            name: "CleanupDebPackageTask",
+            params: {
+              robotIp: "robotIp",
+              robotPort: "robotPort",
+            },
+            results: { done: "error_cleanup_done" },
+          },
+        },
+      },
+    };
+
+    const summary = await testEngine.createFlow("internal", installDag, {
+      robotIp: "192.168.1.10",
+      robotPort: 22,
+      artifactId: "test-deb",
+    }, undefined, cleanupDag);
+    await waitForFlowComplete(testEngine, summary.id, 20000);
 
     const flow = testEngine.getFlow(summary.id);
     assert.ok(flow);

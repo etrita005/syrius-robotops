@@ -1594,3 +1594,96 @@ Same as `SshCommandTask`.
 - The command is `&&`-chained; any step failure fails the entire task
 - The 30-minute timeout accommodates installing 125 deb packages, including large navigation and perception packages
 - Cleanup after a successful upgrade is handled by `DeleteMovebaseTask`, which removes the whole `/mnt/sdcard/offlineota` directory
+
+---
+
+## 48. TransferDebPackageTask
+
+### Overview
+
+Resolves a `.deb` artifact path from the artifact service and uploads it to the robot via SFTP. Used as the `transfer` step of the Install Deb Package flow.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `artifactId` | `string` | (optional) | Artifact ID of the `.deb` package |
+| `timeout` | `number` | `120000` | SSH/mkdir/checksum timeout; raised to cover checksum of larger `.deb` files |
+
+Inherits all from `SshFileTransferTask`. `sudo` forced to `false`, `remoteFilePath` hardcoded.
+
+### Context Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `artifactService` | `{ getArtifactPath(id): Promise<string> }` | Service to resolve the local artifact path |
+
+### Output Parameters
+
+Same as `SshFileTransferTask`.
+
+### Notes
+
+- Hardcoded remote path: `/tmp/install_deb_package.deb`.
+- The fixed remote filename only affects the temporary path; the installed package name is determined by the `.deb` `Package` control field and is not changed by the transfer filename.
+- `sudo` stays `false` to avoid `SshFileTransferTask.ensureRemoteParentDir` running `chown -R developer:developer /tmp`.
+- Uses `artifactService.getArtifactPath(artifactId)` to resolve the local file path directly.
+- Logs `artifactId` and `localFilePath`; the original artifact filename is retained for diagnostics only.
+- If `artifactId` or `artifactService` is absent, falls through to `super.onExec()` directly.
+- Implementation mirrors `TransferBoosterTask` / `TransferDragonball3Task`.
+
+---
+
+## 49. InstallDebPackageTask
+
+### Overview
+
+Installs or upgrades the transferred `.deb` package on the remote robot. It resolves the Debian package name from the `.deb` control metadata, marks it manual before installation, runs `dpkg -i --force-confold`, marks it manual again after a successful install, and removes the temporary package file.
+
+### Input Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `commandTimeout` | `number` | `300000` (5 min) | Override for the installation command |
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`, `retryCount` forced to `1`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- The command is one `sh -c '...'` script so the whole sequence runs in a single root shell.
+- The script must not contain `&&`: `SshCommandTask` splits commands on `&&`, prefixes each segment with sudo, and shell variables cannot persist across those segments.
+- Script behavior:
+  1. `PACKAGE_NAME=$(dpkg-deb -f /tmp/install_deb_package.deb Package) || exit 1` — read the real package name; fail if the artifact has no readable `Package` field.
+  2. `apt-mark manual "$PACKAGE_NAME" || true` — best-effort manual mark before installation; failure is tolerated because a new package may not be in the apt index yet.
+  3. `DEBIAN_FRONTEND=noninteractive dpkg -i --force-confold /tmp/install_deb_package.deb` — install or upgrade; `--force-confold` keeps existing configuration on conffile conflicts.
+  4. Capture `$?`; on success, run `apt-mark manual "$PACKAGE_NAME" || true` again to guarantee the manual mark.
+  5. `rm -f /tmp/install_deb_package.deb` — cleanup that cannot override the dpkg exit code.
+  6. `exit "$INSTALL_RC"` — propagate the dpkg result.
+- `dpkg -i` failures (for example missing dependencies or a dpkg lock) are fatal; the flow enters its errorDag.
+- Does not stop `cosmos-update-engine`, does not remove `/var/lib/dpkg/lock*`, and does not reboot the robot.
+
+---
+
+## 50. CleanupDebPackageTask
+
+### Overview
+
+Deletes the transferred `.deb` file (`/tmp/install_deb_package.deb`) on the remote robot. Used as the errorDag cleanup step when transfer or installation fails.
+
+### Input Parameters
+
+Inherits all from `SshCommandTask`. `sudo` forced to `true`, `retryCount` forced to `1`.
+
+### Output Parameters
+
+Same as `SshCommandTask`.
+
+### Notes
+
+- Hardcoded command: `rm -f /tmp/install_deb_package.deb`.
+- Uses `-f` (force) so a missing file is silently ignored.
+- Idempotent and safe to run after the install script has already removed the file.

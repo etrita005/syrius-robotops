@@ -5,8 +5,13 @@ import {
   addRobotViaAPI,
   openSolutionInWorkspace,
   clickSidebarTab,
+  uploadArtifactViaAPI,
 } from "../fixtures/test-fixture.js";
 import assert from "node:assert/strict";
+import { writeFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 test.describe("Task Management", () => {
   test.describe.configure({ mode: "serial" });
@@ -118,8 +123,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 19 multi-robot task types should show "Multiple robots" (after Install Minimal System (Booster), Shutdown Robots, Reboot Robots and Upgrade Alpha1.9 Movebase were added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
+    // All 20 multi-robot task types should show "Multiple robots" (after Install Deb Package was added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(20);
 
     // Verify the single-robot task type is present
     await expect(modal.getByText("Robot selection: Single robot")).toBeVisible();
@@ -258,8 +263,8 @@ test.describe("Task Management", () => {
     const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // All 19 task types should show "Multiple robots" (after Install Minimal System (Booster), Shutdown Robots, Reboot Robots and Upgrade Alpha1.9 Movebase were added)
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
+    // All 20 multi-robot task types should show "Multiple robots" (after Install Deb Package was added)
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(20);
   });
 
   test("TC-E2E-TASK-013: Update IoT Gateway Config leads to multi-robot step 2", async ({
@@ -622,7 +627,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Install App")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(20);
   });
 
   test("TC-E2E-TASK-020: Install App leads to multi-robot step 2 then params step", async ({
@@ -687,7 +692,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Upgrade Alpha1.9 Movebase")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(20);
   });
 
   test("TC-E2E-A19MB-002: Upgrade Alpha1.9 Movebase shows multi-robot selection", async ({
@@ -741,7 +746,7 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Install Dragonball3 firmware")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(20);
   });
 
   test("TC-E2E-DB3-003: Install Dragonball3 firmware leads to multi-robot step 2", async ({
@@ -767,6 +772,135 @@ test.describe("Deploy GGR3 Config", () => {
     await expect(modal.getByLabel("Select all robots")).toBeVisible();
     await expect(modal.getByLabel("Select 192.168.1.10")).toBeVisible();
     await expect(modal.getByLabel("Select 192.168.1.11")).toBeVisible();
+  });
+});
+
+test.describe("Install Deb Package", () => {
+  test.describe.configure({ mode: "serial" });
+
+  let solutionId: string;
+  let artifactId: string;
+  let artifactFileName: string;
+  let artifactFilePath: string;
+
+  test.beforeAll(async ({ apiURL }) => {
+    const meta = await createSolutionViaAPI(
+      apiURL,
+      "Install Deb Package Test Solution",
+      "E2E install deb package test",
+    );
+    solutionId = meta.id;
+    await addRobotViaAPI(apiURL, solutionId, "192.168.1.10");
+    await addRobotViaAPI(apiURL, solutionId, "192.168.1.11");
+
+    artifactFileName = `e2e-install-deb-${randomUUID()}.deb`;
+    artifactFilePath = join(tmpdir(), artifactFileName);
+    await writeFile(artifactFilePath, "e2e dummy deb package");
+    const uploaded = await uploadArtifactViaAPI(apiURL, artifactFilePath, ["e2e-install-deb"]);
+    artifactId = uploaded.artifact.id;
+  });
+
+  test.afterAll(async ({ apiURL }) => {
+    await deleteSolutionViaAPI(apiURL, solutionId).catch(() => {});
+    if (artifactId) {
+      await fetch(`${apiURL}/api/artifacts/${artifactId}`, { method: "DELETE" }).catch(() => {});
+    }
+    if (artifactFilePath) {
+      await unlink(artifactFilePath).catch(() => {});
+    }
+  });
+
+  test("TC-E2E-DEB-001: Install Deb Package task type appears in task creation modal", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Install Deb Package Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Install Deb Package", { exact: true })).toBeVisible();
+  });
+
+  test("TC-E2E-DEB-002: Install Deb Package shows multi-robot selection", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Install Deb Package Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await expect(modal.getByText("Install Deb Package", { exact: true })).toBeVisible();
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(20);
+  });
+
+  test("TC-E2E-DEB-003: Install Deb Package leads to robot selection and params step", async ({
+    appPage,
+  }) => {
+    await openSolutionInWorkspace(appPage, "Install Deb Package Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await modal.getByText("Install Deb Package", { exact: true }).first().click();
+    await appPage.waitForTimeout(300);
+
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await expect(modal.getByLabel("Select all robots")).toBeVisible();
+    await expect(modal.getByLabel("Select 192.168.1.10")).toBeVisible();
+    await expect(modal.getByLabel("Select 192.168.1.11")).toBeVisible();
+
+    await modal.getByLabel("Select 192.168.1.10").check();
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await expect(modal.getByText("Deb package (.deb)")).toBeVisible();
+  });
+
+  test("TC-E2E-DEB-004: Install Deb Package mock flow completes", async ({ appPage }) => {
+    await openSolutionInWorkspace(appPage, "Install Deb Package Test Solution");
+    await clickSidebarTab(appPage, "Tasks");
+
+    await appPage.getByRole("button", { name: "Create your first task" }).click();
+    await appPage.waitForTimeout(500);
+
+    const modal = appPage.locator(".cds--modal-container").filter({ hasText: "Create Task" }).first();
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await modal.getByText("Install Deb Package", { exact: true }).first().click();
+    await appPage.waitForTimeout(300);
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await modal.getByLabel("Select 192.168.1.10").check();
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await modal.getByPlaceholder("Search artifacts...").fill(artifactFileName);
+    await expect(modal.getByText(artifactFileName)).toBeVisible({ timeout: 5000 });
+    await modal.getByText(artifactFileName).click();
+    await modal.getByRole("button", { name: "Next" }).click();
+    await appPage.waitForTimeout(500);
+
+    await modal.getByRole("button", { name: "Create" }).click();
+    await appPage.waitForTimeout(1000);
+
+    const taskRow = appPage.locator("tr").filter({ hasText: "Install Deb Package" });
+    await expect(taskRow).toHaveCount(1, { timeout: 15000 });
+    await expect(taskRow.first()).toContainText("Success", { timeout: 30000 });
   });
 });
 
@@ -799,7 +933,7 @@ test.describe("Update Algorithm Config", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Update Algorithm Config", { exact: true })).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(20);
   });
 
   test("TC-E2E-UAC-002: Update Algorithm Config selection leads to multi-robot step 2", async ({
@@ -869,6 +1003,7 @@ test.describe("Update Algorithm Config", () => {
     await expect(modal.getByText("Download Alpha2 Map")).toBeVisible();
     await expect(modal.getByText("Deploy AppletEngine Config")).toBeVisible();
     await expect(modal.getByText("Install App")).toBeVisible();
+    await expect(modal.getByText("Install Deb Package", { exact: true })).toBeVisible();
     await expect(modal.getByText("Deploy GGR3 Config")).toBeVisible();
     await expect(modal.getByText("Update Algorithm Config", { exact: true })).toBeVisible();
   });
@@ -903,7 +1038,7 @@ test.describe("Blackbox Log Collection", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Collect BlackBox Logs")).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(20);
   });
 
   test("TC-E2E-BBL-002: full wizard flow completes and result details show the S3 link", async ({
@@ -1182,7 +1317,7 @@ test.describe("Robot Power Tasks", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     await expect(modal.getByText("Shutdown Robots", { exact: true })).toBeVisible();
-    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(19);
+    await expect(modal.getByText("Robot selection: Multiple robots")).toHaveCount(20);
 
     await modal.getByText("Shutdown Robots", { exact: true }).click();
     await appPage.waitForTimeout(300);
