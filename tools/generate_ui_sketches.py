@@ -25,6 +25,8 @@ DOWNLOAD_ALPHA2_DIR = os.path.join(BASE_DIR, "download-alpha2-map")
 os.makedirs(DOWNLOAD_ALPHA2_DIR, exist_ok=True)
 APP_INSTALL_DIR = os.path.join(BASE_DIR, "app-installation")
 os.makedirs(APP_INSTALL_DIR, exist_ok=True)
+INSTALL_DEB_DIR = os.path.join(BASE_DIR, "install-deb-package")
+os.makedirs(INSTALL_DEB_DIR, exist_ok=True)
 BLACKBOX_DIR = os.path.join(BASE_DIR, "blackbox-log-collection")
 os.makedirs(BLACKBOX_DIR, exist_ok=True)
 UPDATE_ALGORITHM_CONFIG_DIR = os.path.join(BASE_DIR, "update-algorithm-config")
@@ -1691,6 +1693,143 @@ def page_app_install_step4():
     print(f"Saved {os.path.relpath(path, BASE_DIR)}")
 
 # ---------------------------------------------------------------------------
+# Install Deb Package: 01 --- Step 1: Select Task Type (Multi-robot)
+# ---------------------------------------------------------------------------
+def page_install_deb_step1():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 1)
+    draw.text((mx + 24, my + 110), "Step 1: Select Task Type", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "The task type determines robot selection mode and parameters.", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 158, mx + mw - 24, my + 192), placeholder="Search task types...")
+    types = [
+        ("Install Deb Package", "Install or upgrade a local .deb package on selected robots.", "Multiple robots", True),
+        ("Upgrade BUP", "Upgrade the BUP firmware on selected robots.", "Multiple robots"),
+        ("Install App", "Install or upgrade an app on selected robots.", "Multiple robots"),
+        ("Upgrade Movebase", "Upgrade the Movebase software on selected robots.", "Multiple robots"),
+        ("Apply Alpha2 Map", "Apply an Alpha2 format map package.", "Multiple robots"),
+    ]
+    for i, type_info in enumerate(types):
+        name, desc, mode_label = type_info[0], type_info[1], type_info[2]
+        selected = len(type_info) > 3 and type_info[3]
+        y = my + 208 + i * 58
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 54], fill="white", outline="#0f62fe" if selected else "#c6c6c6", width=2 if selected else 1)
+        if selected:
+            draw.ellipse([mx + 40, y + 16, mx + 56, y + 32], fill="#0f62fe")
+        else:
+            draw.ellipse([mx + 40, y + 16, mx + 56, y + 32], outline="#8d8d8d", width=1)
+        draw.text((mx + 70, y + 4), name, fill="#161616", font=FONT_MD)
+        draw.text((mx + 70, y + 23), desc, fill="#525252", font=FONT_SM)
+        draw.text((mx + 70, y + 38), f"Robot selection: {mode_label}", fill="#8d8d8d", font=FONT_SM)
+    draw_button(draw, (mx + mw - 220, my + mh - 60, mx + mw - 120, my + mh - 28), "Cancel")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+    path = os.path.join(INSTALL_DEB_DIR, "01_create_task_step1_type.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Install Deb Package: 02 --- Step 2: Select Robots (Multi, checkboxes)
+# ---------------------------------------------------------------------------
+def page_install_deb_step2():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 2)
+    draw.text((mx + 24, my + 110), "Step 2: Select Robots", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 130), "Task type: Install Deb Package (Multiple robots)", fill="#525252", font=FONT_SM)
+    draw_input(draw, (mx + 24, my + 158, mx + mw - 140, my + 192), placeholder="Search robots...")
+    draw_button(draw, (mx + mw - 130, my + 158, mx + mw - 24, my + 192), "Sort")
+    robots = [(True, "AGV-01", "192.168.1.101:22", "X100"), (False, "AGV-02", "192.168.1.102:22", "X100"), (False, "AGV-03", "robot-03.local:22", "X200")]
+    draw.rectangle([mx + 24, my + 208, mx + mw - 24, my + 240], fill="#f4f4f4", outline="#e0e0e0", width=1)
+    draw.rectangle([mx + 40, my + 216, mx + 52, my + 228], fill="#0f62fe")
+    draw.text((mx + 62, my + 214), "Select all robots", fill="#161616", font=FONT_SM)
+    for i, (checked, alias, address, model) in enumerate(robots):
+        y = my + 248 + i * 44
+        fill = "white" if i % 2 == 0 else "#fafafa"
+        draw.rectangle([mx + 24, y, mx + mw - 24, y + 40], fill=fill, outline="#e0e0e0", width=1)
+        cb_x, cb_y = mx + 44, y + 10
+        if checked and i == 0:
+            draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], fill="#0f62fe")
+            draw.line([cb_x + 4, cb_y + 8, cb_x + 7, cb_y + 12, cb_x + 12, cb_y + 4], fill="white", width=2)
+        else:
+            draw.rectangle([cb_x, cb_y, cb_x + 16, cb_y + 16], outline="#8d8d8d", width=1)
+        draw.text((mx + 100, y + 10), alias, fill="#161616", font=FONT_SM)
+        draw.text((mx + 220, y + 10), address, fill="#525252", font=FONT_SM)
+        draw.text((mx + 380, y + 10), model, fill="#525252", font=FONT_SM)
+    draw.text((mx + 24, my + mh - 80), "1 robot selected", fill="#525252", font=FONT_SM)
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+    path = os.path.join(INSTALL_DEB_DIR, "02_create_task_step2_robots.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Install Deb Package: 03 --- Step 3: Configure Parameter (artifact selector)
+# ---------------------------------------------------------------------------
+def page_install_deb_step3():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 3)
+    draw.text((mx + 24, my + 110), "Step 3: Configure Parameters", fill="#161616", font=FONT_MD)
+    draw.text((mx + 24, my + 132), "Task: Install Deb Package", fill="#525252", font=FONT_SM)
+    y = my + 180
+    draw.text((mx + 44, y), "Deb package (.deb) *", fill="#161616", font=FONT_MD)
+    draw.text((mx + 44, y + 22), "Select the .deb package to install.", fill="#525252", font=FONT_SM)
+    draw.text((mx + 44, y + 38), "Existing configuration files are preserved on conffile conflicts.", fill="#525252", font=FONT_SM)
+    draw_button(draw, (mx + 44, y + 58, mx + 260, y + 90), "Select artifact", bg="#e0e0e0", fg="#161616")
+    draw.text((mx + 280, y + 66), "cosmos-manifests_5.3.2148_arm64.deb", fill="#0f62fe", font=FONT_MD)
+    draw.text((mx + 44, y + 104), "The selected .deb will be uploaded to each robot and installed with dpkg.", fill="#a8a8a8", font=FONT_SM)
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Next", bg="#0f62fe", fg="white")
+    path = os.path.join(INSTALL_DEB_DIR, "03_create_task_step3_params.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
+# Install Deb Package: 04 --- Step 4: Confirm and Create
+# ---------------------------------------------------------------------------
+def page_install_deb_step4():
+    W, H = 1200, 800
+    img = Image.new("RGB", (W, H), "#f4f4f4")
+    draw = ImageDraw.Draw(img)
+    page_tasks_list()
+    draw.rectangle([0, 0, W, H], fill="#00000080")
+    mx, my, mw, mh = 300, 120, 600, 560
+    draw.rectangle([mx, my, mx + mw, my + mh], fill="white", outline="#c6c6c6", width=1)
+    draw.text((mx + 24, my + 20), "Create Task", fill="#161616", font=FONT_LG)
+    draw_step_indicator(draw, mx, my + 60, ["Type", "Robots", "Params", "Confirm"], 4)
+    draw.text((mx + 24, my + 110), "Step 4: Confirm", fill="#161616", font=FONT_MD)
+    fields = [("Task Type", "Install Deb Package"), ("Target Robots", "AGV-01 (192.168.1.101:22)"), ("Artifact", "cosmos-manifests_5.3.2148_arm64.deb")]
+    fy = my + 160
+    for label, value in fields:
+        draw.text((mx + 24, fy), label + ":", fill="#525252", font=FONT_MD)
+        draw.text((mx + 220, fy), value, fill="#161616", font=FONT_MD)
+        fy += 40
+    draw.text((mx + 24, fy + 10), "Are you sure you want to create this task?", fill="#161616", font=FONT_MD)
+    draw_button(draw, (mx + mw - 320, my + mh - 60, mx + mw - 220, my + mh - 28), "Back")
+    draw_button(draw, (mx + mw - 110, my + mh - 60, mx + mw - 24, my + mh - 28), "Create", bg="#0f62fe", fg="white")
+    path = os.path.join(INSTALL_DEB_DIR, "04_create_task_step4_confirm.png")
+    img.save(path)
+    print(f"Saved {os.path.relpath(path, BASE_DIR)}")
+
+# ---------------------------------------------------------------------------
 # Update Algorithm Config: 01 --- Step 1: Select Task Type (Multi-robot)
 # ---------------------------------------------------------------------------
 def page_update_algorithm_config_step1():
@@ -2253,6 +2392,10 @@ if __name__ == "__main__":
     page_app_install_step2()
     page_app_install_step3()
     page_app_install_step4()
+    page_install_deb_step1()
+    page_install_deb_step2()
+    page_install_deb_step3()
+    page_install_deb_step4()
     page_blackbox_step1()
     page_blackbox_step2()
     page_blackbox_step3()

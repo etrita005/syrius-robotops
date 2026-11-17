@@ -633,6 +633,53 @@ const INSTALL_APP_ERROR_DAG: DagDefinition = {
   },
 };
 
+const INSTALL_DEB_PACKAGE_DAG: DagDefinition = {
+  tasks: {
+    transfer: {
+      requires: ["robotIp", "robotPort", "artifactId"],
+      resolver: {
+        name: "TransferDebPackageTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+          artifactId: "artifactId",
+        },
+        results: { done: "transfer_done" },
+      },
+      provides: ["transfer_done"],
+    },
+    install: {
+      requires: ["robotIp", "robotPort", "transfer_done"],
+      resolver: {
+        name: "InstallDebPackageTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "install_done" },
+      },
+      provides: ["install_done"],
+    },
+  },
+};
+
+const INSTALL_DEB_PACKAGE_ERROR_DAG: DagDefinition = {
+  tasks: {
+    error_cleanup: {
+      requires: ["robotIp", "robotPort"],
+      resolver: {
+        name: "CleanupDebPackageTask",
+        params: {
+          robotIp: "robotIp",
+          robotPort: "robotPort",
+        },
+        results: { done: "error_cleanup_done" },
+      },
+      provides: ["error_cleanup_done"],
+    },
+  },
+};
+
 const DEPLOY_GGR3_CONFIG_DAG: DagDefinition = {
   tasks: {
     transfer: {
@@ -1278,6 +1325,29 @@ export const TASK_REGISTRY: TaskRegistry = {
           type: "artifact",
           label: "Artifact file",
           required: true,
+        },
+      },
+    },
+    {
+      type: "install-deb-package",
+      name: "Install Deb Package",
+      description:
+        "Install or upgrade a local .deb package on selected robots and mark it as manually installed.",
+      robotSelection: {
+        mode: "multiple",
+        description:
+          "Select one or more target robots to install the .deb package.",
+      },
+      dag: INSTALL_DEB_PACKAGE_DAG,
+      expectedResults: ["install_done"],
+      errorDag: INSTALL_DEB_PACKAGE_ERROR_DAG,
+      params: {
+        artifactId: {
+          type: "artifact",
+          label: "Deb package (.deb)",
+          required: true,
+          description:
+            "Select the .deb package to install. Existing configuration files are preserved when dpkg reports a conffile conflict.",
         },
       },
     },

@@ -19,11 +19,12 @@
 
 | 文件 | 说明 |
 |------|------|
-| `src/frontend/src/types/taskDag.ts` | DAG 类型定义与全局映射表 |
-| `src/frontend/src/hooks/useTasks.ts` | 调用方示例（通过 `getDagConfig` 获取 DAG） |
+| `src/frontend/src/data/taskRegistry.ts` | DAG 类型、任务类型与 DAG 的集中注册表 |
+| `src/frontend/src/types/task.ts` | 任务相关类型与 registry 的向后兼容导出 |
+| `src/frontend/src/hooks/useTasks.ts` | 调用方示例（通过 `getTaskTypeDefinition` 获取 DAG） |
 | `src/frontend/src/api/taskApi.ts` | API 层（发送 DAG 到后端 `/flows` 接口） |
 
-**核心模块**：`src/frontend/src/types/taskDag.ts`
+**核心模块**：`src/frontend/src/data/taskRegistry.ts`
 
 ---
 
@@ -32,9 +33,23 @@
 ### 3.1 类型定义
 
 ```typescript
+export interface RobotSelection {
+  mode: "single" | "multiple";
+  description?: string;
+}
+
+export interface TaskParamDescriptor {
+  type: "artifact" | "text" | "number" | "select" | "checkbox" | "multiselect";
+  label: string;
+  required: boolean;
+  description?: string;
+  defaultValue?: string;
+  options?: string[];
+}
+
 export interface DagResolver {
   name: string;                        // 解析器名称，对应后端 ResolverRegistry 中的注册名
-  params: Record<string, string>;      // 解析器参数，值为 DAG 输入变量名的引用
+  params: Record<string, string | { value: unknown }>; // 变量引用或字面量
   results: Record<string, string>;     // 解析器输出到 DAG 变量的映射
 }
 
@@ -48,10 +63,16 @@ export interface DagDefinition {
   tasks: Record<string, DagTaskNode>;  // 任务名 → 任务节点
 }
 
-export interface DagConfig {
+export interface TaskTypeDefinition {
+  type: string;
+  name: string;
+  description: string;
+  robotSelection: RobotSelection;
   dag: DagDefinition;                  // 主流程 DAG
   expectedResults: string[];           // 期望的最终结果变量名（用于判定流程成功）
   errorDag?: DagDefinition;            // 异常处理/回滚 DAG（可选）
+  params: Record<string, TaskParamDescriptor>;
+  manualDeviceIdInput?: boolean;
 }
 ```
 
@@ -81,15 +102,23 @@ params: {
 
 ## 4. DAG 映射表
 
-所有任务类型的 DAG 配置集中维护在 `taskDag.ts` 的 `TASK_DAG_MAP` 中：
+所有任务类型的 DAG 配置集中维护在 `src/frontend/src/data/taskRegistry.ts` 的 `TASK_REGISTRY.taskTypes` 中。每个 `TaskTypeDefinition` 直接包含 `dag`、`expectedResults` 和可选的 `errorDag`：
 
 ```typescript
-const TASK_DAG_MAP: Record<string, DagConfig> = {
-  "upgrade-movebase":        { /* 六步 DAG: transfer → upgrade → reboot → wait_reconnect → verify_version → cleanup */ },
-  "upgrade-alpha19-movebase":{ /* 六步 DAG: transfer → upgrade → reboot → wait_reconnect → verify_version → cleanup */ },
-  "upgrade-bup":             { /* 六步 DAG: transfer → script_transfer → upgrade → wait_reconnect → verify_version → cleanup */ },
-  "movebase-disk-cleanup":   { /* 单步 DAG: cleanup */ },
-  "apply-alpha2-map":        { /* 四步 DAG: transfer → apply → delete_package → wait */ },
+export const TASK_REGISTRY: TaskRegistry = {
+  version: "1.0.0",
+  taskTypes: [
+    {
+      type: "upgrade-movebase",
+      name: "Upgrade Movebase",
+      // 六步 DAG: transfer → upgrade → reboot → wait_reconnect → verify_version → cleanup
+      dag: UPGRADE_MOVEBASE_DAG,
+      errorDag: UPGRADE_MOVEBASE_ERROR_DAG,
+      expectedResults: ["cleanup_done"],
+      params: { artifactId: { /* ... */ }, expectedVersion: { /* ... */ } },
+    },
+    // ...
+  ],
 };
 ```
 
@@ -184,6 +213,25 @@ input variables ──→ [transfer] ──→ [install] ──→ install_done
 - `install` 节点执行三步操作：清理解压目录 (`rm -rf /tmp/ota`)、解压 (`unzip -o /tmp/booster.zip -d /tmp/ota`)、以 sudo 运行安装脚本（`sh -c 'cd /tmp/ota; ./install_booster.sh'`）
 - 无异常 DAG：安装脚本由包内提供，失败时保留 `/tmp/ota` 便于现场排查
 
+#### install-deb-package（安装 deb 包）
+
+两步流程，含异常处理：
+
+```
+input variables ──→ [transfer] ──→ [install] ──→ install_done
+                        │              │
+                        └── transfer_done ──┘
+如果主流程任一任务失败：
+[error_cleanup] ──→ error_cleanup_done
+```
+- 解析器：`TransferDebPackageTask`, `InstallDebPackageTask`, `CleanupDebPackageTask`
+- 输入依赖：`robotIp`, `robotPort`, `artifactId`
+- 预期结果：`install_done`
+- `transfer` 节点将 `.deb` 上传到机器人 `/tmp/install_deb_package.deb`；固定远程文件名不影响安装后的包名
+- `install` 节点通过 `dpkg-deb -f` 解析包名，先执行 `apt-mark manual`，再执行 `dpkg -i --force-confold`，成功后补标记并清理临时文件
+- `apt-mark` 失败可忽略；`dpkg -i` 失败使任务失败；配置文件冲突保留机器人现有配置
+- 异常 DAG：`INSTALL_DEB_PACKAGE_ERROR_DAG`，用 `CleanupDebPackageTask` 删除临时 `.deb`
+
 #### upgrade-bup（BUP 固件升级）
 
 六步流程，含异常处理（upgrade 前先传输 upgrade_bup.sh 脚本，upgrade 后等待 SSH 断开并在 3 分钟内重连成功）：
@@ -210,35 +258,37 @@ input variables ──→ [transfer] ──→ [script_transfer] ──→ [upgr
 
 ## 5. 调用方式
 
-其他模块通过 `getDagConfig(taskType)` 函数查询 DAG 配置：
+其他模块通过 `getTaskTypeDefinition(taskType)` 函数查询任务类型及其 DAG：
 
 ```typescript
-import { getDagConfig } from "../types/taskDag.js";
+import { getTaskTypeDefinition } from "../data/taskRegistry.js";
 
-const dagConfig = getDagConfig(taskType.type);
-// dagConfig.dag           → DagDefinition (主流程)
-// dagConfig.expectedResults → string[] (期望结果)
-// dagConfig.errorDag      → DagDefinition | undefined (异常处理)
+const definition = getTaskTypeDefinition(taskType.type);
+if (!definition) throw new Error(`Unknown task type: ${taskType.type}`);
+// definition.dag            → DagDefinition (主流程)
+// definition.expectedResults → string[] (期望结果)
+// definition.errorDag       → DagDefinition | undefined (异常处理)
 ```
 
 每个 DAG 配置定义的是**单机器人**的执行流程（如 transfer → upgrade → cleanup）。当用户选择 N 个机器人时，前端依次为每个机器人创建独立的 taskFlow，每个 taskFlow 携带该机器人专属的 `robotIp`/`robotPort`。N 个机器人 → N 个 taskFlow → N 条任务记录。
 
-`getDagConfig` 对未注册的任务类型返回默认配置（`SSH_FILE_TRANSFER_DAG`），确保向后兼容。
+未注册的任务类型会抛出 `Unknown task type`，不会静默回退到默认 DAG。
 
 ---
 
 ## 6. 新增任务类型的步骤
 
-1. 在 `taskDag.ts` 中定义该类型的 `DagDefinition` 常量（和可选的 `errorDag`）
-2. 在 `TASK_DAG_MAP` 中添加 `[taskType]: { dag, expectedResults, errorDag? }` 条目
-3. 在 `src/frontend/src/types/task.ts` 的 `TASK_TYPES` 数组中添加对应的 `TaskTypeDescriptor`
-4. 如需前端展示特殊 UI（如多步骤进度），在对应组件中根据 `taskType.type` 实现差异化渲染
+1. 在 `src/frontend/src/data/taskRegistry.ts` 中定义该类型的 `DagDefinition` 常量（和可选的 `errorDag`）
+2. 在 `TASK_REGISTRY.taskTypes` 中添加对应条目，包含 `type`、`name`、`robotSelection`、`dag`、`expectedResults`、`errorDag` 和 `params`
+3. 在 `src/backend/src/tasks/real/` 与 `src/backend/src/tasks/mock/` 中实现 resolver
+4. 在 `src/backend/src/tasks/index.ts` 导出，并在 `src/backend/src/index.ts` 的 `registerTasks` 中注册 real/mock
+5. 更新需求、设计、测试用例和 E2E 测试；如需特殊 UI，在对应组件中按 `taskType.type` 差异化渲染
 
 ---
 
 ## 7. 设计原则
 
-- **单一数据源**：所有 DAG 定义集中在 `taskDag.ts`，不分散在 hook 或组件中
+- **单一数据源**：所有 DAG 定义集中在 `taskRegistry.ts`，不分散在 hook 或组件中
 - **类型安全**：使用 TypeScript 接口约束 DAG 结构，编译期即可发现格式错误
-- **可扩展**：新增任务类型只需在映射表中添加条目，无需修改调用方代码
+- **可扩展**：新增任务类型只需在 registry 中添加条目，并注册对应后端 resolver，无需修改调用方代码
 - **与后端对齐**：DAG 结构直接映射到任务流引擎的 FlowRecord 格式，前后端使用同一套命名约定
