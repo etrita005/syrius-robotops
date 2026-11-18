@@ -4,16 +4,18 @@ import { SshCommandTask } from "./sshCommandTask.js";
 const SOFTWARE_INFO_COMMAND =
   "MOVEBASE_VER=$(cat /opt/cosmos/etc/ota/version 2>/dev/null | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//; s/[[:space:]]*$//');" +
   "MIN_SYS_VER=$(cat /mnt/cosmos/boot/etc/ota/minimal_system_version 2>/dev/null | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//; s/[[:space:]]*$//');" +
+  "GGR_VER=$(adb shell dumpsys package com.syriusrobotics.platform.launcher 2>/dev/null | grep versionName | head -n 1 | sed 's/ *versionName=//' | tr -d '\\r' | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//; s/[[:space:]]*$//');" +
   "L4T_VER=$( (cat /etc/l4t_jurassic_release 2>/dev/null || cat /etc/jurassic_release 2>/dev/null) | sed '/^[[:space:]]*$/d; s/^[[:space:]]*//; s/[[:space:]]*$//');" +
-  'echo "{\\"movebaseVersion\\":\\"$MOVEBASE_VER\\",\\"minimalSystemVersion\\":\\"$MIN_SYS_VER\\",\\"l4tVersion\\":\\"$L4T_VER\\"}"';
+  'echo "{\\"movebaseVersion\\":\\"$MOVEBASE_VER\\",\\"minimalSystemVersion\\":\\"$MIN_SYS_VER\\",\\"ggrVersion\\":\\"$GGR_VER\\",\\"l4tVersion\\":\\"$L4T_VER\\"}"';
 
 /**
  * Example output from the SSH command:
- * {"movebaseVersion":"3.0.0","minimalSystemVersion":"1.2.3","l4tVersion":"R35.4.1"}
+ * {"movebaseVersion":"3.0.0","minimalSystemVersion":"1.2.3","ggrVersion":"2.4.8084","l4tVersion":"buzzard-v1.945"}
  */
 export interface RobotSoftwareInfo {
   movebaseVersion: string;
   minimalSystemVersion: string;
+  ggrVersion: string;
   l4tVersion: string;
 }
 
@@ -33,7 +35,7 @@ export class GetRobotSoftwareInfoTask extends SshCommandTask {
 
     const softwareInfo = this.parseSoftwareInfo(stdout);
 
-    this.log.info({ movebaseVersion: softwareInfo.movebaseVersion, l4tVersion: softwareInfo.l4tVersion }, "Parsed software info");
+    this.log.info({ movebaseVersion: softwareInfo.movebaseVersion, ggrVersion: softwareInfo.ggrVersion, l4tVersion: softwareInfo.l4tVersion }, "Parsed software info");
 
     return {
       success: true,

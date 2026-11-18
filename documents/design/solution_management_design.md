@@ -173,6 +173,8 @@ function buildRobotInfoKey(solutionId: string, robotId: string): string;
 
 `POST .../power` 请求体为 `{ "action": "shutdown" | "reboot" }`（其他取值返回 `400 INVALID_INPUT`）。该接口为**即时动作**，不创建 flow：路由委托 `RobotPowerService` 解析机器人存储地址后直接执行 `RobotPowerTask`，成功返回 `{ ok: true, robotId, action }`。由于 `RobotPowerTask` 对任何失败（机器人不可达、SSH 连接中断、命令返回非 0 退出码）均忽略并返回成功，电源动作本身不会产生错误响应；仅在请求层面出错时（如机器人记录不存在返回 `ROBOT_NOT_FOUND`，或其余异常返回 `502 POWER_ACTION_FAILED`）才返回错误。
 
+`PUT .../robots/:robotId` 的地址更新语义：若 `address` 不含端口且同时提供 `port`，使用显式 `port`；若 `address` 内已包含端口，则以 `address` 中的端口为准。
+
 ### 3.5 MemStore 服务接口（MemStore）
 
 后端内置 mem_store 模块，提供带 TTL 的内存键值缓存、定时刷新、SSE 实时推送能力。机器人动态信息通过 mem_store 进行缓存管理。
@@ -375,6 +377,7 @@ interface RobotDefinition extends StoredRobotData {
   megaCosmOSVersion: string;
   movebaseVersion: string;
   ggrVersion: string;
+  l4tVersion: string;
   mcuFirmwareVersions: Record<string, string>;
   actuatorFirmwareVersions: Record<string, string>;
   sensorFirmwareVersions: Record<string, string>;
@@ -1007,7 +1010,7 @@ v1/solutions/{solutionId}/{feature-namespace}/{resourceId}
 - **Tabs**:
   - **Basic Info**: `alias` (editable), `address` (editable, format `<host>:<port>`, port optional defaults to 22), `model` (read-only), `robotSN` (read-only), `thingsId` (read-only), `vendorId` (read-only), `productId` (read-only), `mainboardSN` (read-only), `mainboardId` (read-only), `mainSOMSN` (read-only).
   - **Other Info**: `hardwareDeviceTree` as `DataTable` (columns: name, firmwareVersion, hardwareVersion, serialNumber, hardwareId, online).
-  - **Software Versions**: `megaCosmOSVersion`, `movebaseVersion`, `ggrVersion` as read-only form fields; MCU / actuator / sensor firmware versions as key-value lists.
+  - **Software Versions**: `megaCosmOSVersion`, `movebaseVersion`, `ggrVersion`, `l4tVersion` as read-only form fields; MCU / actuator / sensor firmware versions as key-value lists.
   - **Hardware Versions**: `mainControlHardwareVersion`, MCU / actuator / sensor hardware versions as key-value lists.
 - **Actions**: Bottom "Save" primary button (saves alias/address changes; address is parsed from `<host>:<port>` format into separate `address` and `port` fields), "Close" secondary button.
 
